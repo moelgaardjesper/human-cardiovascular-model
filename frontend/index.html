@@ -1,0 +1,393 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Vascular Model Simulator</title>
+  <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      background: #0f1117;
+      color: #e2e8f0;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    header {
+      background: #1a1d2e;
+      border-bottom: 1px solid #2d3148;
+      padding: 12px 24px;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+
+    header h1 { font-size: 1.1rem; font-weight: 600; color: #a5b4fc; }
+    header p  { font-size: 0.8rem; color: #64748b; }
+
+    .main {
+      display: grid;
+      grid-template-columns: 320px 1fr;
+      gap: 0;
+      flex: 1;
+      overflow: hidden;
+    }
+
+    /* ---- Left panel ---- */
+    .sidebar {
+      background: #13161f;
+      border-right: 1px solid #2d3148;
+      overflow-y: auto;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+
+    .card {
+      background: #1a1d2e;
+      border: 1px solid #2d3148;
+      border-radius: 8px;
+      padding: 14px;
+    }
+
+    .card h2 {
+      font-size: 0.75rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: #818cf8;
+      margin-bottom: 12px;
+    }
+
+    .field { margin-bottom: 10px; }
+
+    label {
+      display: block;
+      font-size: 0.75rem;
+      color: #94a3b8;
+      margin-bottom: 4px;
+    }
+
+    input[type=number], select {
+      width: 100%;
+      background: #0f1117;
+      border: 1px solid #374151;
+      border-radius: 5px;
+      color: #e2e8f0;
+      padding: 6px 8px;
+      font-size: 0.85rem;
+    }
+
+    input[type=range] {
+      width: 100%;
+      accent-color: #818cf8;
+    }
+
+    .range-row { display: flex; align-items: center; gap: 8px; }
+    .range-row span { font-size: 0.8rem; min-width: 42px; text-align: right; color: #c7d2fe; }
+
+    .tier-tabs {
+      display: flex;
+      gap: 4px;
+      margin-bottom: 12px;
+    }
+
+    .tier-tabs button {
+      flex: 1;
+      padding: 5px;
+      border: 1px solid #374151;
+      border-radius: 5px;
+      background: #0f1117;
+      color: #64748b;
+      font-size: 0.72rem;
+      cursor: pointer;
+    }
+
+    .tier-tabs button.active {
+      background: #3730a3;
+      border-color: #818cf8;
+      color: #e2e8f0;
+    }
+
+    .tier-section { display: none; }
+    .tier-section.visible { display: block; }
+
+    .drug-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 6px;
+      margin-bottom: 8px;
+    }
+
+    .run-btn {
+      width: 100%;
+      padding: 10px;
+      background: #4338ca;
+      border: none;
+      border-radius: 6px;
+      color: #fff;
+      font-size: 0.9rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+
+    .run-btn:hover  { background: #4f46e5; }
+    .run-btn:active { background: #3730a3; }
+    .run-btn:disabled { background: #374151; color: #64748b; cursor: default; }
+
+    /* ---- Right panel ---- */
+    .content {
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    .summary-bar {
+      background: #13161f;
+      border-bottom: 1px solid #2d3148;
+      padding: 10px 20px;
+      display: flex;
+      gap: 24px;
+      flex-wrap: wrap;
+    }
+
+    .metric { display: flex; flex-direction: column; align-items: center; }
+    .metric .val { font-size: 1.4rem; font-weight: 700; color: #a5b4fc; }
+    .metric .lbl { font-size: 0.68rem; color: #64748b; text-transform: uppercase; letter-spacing: 0.06em; }
+
+    .charts {
+      flex: 1;
+      display: grid;
+      grid-template-rows: 1fr 1fr;
+      overflow: hidden;
+    }
+
+    .chart-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      overflow: hidden;
+    }
+
+    .chart-container {
+      border-right: 1px solid #1e2235;
+      border-bottom: 1px solid #1e2235;
+      min-height: 0;
+    }
+
+    .placeholder {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      height: 100%;
+      color: #374151;
+      font-size: 0.85rem;
+    }
+
+    .status-bar {
+      background: #13161f;
+      border-top: 1px solid #2d3148;
+      padding: 6px 20px;
+      font-size: 0.75rem;
+      color: #64748b;
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <div>
+    <h1>Cardiovascular System Simulator</h1>
+    <p>21-compartment lumped-parameter model · Heldt 2002 / PMC9363491</p>
+  </div>
+</header>
+
+<div class="main">
+  <!-- ===== SIDEBAR ===== -->
+  <aside class="sidebar">
+
+    <!-- Patient card -->
+    <div class="card">
+      <h2>Patient</h2>
+
+      <div class="tier-tabs">
+        <button class="active" onclick="setTier(1)">Minimal</button>
+        <button onclick="setTier(2)">Intermediate</button>
+        <button onclick="setTier(3)">Advanced</button>
+      </div>
+
+      <!-- Tier 1 -->
+      <div id="tier1" class="tier-section visible">
+        <div class="field">
+          <label>Height (cm)</label>
+          <input type="number" id="height_cm" value="175" min="140" max="220" />
+        </div>
+        <div class="field">
+          <label>Weight (kg)</label>
+          <input type="number" id="weight_kg" value="75" min="30" max="200" />
+        </div>
+        <div class="field">
+          <label>MAP (mmHg) — optional</label>
+          <input type="number" id="map_mmhg" placeholder="e.g. 90" min="40" max="160" />
+        </div>
+        <div class="field">
+          <label>Heart Rate (bpm)</label>
+          <input type="number" id="hr_bpm" value="70" min="30" max="180" />
+        </div>
+      </div>
+
+      <!-- Tier 2 -->
+      <div id="tier2" class="tier-section">
+        <div class="field">
+          <label>Cardiac Output (L/min)</label>
+          <input type="number" id="co_lpm" placeholder="e.g. 5.0" step="0.1" min="1" max="15" />
+        </div>
+        <div class="field">
+          <label>Ankle-Brachial Index</label>
+          <input type="number" id="abi" placeholder="e.g. 1.0" step="0.05" min="0.3" max="1.4" />
+        </div>
+      </div>
+
+      <!-- Tier 3 -->
+      <div id="tier3" class="tier-section">
+        <div class="field">
+          <label>CVP (mmHg)</label>
+          <input type="number" id="cvp_mmhg" placeholder="e.g. 5" min="0" max="25" />
+        </div>
+        <div class="field">
+          <label>PCWP (mmHg)</label>
+          <input type="number" id="pcwp_mmhg" placeholder="e.g. 10" min="0" max="40" />
+        </div>
+        <div class="field">
+          <label>Mean PAP (mmHg)</label>
+          <input type="number" id="pap_mean_mmhg" placeholder="e.g. 15" min="0" max="60" />
+        </div>
+      </div>
+    </div>
+
+    <!-- Scenario card -->
+    <div class="card">
+      <h2>Scenario</h2>
+
+      <div class="field">
+        <label>Gravity environment</label>
+        <select id="gravity">
+          <option value="earth">Earth (9.81 m/s²)</option>
+          <option value="mars">Mars (3.72 m/s²)</option>
+          <option value="moon">Moon (1.62 m/s²)</option>
+          <option value="microgravity">Microgravity (0 m/s²)</option>
+        </select>
+      </div>
+
+      <div class="field">
+        <label>Start tilt (°) — 0=supine, 90=upright, −30=Trendelenburg</label>
+        <div class="range-row">
+          <input type="range" id="tilt_start" min="-30" max="90" value="0"
+                 oninput="document.getElementById('tilt_start_v').textContent=this.value+'°'" />
+          <span id="tilt_start_v">0°</span>
+        </div>
+      </div>
+
+      <div class="field">
+        <label>Target tilt (°)</label>
+        <div class="range-row">
+          <input type="range" id="tilt_end" min="-30" max="90" value="0"
+                 oninput="document.getElementById('tilt_end_v').textContent=this.value+'°'" />
+          <span id="tilt_end_v">0°</span>
+        </div>
+      </div>
+
+      <div class="field">
+        <label>Tilt onset (s)</label>
+        <input type="number" id="tilt_onset" value="5" min="0" max="60" />
+      </div>
+
+      <div class="field">
+        <label>Tilt transition duration (s)</label>
+        <input type="number" id="tilt_dur" value="5" min="1" max="30" />
+      </div>
+
+      <h2 style="margin-top:12px;">Vasopressors</h2>
+
+      <div class="drug-row">
+        <div>
+          <label>Norepinephrine (mcg/kg/min)</label>
+          <input type="number" id="drug_norepi" value="0" step="0.01" min="0" max="0.5" />
+        </div>
+        <div>
+          <label>Phenylephrine (mcg/kg/min)</label>
+          <input type="number" id="drug_phenyl" value="0" step="0.1" min="0" max="2" />
+        </div>
+      </div>
+      <div class="drug-row">
+        <div>
+          <label>Vasopressin (units/hr)</label>
+          <input type="number" id="drug_vaso" value="0" step="0.1" min="0" max="4" />
+        </div>
+        <div>
+          <label>Epinephrine (mcg/kg/min)</label>
+          <input type="number" id="drug_epi" value="0" step="0.01" min="0" max="0.3" />
+        </div>
+      </div>
+    </div>
+
+    <!-- Simulation card -->
+    <div class="card">
+      <h2>Simulation</h2>
+      <div class="field">
+        <label>Duration (s)</label>
+        <input type="number" id="duration_s" value="60" min="10" max="300" />
+      </div>
+      <div class="field" style="display:flex;align-items:center;gap:8px;">
+        <input type="checkbox" id="baroreflex" checked style="width:auto;" />
+        <label for="baroreflex" style="margin:0;">Baroreflex enabled</label>
+      </div>
+    </div>
+
+    <button class="run-btn" id="runBtn" onclick="runSim()">Run Simulation</button>
+
+  </aside>
+
+  <!-- ===== CONTENT ===== -->
+  <div class="content">
+
+    <div class="summary-bar">
+      <div class="metric"><span class="val" id="s_map">—</span><span class="lbl">MAP (mmHg)</span></div>
+      <div class="metric"><span class="val" id="s_hr">—</span><span class="lbl">HR (bpm)</span></div>
+      <div class="metric"><span class="val" id="s_co">—</span><span class="lbl">CO (L/min)</span></div>
+      <div class="metric"><span class="val" id="s_cvp">—</span><span class="lbl">CVP (mmHg)</span></div>
+      <div class="metric"><span class="val" id="s_sv">—</span><span class="lbl">SV (mL)</span></div>
+    </div>
+
+    <div class="charts">
+      <div class="chart-row">
+        <div class="chart-container" id="chart_ap">
+          <div class="placeholder">Arterial pressure waveform</div>
+        </div>
+        <div class="chart-container" id="chart_co">
+          <div class="placeholder">Cardiac output / stroke volume</div>
+        </div>
+      </div>
+      <div class="chart-row">
+        <div class="chart-container" id="chart_cvp">
+          <div class="placeholder">CVP / filling pressures</div>
+        </div>
+        <div class="chart-container" id="chart_hr">
+          <div class="placeholder">Heart rate</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="status-bar" id="statusBar">Ready — configure patient and scenario, then press Run.</div>
+
+  </div>
+</div>
+
+<script src="/js/main.js"></script>
+</body>
+</html>
