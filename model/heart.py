@@ -59,21 +59,28 @@ def elastance(
 def frank_starling_emax(
     e_max_baseline: float,
     edv: float,
-    edv_ref: float = 120.0,
-    slope: float = 0.005,
+    edv_ref: float = 130.0,
+    slope: float = 0.003,
 ) -> float:
     """
     Scale E_max with end-diastolic volume (Frank-Starling).
-    Linear approximation: E_max increases when EDV > reference.
+
+    Implements the two-region Starling curve:
+    - Ascending limb (EDV < edv_ref): reduced E_max when underloaded (hypovolemia).
+    - Plateau (EDV >= edv_ref): E_max capped at baseline — normovolemic supine subjects
+      operate here, consistent with the finding that 20° HDT does not increase SV/CO
+      in healthy supine volunteers (DOI: 10.14814/phy2.15216).
 
     Parameters
     ----------
     e_max_baseline : baseline E_max (mmHg/mL)
     edv            : current end-diastolic volume (mL)
-    edv_ref        : reference EDV for baseline E_max (mL)
-    slope          : sensitivity (mmHg/mL per mL of extra filling)
+    edv_ref        : EDV at which plateau begins (mL); default 130 mL
+    slope          : ascending-limb sensitivity (mmHg/mL per mL deficit)
     """
-    return e_max_baseline + slope * (edv - edv_ref)
+    if edv >= edv_ref:
+        return e_max_baseline                       # plateau: no further increase
+    return e_max_baseline + slope * (edv - edv_ref)  # ascending limb: E_max reduced
 
 
 # ---------------------------------------------------------------------------
