@@ -246,6 +246,18 @@ const _ld = {   // live data buffers
 let _lastRender   = 0;
 let _relayoutTick = 0;
 
+// Safety net: if charts go more than 8 s without a render, force relayout.
+// Detects Plotly internal freezes and recovers without user interaction.
+const _CHART_IDS = ['chart_ap','chart_co','chart_cvp','chart_cpp','chart_buckberg'];
+setInterval(() => {
+  if (!_liveActive) return;
+  if (Date.now() - _lastRender > 8000) {
+    console.warn('[live] Plotly freeze detected — forcing relayout');
+    _CHART_IDS.forEach(id => { try { Plotly.relayout(id, {}); } catch {} });
+    _lastRender = Date.now() - 400;   // allow next render in ~100 ms
+  }
+}, 3000);
+
 function _trimLive() {
   if (!_ld.t.length) return;
   const cut = _ld.t[_ld.t.length - 1] - LIVE_WIN;
@@ -288,34 +300,46 @@ function _initLiveCharts() {
        shapes: buckZones() }, cfg);
 }
 
+// Safe wrapper: catches Plotly errors per-chart so one bad chart can't block others.
+// On error, attempts a full newPlot reinitialisation of that chart.
+function _safeReact(id, traces, layout) {
+  try {
+    Plotly.react(id, traces, layout);
+  } catch (e) {
+    console.warn(`[live] Plotly.react failed for ${id}:`, e.message);
+    try { Plotly.newPlot(id, traces, layout, { responsive:true, displayModeBar:false }); }
+    catch {}
+  }
+}
+
 function _renderLiveCharts(s) {
   const t = _ld.t;
   const cppCol = (s.cpp || 70) < 50 ? C.cpp_bad : (s.cpp || 70) < 60 ? C.cpp_warn : C.cpp_ok;
   const bkCol  = (s.buckberg || 1) < 0.5 ? C.cpp_bad : C.cpp_warn;
 
-  Plotly.react('chart_ap', [
+  _safeReact('chart_ap', [
     { x:t, y:_ld.ap,  name:'Aortic P', line:{ color:C.ap,      width:1.5 } },
     { x:t, y:_ld.sbp, name:'SBP',      line:{ color:'#f472b6', width:1, dash:'dot' } },
     { x:t, y:_ld.dbp, name:'DBP',      line:{ color:C.dbp,     width:1, dash:'dot' } },
   ], { ...BASE, title:{ text:`BP  ${s.sbp}/${s.dbp} mmHg`, font:{color:'#c7d2fe',size:11} },
        yaxis:{ ...BASE.yaxis, title:'mmHg', range:[20,180] } });
 
-  Plotly.react('chart_co', [
+  _safeReact('chart_co', [
     { x:t, y:_ld.co, name:'CO', line:{ color:C.co, width:2 } },
   ], { ...BASE, title:{ text:`CO  ${s.co} L/min  SV ${s.sv} mL`, font:{color:'#c7d2fe',size:11} },
        yaxis:{ ...BASE.yaxis, title:'L/min', range:[0,12] } });
 
-  Plotly.react('chart_cvp', [
+  _safeReact('chart_cvp', [
     { x:t, y:_ld.cvp, name:'CVP', line:{ color:C.cvp, width:2 } },
   ], { ...BASE, title:{ text:`CVP  ${s.cvp} mmHg`, font:{color:'#c7d2fe',size:11} },
        yaxis:{ ...BASE.yaxis, title:'mmHg', range:[0,20] } });
 
-  Plotly.react('chart_cpp', [
+  _safeReact('chart_cpp', [
     { x:t, y:_ld.cpp, name:'CPP', line:{ color:cppCol, width:2 } },
   ], { ...BASE, title:{ text:`CPP  ${s.cpp} mmHg`, font:{color:'#c7d2fe',size:11} },
        yaxis:{ ...BASE.yaxis, title:'mmHg', range:[0,120] }, shapes:cppZones() });
 
-  Plotly.react('chart_buckberg', [
+  _safeReact('chart_buckberg', [
     { x:t, y:_ld.cop,  name:'CoPP',    line:{ color:C.cop,  width:1.5 }, yaxis:'y'  },
     { x:t, y:_ld.buck, name:'Buckberg',line:{ color:bkCol,  width:2   }, yaxis:'y2' },
   ], { ...BASE,
@@ -324,10 +348,9 @@ function _renderLiveCharts(s) {
        yaxis2: { title:'Buckberg', overlaying:'y', side:'right', range:[0,2], gridcolor:'#1f2937', color:'#6b7280' },
        shapes: buckZones() });
 
-  // Periodic full relayout to prevent Plotly freeze (~every 30 s)
-  if (++_relayoutTick % 60 === 0) {
-    ['chart_ap','chart_co','chart_cvp','chart_cpp','chart_buckberg']
-      .forEach(id => { try { Plotly.relayout(id, {}); } catch {} });
+  // Proactive relayout every 10 renders (~5 s) — preventive, not just reactive
+  if (++_relayoutTick % 10 === 0) {
+    _CHART_IDS.forEach(id => { try { Plotly.relayout(id, {}); } catch {} });
   }
 }
 

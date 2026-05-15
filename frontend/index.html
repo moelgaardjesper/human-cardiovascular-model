@@ -386,16 +386,6 @@
       </div>
 
       <div class="field">
-        <label>Gravity</label>
-        <select id="gravity" onchange="liveUpdate()">
-          <option value="earth">Earth (9.81 m/s²)</option>
-          <option value="mars">Mars (3.72 m/s²)</option>
-          <option value="moon">Moon (1.62 m/s²)</option>
-          <option value="microgravity">Microgravity (0 m/s²)</option>
-        </select>
-      </div>
-
-      <div class="field">
         <label>Patient / muscle pump</label>
         <select id="pump_preset" onchange="applyPumpPreset(this.value)">
           <option value="0">Sedated / anaesthetised</option>
@@ -403,6 +393,21 @@
           <option value="45">Ambulatory (walking)</option>
         </select>
       </div>
+
+      <details style="margin-top:4px;">
+        <summary style="font-size:0.65rem;color:var(--muted);cursor:pointer;list-style:none;">
+          ▶ Advanced
+        </summary>
+        <div style="margin-top:6px;" class="field">
+          <label>Gravity environment</label>
+          <select id="gravity" onchange="liveUpdate()">
+            <option value="earth">Earth (9.81 m/s²)</option>
+            <option value="mars">Mars (3.72 m/s²)</option>
+            <option value="moon">Moon (1.62 m/s²)</option>
+            <option value="microgravity">Microgravity (0 m/s²)</option>
+          </select>
+        </div>
+      </details>
     </div>
 
     <div class="divider"></div>
