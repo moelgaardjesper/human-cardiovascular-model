@@ -196,6 +196,26 @@
       font-size: 0.75rem;
       color: #64748b;
     }
+
+    .live-indicator {
+      display: none;
+      align-items: center;
+      gap: 6px;
+      font-size: 0.75rem;
+      color: #34d399;
+    }
+    .live-dot {
+      width: 8px; height: 8px;
+      background: #34d399;
+      border-radius: 50%;
+      animation: pulse 1s infinite;
+    }
+    @keyframes pulse {
+      0%,100% { opacity: 1; } 50% { opacity: 0.3; }
+    }
+    .live-active .live-indicator { display: flex; }
+    .live-active #liveBtn { background: #991b1b; }
+    .live-active #runBtn  { opacity: 0.4; pointer-events: none; }
   </style>
 </head>
 <body>
@@ -374,7 +394,9 @@
       </div>
     </div>
 
-    <button class="run-btn" id="runBtn" onclick="runSim()">Run Simulation</button>
+    <button class="run-btn" id="runBtn" onclick="runSim()">▶ Run Simulation</button>
+    <button class="run-btn" id="liveBtn" onclick="toggleLive()"
+            style="margin-top:6px;background:#065f46;">⬤ Start Live Mode</button>
 
   </aside>
 
@@ -420,7 +442,10 @@
       </div>
     </div>
 
-    <div class="status-bar" id="statusBar">Ready — configure patient and scenario, then press Run.</div>
+    <div class="status-bar" id="statusBar">
+      Ready — press Run for a single simulation, or Start Live Mode for continuous real-time monitoring.
+      <span class="live-indicator"><span class="live-dot"></span>LIVE</span>
+    </div>
 
   </div>
 </div>

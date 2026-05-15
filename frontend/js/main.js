@@ -232,3 +232,205 @@ function renderCharts(d) {
     shapes: bkShapes,
   }, cfg);
 }
+
+
+// ===========================================================================
+// Live Mode
+// ===========================================================================
+
+let _liveSource   = null;   // EventSource
+let _liveActive   = false;
+const LIVE_WINDOW = 60;     // seconds of data to show in rolling charts
+
+// Rolling data buffers keyed by trace name
+const _liveData = {
+  t:        [],
+  map:      [], cvp:  [], co:  [], hr:  [],
+  sbp:      [], dbp:  [], cpp: [], cop: [], buckberg: [],
+};
+
+function _trimLive() {
+  const tArr = _liveData.t;
+  if (!tArr.length) return;
+  const cutoff = tArr[tArr.length - 1] - LIVE_WINDOW;
+  let idx = 0;
+  while (idx < tArr.length && tArr[idx] < cutoff) idx++;
+  if (idx === 0) return;
+  for (const k of Object.keys(_liveData)) {
+    _liveData[k] = _liveData[k].slice(idx);
+  }
+}
+
+function _initLiveCharts() {
+  const cfg = { responsive: true, displayModeBar: false };
+  const empty = () => [];
+
+  Plotly.newPlot("chart_ap", [
+    { x: [], y: [], name: "SBP",  line: { color: "#818cf8", width: 1 } },
+    { x: [], y: [], name: "MAP",  line: { color: "#60a5fa", width: 2, dash: "dot" } },
+    { x: [], y: [], name: "DBP",  line: { color: "#6366f1", width: 1 } },
+  ], { ...LAYOUT_BASE, title: { text: "Arterial Pressure — LIVE", font: { color: "#c7d2fe", size: 12 } },
+       yaxis: { ...LAYOUT_BASE.yaxis, title: "mmHg", range: [20, 180] } }, cfg);
+
+  Plotly.newPlot("chart_co", [
+    { x: [], y: [], name: "CO", line: { color: "#34d399", width: 2 } },
+  ], { ...LAYOUT_BASE, title: { text: "Cardiac Output — LIVE", font: { color: "#c7d2fe", size: 12 } },
+       yaxis: { ...LAYOUT_BASE.yaxis, title: "L/min", range: [0, 12] } }, cfg);
+
+  Plotly.newPlot("chart_cvp", [
+    { x: [], y: [], name: "CVP", line: { color: "#fb923c", width: 2 } },
+  ], { ...LAYOUT_BASE, title: { text: "CVP — LIVE", font: { color: "#c7d2fe", size: 12 } },
+       yaxis: { ...LAYOUT_BASE.yaxis, title: "mmHg", range: [0, 20] } }, cfg);
+
+  Plotly.newPlot("chart_hr", [
+    { x: [], y: [], name: "HR", line: { color: "#facc15", width: 2 } },
+  ], { ...LAYOUT_BASE, title: { text: "Heart Rate — LIVE", font: { color: "#c7d2fe", size: 12 } },
+       yaxis: { ...LAYOUT_BASE.yaxis, title: "bpm", range: [30, 180] } }, cfg);
+
+  Plotly.newPlot("chart_cpp", [
+    { x: [], y: [], name: "CPP", line: { color: "#34d399", width: 2 } },
+  ], { ...LAYOUT_BASE, title: { text: "Cerebral Perfusion — LIVE", font: { color: "#c7d2fe", size: 12 } },
+       yaxis: { ...LAYOUT_BASE.yaxis, title: "mmHg", range: [0, 120] } }, cfg);
+
+  Plotly.newPlot("chart_buckberg", [
+    { x: [], y: [], name: "CoPP",    line: { color: "#f472b6", width: 1.5 }, yaxis: "y" },
+    { x: [], y: [], name: "Buckberg",line: { color: "#fbbf24", width: 2   }, yaxis: "y2" },
+  ], { ...LAYOUT_BASE, title: { text: "Coronary / Buckberg — LIVE", font: { color: "#c7d2fe", size: 12 } },
+       yaxis:  { ...LAYOUT_BASE.yaxis, title: "CoPP (mmHg)", range: [0, 100] },
+       yaxis2: { title: "Buckberg", overlaying: "y", side: "right", gridcolor: "#1e2235", range: [0, 2] } }, cfg);
+}
+
+function _pushLivePoint(s) {
+  // Append to rolling buffers
+  _liveData.t.push(s.t);
+  _liveData.map.push(s.map);
+  _liveData.sbp.push(s.sbp);
+  _liveData.dbp.push(s.dbp);
+  _liveData.cvp.push(s.cvp);
+  _liveData.co.push(s.co);
+  _liveData.hr.push(s.hr);
+  _liveData.cpp.push(s.cpp);
+  _liveData.cop.push(s.cop);
+  _liveData.buckberg.push(s.buckberg);
+  _trimLive();
+
+  const t = _liveData.t;
+  Plotly.react("chart_ap",  [
+    { x: t, y: _liveData.sbp, name: "SBP",  line: { color: "#818cf8", width: 1 } },
+    { x: t, y: _liveData.map, name: "MAP",   line: { color: "#60a5fa", width: 2, dash: "dot" } },
+    { x: t, y: _liveData.dbp, name: "DBP",   line: { color: "#6366f1", width: 1 } },
+  ], { ...LAYOUT_BASE, title: { text: `Arterial Pressure  SBP ${s.sbp} / DBP ${s.dbp} mmHg`, font: { color: "#c7d2fe", size: 11 } },
+       yaxis: { ...LAYOUT_BASE.yaxis, title: "mmHg", range: [20, 180] } });
+
+  Plotly.react("chart_co",  [{ x: t, y: _liveData.co,  name: "CO",  line: { color: "#34d399", width: 2 } }],
+    { ...LAYOUT_BASE, title: { text: `CO  ${s.co} L/min`, font: { color: "#c7d2fe", size: 11 } }, yaxis: { ...LAYOUT_BASE.yaxis, title: "L/min", range: [0, 12] } });
+
+  Plotly.react("chart_cvp", [{ x: t, y: _liveData.cvp, name: "CVP", line: { color: "#fb923c", width: 2 } }],
+    { ...LAYOUT_BASE, title: { text: `CVP  ${s.cvp} mmHg`, font: { color: "#c7d2fe", size: 11 } }, yaxis: { ...LAYOUT_BASE.yaxis, title: "mmHg", range: [0, 20] } });
+
+  Plotly.react("chart_hr",  [{ x: t, y: _liveData.hr,  name: "HR",  line: { color: "#facc15", width: 2 } }],
+    { ...LAYOUT_BASE, title: { text: `HR  ${s.hr} bpm`, font: { color: "#c7d2fe", size: 11 } }, yaxis: { ...LAYOUT_BASE.yaxis, title: "bpm", range: [30, 180] } });
+
+  const cppCol = s.cpp < 50 ? "#f87171" : s.cpp < 60 ? "#fbbf24" : "#34d399";
+  Plotly.react("chart_cpp", [{ x: t, y: _liveData.cpp, name: "CPP", line: { color: cppCol, width: 2 } }],
+    { ...LAYOUT_BASE, title: { text: `CPP  ${s.cpp} mmHg`, font: { color: "#c7d2fe", size: 11 } }, yaxis: { ...LAYOUT_BASE.yaxis, title: "mmHg", range: [0, 120] } });
+
+  const bkCol = s.buckberg < 0.5 ? "#f87171" : s.buckberg < 0.8 ? "#fbbf24" : "#fbbf24";
+  Plotly.react("chart_buckberg", [
+    { x: t, y: _liveData.cop,      name: "CoPP",    line: { color: "#f472b6", width: 1.5 }, yaxis: "y"  },
+    { x: t, y: _liveData.buckberg, name: "Buckberg",line: { color: bkCol,     width: 2   }, yaxis: "y2" },
+  ], { ...LAYOUT_BASE,
+       title: { text: `CoPP ${s.cop} mmHg  Buckberg ${s.buckberg}`, font: { color: "#c7d2fe", size: 11 } },
+       yaxis:  { ...LAYOUT_BASE.yaxis, title: "CoPP (mmHg)", range: [0, 100] },
+       yaxis2: { title: "Buckberg", overlaying: "y", side: "right", gridcolor: "#1e2235", range: [0, 2] } });
+
+  // Update summary bar
+  updateSummary({
+    map_mean: s.map, hr_mean: s.hr, co_mean: s.co, cvp_mean: s.cvp, sv_mean: s.sv,
+    dbp_mean: s.dbp, sbp_mean: s.sbp, cpp_mean: s.cpp, cop_mean: s.cop, buckberg_mean: s.buckberg,
+  });
+}
+
+// Live param update — fires on every slider/select change in live mode
+function liveUpdate() {
+  if (!_liveActive) return;
+  const tilt = parseFloat(document.getElementById("tilt_end").value);
+  const pump  = parseFloat(document.getElementById("pump_pressure").value);
+  const freq  = parseFloat(document.getElementById("pump_freq").value);
+  const gravity = document.getElementById("gravity").value;
+
+  const drugs = {};
+  const norepi = optFloat("drug_norepi"); if (norepi) drugs.norepinephrine = norepi;
+  const phenyl = optFloat("drug_phenyl"); if (phenyl) drugs.phenylephrine  = phenyl;
+  const vaso   = optFloat("drug_vaso");   if (vaso)   drugs.vasopressin    = vaso;
+  const epi    = optFloat("drug_epi");    if (epi)    drugs.epinephrine    = epi;
+
+  fetch("/api/live/params", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ scenario: {
+      tilt_deg: tilt, gravity,
+      muscle_pump_pressure: pump,
+      muscle_pump_freq_hz: freq,
+      drugs: Object.keys(drugs).length ? drugs : undefined,
+      drugs_reset: !Object.keys(drugs).length,
+    }}),
+  }).catch(console.error);
+}
+
+async function toggleLive() {
+  if (_liveActive) {
+    // Stop live mode
+    _liveActive = false;
+    if (_liveSource) { _liveSource.close(); _liveSource = null; }
+    await fetch("/api/live/stop", { method: "POST" });
+    document.getElementById("liveBtn").textContent = "⬤ Start Live Mode";
+    document.getElementById("liveBtn").style.background = "#065f46";
+    document.querySelector(".status-bar").classList.remove("live-active");
+    document.getElementById("statusBar").childNodes[0].textContent = "Live mode stopped. ";
+    return;
+  }
+
+  // Start live mode
+  _liveActive = true;
+  Object.keys(_liveData).forEach(k => { _liveData[k] = []; });
+
+  // Wire all interactive controls to fire liveUpdate()
+  ["tilt_end","pump_pressure","pump_freq","gravity",
+   "drug_norepi","drug_phenyl","drug_vaso","drug_epi"].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.addEventListener("input",  liveUpdate);
+    if (el) el.addEventListener("change", liveUpdate);
+  });
+
+  // Start server session
+  const payload = { patient: {
+    height_cm: parseFloat(document.getElementById("height_cm").value),
+    weight_kg: parseFloat(document.getElementById("weight_kg").value),
+    map_mmhg:  optFloat("map_mmhg"),
+    hr_bpm:    parseFloat(document.getElementById("hr_bpm").value),
+  }};
+  await fetch("/api/live/start", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+
+  // Initialise empty charts
+  _initLiveCharts();
+
+  // Open SSE stream
+  _liveSource = new EventSource("/api/live/stream");
+  _liveSource.onmessage = (e) => {
+    try { _pushLivePoint(JSON.parse(e.data)); } catch {}
+  };
+  _liveSource.onerror = () => {
+    document.getElementById("statusBar").childNodes[0].textContent = "Stream error — reconnecting…";
+  };
+
+  document.getElementById("liveBtn").textContent = "⬛ Stop Live Mode";
+  document.getElementById("liveBtn").style.background = "#991b1b";
+  document.querySelector(".status-bar").classList.add("live-active");
+  document.getElementById("statusBar").childNodes[0].textContent =
+    "LIVE — adjust tilt, vasopressors, or pump and watch haemodynamics respond in real-time.  ";
+}
