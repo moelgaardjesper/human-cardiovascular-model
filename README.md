@@ -29,8 +29,8 @@ Microgravity scenarios are included not because space medicine is a primary targ
 ## Quick Start
 
 ```bash
-git clone https://github.com/moelgaardjesper/vascular-model.git
-cd vascular-model
+git clone https://github.com/moelgaardjesper/human-cardiovascular-model.git
+cd human-cardiovascular-model
 pip install -r requirements.txt
 
 # Start the web interface
@@ -362,7 +362,7 @@ Commercial licensing: moelgaard.jesper@gmail.com
 
 ```
 Moelgaard J et al. Cardiovascular System Simulator.
-GitHub: https://github.com/moelgaardjesper/vascular-model
+GitHub: https://github.com/moelgaardjesper/human-cardiovascular-model
 Licensed under BSL 1.1 — free for research and personal use.
 
 Primary model basis:
