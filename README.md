@@ -339,15 +339,26 @@ Please open an issue before starting a large change.
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+**Business Source License 1.1** — see [LICENSE](LICENSE) for full terms.
+
+| Use | Allowed? |
+|---|---|
+| Personal use | ✓ Free |
+| Academic / research | ✓ Free |
+| Non-commercial education | ✓ Free |
+| Commercial use (product, service, clinical tool) | Contact licensor |
+
+On **2030-01-01** this license automatically converts to **Apache 2.0** (fully open source).  
+Commercial licensing: moelgaard.jesper@gmail.com
 
 ---
 
 ## Citation
 
 ```
-Moelgaard J et al. Cardiovascular System Simulator (open source).
+Moelgaard J et al. Cardiovascular System Simulator.
 GitHub: https://github.com/moelgaardjesper/vascular-model
+Licensed under BSL 1.1 — free for research and personal use.
 
 Primary model basis:
   Heldt T et al. (2002) J Appl Physiol 92:1239-1254
