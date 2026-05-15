@@ -235,8 +235,8 @@ function updateVitals(s) {
 // Live mode
 // ═══════════════════════════════════════════════════
 
-let _liveActive  = false;
-let _liveSource  = null;
+let _liveActive    = false;
+let _pollTimer     = null;    // setInterval handle for polling
 const LIVE_WIN   = 60;   // seconds of history shown
 
 const _ld = {   // live data buffers
@@ -387,15 +387,12 @@ async function toggleLive() {
   if (_liveActive) {
     // Stop
     _liveActive = false;
-    if (_liveSource) { _liveSource.close(); _liveSource = null; }
+    if (_pollTimer) { clearInterval(_pollTimer); _pollTimer = null; }
     await fetch('/api/live/stop', { method: 'POST' });
 
-    const btn = document.getElementById('liveBtn');
-    btn.className = 'btn-live start';
-    btn.textContent = '⬤ Start Live Monitor';
-
-    const badge = document.getElementById('liveBadge');
-    badge.classList.remove('active');
+    document.getElementById('liveBtn').className = 'btn-live start';
+    document.getElementById('liveBtn').textContent = '⬤ Start Live Monitor';
+    document.getElementById('liveBadge').classList.remove('active');
     document.getElementById('liveBadgeText').textContent = 'READY';
     document.getElementById('statusBar').textContent = 'Live monitor stopped.';
     return;
@@ -415,29 +412,25 @@ async function toggleLive() {
 
   _initLiveCharts();
 
-  _liveSource = new EventSource('/api/live/stream');
-  _liveSource.onmessage = e => {
-    if (!e.data || e.data.startsWith(':')) return;
+  // Poll /api/live/state at 10 Hz — simple, reliable, no SSE buffering issues.
+  // SSE was being buffered by werkzeug's dev server (delivered in ~30-second
+  // batches instead of immediately), causing the apparent 30-second freeze.
+  _pollTimer = setInterval(async () => {
+    if (!_liveActive) return;
     try {
-      const s = JSON.parse(e.data);
-      if (typeof s.t === 'number') _onLivePoint(s);
+      const res = await fetch('/api/live/state');
+      if (!res.ok) return;
+      const s = await res.json();
+      if (s.ready && typeof s.t === 'number') _onLivePoint(s);
     } catch {}
-  };
-  _liveSource.onerror = () => {
-    document.getElementById('statusBar').textContent = '⚠ Stream interrupted — reconnecting…';
-  };
-  _liveSource.onopen = () => {
-    document.getElementById('statusBar').textContent =
-      'Live monitor running — adjust posture or vasopressors; simulation responds in real-time.';
-  };
+  }, 100);  // 10 Hz
 
-  const btn = document.getElementById('liveBtn');
-  btn.className = 'btn-live stop';
-  btn.textContent = '⬛ Stop Live Monitor';
-
-  const badge = document.getElementById('liveBadge');
-  badge.classList.add('active');
+  document.getElementById('liveBtn').className = 'btn-live stop';
+  document.getElementById('liveBtn').textContent = '⬛ Stop Live Monitor';
+  document.getElementById('liveBadge').classList.add('active');
   document.getElementById('liveBadgeText').textContent = 'LIVE';
+  document.getElementById('statusBar').textContent =
+    'Live monitor running — adjust posture or vasopressors and watch the response.';
 }
 
 // ═══════════════════════════════════════════════════

@@ -346,39 +346,20 @@ def live_params():
     return jsonify({"ok": True})
 
 
-@live_bp.route("/api/live/stream")
-def live_stream():
-    """SSE endpoint — push latest haemodynamic state at ~10 Hz."""
-    def generate():
-        tick = 0
-        try:
-            while True:
-                state = _session.latest
-                if state is not None:
-                    yield f"data: {json.dumps(state)}\n\n"
-                else:
-                    # Send keepalive comment while no state available yet
-                    yield ": waiting\n\n"
+@live_bp.route("/api/live/state")
+def live_state():
+    """
+    Polling endpoint — returns the latest haemodynamic state as JSON.
 
-                tick += 1
-                # Send keepalive comment every 5s to prevent proxy timeouts
-                if tick % 50 == 0:
-                    yield ": keepalive\n\n"
-
-                time.sleep(TARGET_RATE)
-        except GeneratorExit:
-            pass  # client disconnected — clean exit
-
-    return Response(
-        generate(),
-        mimetype="text/event-stream",
-        headers={
-            "Cache-Control":     "no-cache",
-            "X-Accel-Buffering": "no",   # disable nginx buffering
-            "Connection":        "keep-alive",
-            "Access-Control-Allow-Origin": "*",
-        },
-    )
+    The client polls this at 10 Hz with a simple fetch().
+    This replaces SSE which was unreliable with werkzeug's dev server
+    due to response buffering (data sent in ~30-second batches instead
+    of immediately, causing the browser to see a 30-second freeze).
+    """
+    state = _session.latest
+    if state is None:
+        return jsonify({"ready": False})
+    return jsonify({**state, "ready": True})
 
 
 # ---------------------------------------------------------------------------
