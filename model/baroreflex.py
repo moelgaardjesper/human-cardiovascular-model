@@ -42,7 +42,12 @@ CVP_SETPOINT =  3.0   # mmHg
 # Autonomic time constants (s) — Borst 1982, Olufsen 2005
 _TAU_PARA       =  1.5   # parasympathetic (fast HR, 1-2 cardiac cycles)
 _TAU_SYMP_FAST  =  2.0   # sympathetic fast (acute HR modulation)
-_TAU_SYMP_SLOW  = 10.0   # sympathetic slow (sustained SVR, venous tone)
+# τ_slow increased 10→20 s: adds damping to the SVR feedback loop.
+# At τ=10 s the baroreflex-SVR loop was underdamped, producing large-amplitude
+# Mayer-wave-like oscillations (~90 mmHg pulse pressure) at extreme tilt angles.
+# τ=20 s matches the slower physiological sympathetic vascular response
+# (Olufsen 2005 reports 10–30 s for peripheral resistance changes).
+_TAU_SYMP_SLOW  = 20.0   # sympathetic slow (sustained SVR, venous tone)
 
 
 class BaroreflexController:
@@ -92,10 +97,14 @@ class BaroreflexController:
         self.v0_vein_factor = 1.0
 
         # Effector gains
-        self._gain_hr_para  =  -3.0   # bpm/sigmoid (was −25; reduced 8× per Likhvantsev 2025)
-        self._gain_hr_symp  =   2.0   # bpm/sigmoid (was +15)
-        self._gain_svr      =   0.65  # SVR scale factor (was 0.40; increased for MAP maintenance)
-        self._gain_emax     =   0.25
+        self._gain_hr_para  =  -3.0   # bpm/sigmoid (calibrated: Likhvantsev 2025 ΔHR ≈−1.65 bpm)
+        self._gain_hr_symp  =   2.0
+        # SVR gain reduced 0.65→0.45: at the previous gain the baroreflex could swing SVR
+        # by ±65% in one slow-filter step, creating large underdamped oscillations at steep
+        # tilt angles (observed ~90 mmHg pulse pressure at −26°). At 0.45 the maximum SVR
+        # swing is ±45%, producing physiological Mayer-wave amplitude (~10–20 mmHg).
+        self._gain_svr      =   0.45
+        self._gain_emax     =   0.20
         self._gain_v0_vein  =   0.10
 
     def update(
@@ -135,11 +144,13 @@ class BaroreflexController:
         self.emax_factor    = 1.0 + self._gain_emax      * _sigmoid(svr_err, scale=15.0)
         self.v0_vein_factor = 1.0 - self._gain_v0_vein   * _sigmoid(svr_err, scale=20.0)
 
-        # Clamp to physiological limits
-        self.hr_delta       = np.clip(self.hr_delta,       -30.0, 50.0)
-        self.svr_factor     = np.clip(self.svr_factor,       0.3,  3.0)
-        self.emax_factor    = np.clip(self.emax_factor,      0.4,  2.5)
-        self.v0_vein_factor = np.clip(self.v0_vein_factor,   0.7,  1.3)
+        # Clamp to physiological limits.
+        # SVR range tightened 0.3–3.0 → 0.5–1.8: prevents extreme vasoconstriction/
+        # vasodilation that amplified oscillations at steep tilt angles.
+        self.hr_delta       = np.clip(self.hr_delta,       -25.0, 40.0)
+        self.svr_factor     = np.clip(self.svr_factor,       0.5,  1.8)
+        self.emax_factor    = np.clip(self.emax_factor,      0.5,  2.0)
+        self.v0_vein_factor = np.clip(self.v0_vein_factor,   0.75, 1.25)
 
 
 def _sigmoid(x: float, scale: float = 10.0) -> float:
