@@ -72,14 +72,24 @@ class LiveSimulator:
         self._cvp_win = deque([10.0] * win, maxlen=win)
         self._dbp_win = deque([80.0]  * win, maxlen=win)
         self._sbp_win = deque([120.0] * win, maxlen=win)
-        self._map_win = deque([90.0]  * win, maxlen=win)  # 3-beat MAP smoothing
+        self._map_win = deque([90.0]  * win, maxlen=win)
 
-        # SV tracking
+        # SV / CO tracking — 5-beat rolling average eliminates step-function artifact
         self._prev_V_lv   = self.V[IDX["left_ventricle"]]
         self._beat_ejected = 0.0
         self._last_t_beat  = 0.0
+        self._sv_history   = deque([70.0] * 5, maxlen=5)  # 5-beat SV average
         self._sv_current   = 70.0
         self._hr_monitor   = 70.0
+
+        # Within-beat min/max for clean SBP/DBP per beat
+        self._beat_p_max   = 90.0
+        self._beat_p_min   = 70.0
+        self._sbp_last     = 120.0
+        self._dbp_last     = 75.0
+
+        # Latest instantaneous aortic pressure (for cardiac waveform display)
+        self._p_ao_last    = 90.0
 
         # Current tilt (tracked for smooth transitions when user changes it)
         self._current_tilt = 0.0
@@ -206,11 +216,12 @@ class LiveSimulator:
             print("[live] Simulation thread crashed — check traceback above.")
 
     def _run_inner(self) -> None:
-        i = IDX
+        i     = IDX
         lv_v0 = self.comps[i["left_ventricle"]].unstressed_volume
         ra_v0 = self.comps[i["right_atrium"]].unstressed_volume
         ao_c  = self.comps[i["aorta"]].compliance
         ao_v0 = self.comps[i["aorta"]].unstressed_volume
+        p_ao  = self._p_ao_last   # initialise before first step
 
         while not self._stop_event.is_set():
             t0 = time.monotonic()
@@ -231,9 +242,14 @@ class LiveSimulator:
                 p_lvedp = max(0.0, LV_EMIN * (self.V[i["left_ventricle"]] - lv_v0))
 
                 self._cvp_win.append(p_ra)
-                self._dbp_win.append(p_ao)
-                self._sbp_win.append(p_ao)
                 self._map_win.append(p_ao)
+                self._p_ao_last = p_ao
+
+                # Track per-beat SBP/DBP
+                if p_ao > self._beat_p_max:
+                    self._beat_p_max = p_ao
+                if p_ao < self._beat_p_min:
+                    self._beat_p_min = p_ao
 
                 # CO from LV volume decrease
                 curr_V_lv = self.V[i["left_ventricle"]]
@@ -243,8 +259,13 @@ class LiveSimulator:
 
                 T_beat = 60.0 / self._hr_monitor
                 if self.t - self._last_t_beat >= T_beat:
-                    self._sv_current   = self._beat_ejected
+                    self._sv_history.append(self._beat_ejected)
+                    self._sv_current   = float(np.mean(self._sv_history))
+                    self._sbp_last     = self._beat_p_max
+                    self._dbp_last     = self._beat_p_min
                     self._beat_ejected = 0.0
+                    self._beat_p_max   = p_ao
+                    self._beat_p_min   = p_ao
                     self._last_t_beat  = self.t
 
                 # Baroreflex update (uses end-diastolic CVP, same as run_simulation)
@@ -261,23 +282,24 @@ class LiveSimulator:
             )
             self._current_tilt = tilt
 
-            map_val  = float(np.mean(self._map_win))
-            dbp_val  = float(min(self._dbp_win))
-            sbp_val  = float(max(self._sbp_win))
+            map_val  = float(np.mean(self._map_win))   # 3-beat smoothed MAP
+            sbp_val  = self._sbp_last                  # per-beat systolic
+            dbp_val  = self._dbp_last                  # per-beat diastolic
             cvp_val  = float(min(self._cvp_win))
-            sv       = self._sv_current
+            sv       = self._sv_current                # 5-beat smoothed SV
             hr       = self._hr_monitor
             co       = sv * hr / 1000.0
 
             self._state = {
                 "t":        round(self.t, 2),
-                "map":      round(map_val, 1),
+                "aortic_p": round(self._p_ao_last, 1),   # instantaneous — shows cardiac cycle
+                "map":      round(map_val, 1),             # 3-beat smoothed
                 "cvp":      round(cvp_val, 2),
                 "co":       round(co, 2),
                 "hr":       round(hr, 1),
                 "sv":       round(sv, 1),
-                "dbp":      round(dbp_val, 1),
-                "sbp":      round(sbp_val, 1),
+                "dbp":      round(dbp_val, 1),             # per-beat diastolic
+                "sbp":      round(sbp_val, 1),             # per-beat systolic
                 "tilt":     round(tilt, 1),
                 "cpp":      round(cerebral_perfusion_pressure(map_val, tilt, params.gravity), 1),
                 "cop":      round(coronary_perfusion_pressure(dbp_val, float(p_lvedp)), 1),

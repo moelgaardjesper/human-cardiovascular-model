@@ -252,8 +252,9 @@ const _liveData = {
 // Rate-limit chart rendering to 2 Hz (every 500 ms) regardless of SSE rate.
 // SSE arrives at 10 Hz; buffering in _liveData is always at full 10 Hz rate,
 // but Plotly.react() is only called 2×/s to prevent JS event-loop stalls.
-let _lastRender   = 0;
-let _lastLivePt   = null;  // most recent state; rendered at next frame budget
+let _lastRender      = 0;
+let _lastLivePt      = null;
+let _liveRenderCount = 0;          // for periodic full relayout (fixes Plotly freeze)
 
 function _trimLive() {
   const tArr = _liveData.t;
@@ -272,10 +273,10 @@ function _initLiveCharts() {
   const empty = () => [];
 
   Plotly.newPlot("chart_ap", [
-    { x: [], y: [], name: "SBP",  line: { color: "#818cf8", width: 1 } },
-    { x: [], y: [], name: "MAP",  line: { color: "#60a5fa", width: 2, dash: "dot" } },
-    { x: [], y: [], name: "DBP",  line: { color: "#6366f1", width: 1 } },
-  ], { ...LAYOUT_BASE, title: { text: "Arterial Pressure — LIVE", font: { color: "#c7d2fe", size: 12 } },
+    { x: [], y: [], name: "Aortic P", line: { color: "#818cf8", width: 1.5 } },
+    { x: [], y: [], name: "SBP",      line: { color: "#f472b6", width: 1, dash: "dot" } },
+    { x: [], y: [], name: "DBP",      line: { color: "#6366f1", width: 1, dash: "dot" } },
+  ], { ...LAYOUT_BASE, title: { text: "Arterial Pressure — LIVE  (aortic waveform @ 10 Hz)", font: { color: "#c7d2fe", size: 11 } },
        yaxis: { ...LAYOUT_BASE.yaxis, title: "mmHg", range: [20, 180] } }, cfg);
 
   Plotly.newPlot("chart_co", [
@@ -307,9 +308,9 @@ function _initLiveCharts() {
 }
 
 function _pushLivePoint(s) {
-  // Always ingest data at full SSE rate (10 Hz)
+  // Always ingest at full SSE rate (10 Hz)
   _liveData.t.push(s.t);
-  _liveData.map.push(s.map);
+  _liveData.map.push(s.aortic_p ?? s.map);  // prefer instantaneous; shows cardiac cycle
   _liveData.sbp.push(s.sbp || s.map * 1.25);
   _liveData.dbp.push(s.dbp || s.map * 0.70);
   _liveData.cvp.push(s.cvp);
@@ -326,12 +327,21 @@ function _pushLivePoint(s) {
   if (now - _lastRender < 500) return;
   _lastRender = now;
 
+  // Periodic forced relayout every ~30 s — flushes Plotly's accumulated diff
+  // state that causes the occasional freeze (workaround for Plotly internal bug).
+  _liveRenderCount++;
+  if (_liveRenderCount % 60 === 0) {
+    const ids = ["chart_ap","chart_co","chart_cvp","chart_hr","chart_cpp","chart_buckberg"];
+    ids.forEach(id => { try { Plotly.relayout(id, {}); } catch {} });
+  }
+
   const t = _liveData.t;
   Plotly.react("chart_ap",  [
-    { x: t, y: _liveData.sbp, name: "SBP",  line: { color: "#818cf8", width: 1 } },
-    { x: t, y: _liveData.map, name: "MAP",   line: { color: "#60a5fa", width: 2, dash: "dot" } },
-    { x: t, y: _liveData.dbp, name: "DBP",   line: { color: "#6366f1", width: 1 } },
-  ], { ...LAYOUT_BASE, title: { text: `Arterial Pressure  SBP ${s.sbp} / DBP ${s.dbp} mmHg`, font: { color: "#c7d2fe", size: 11 } },
+    { x: t, y: _liveData.map, name: "Aortic P", line: { color: "#818cf8", width: 1.5 } },
+    { x: t, y: _liveData.sbp, name: "SBP",      line: { color: "#f472b6", width: 1, dash: "dot" } },
+    { x: t, y: _liveData.dbp, name: "DBP",      line: { color: "#6366f1", width: 1, dash: "dot" } },
+  ], { ...LAYOUT_BASE,
+       title: { text: `BP  ${s.sbp}/${s.dbp} mmHg  (aortic waveform)`, font: { color: "#c7d2fe", size: 11 } },
        yaxis: { ...LAYOUT_BASE.yaxis, title: "mmHg", range: [20, 180] } });
 
   Plotly.react("chart_co",  [{ x: t, y: _liveData.co,  name: "CO",  line: { color: "#34d399", width: 2 } }],
