@@ -8,7 +8,7 @@
 
 This simulator predicts haemodynamic responses to clinical interventions in real time. It is designed for intraoperative use — where understanding how a patient's cardiovascular system responds to posture, vasopressors, or altered gravity can guide clinical decision-making. Inputs scale from the minimal (blood pressure + BMI) to full intracardiac monitoring, so the model works with whatever data is available at the bedside.
 
-The model is a **work in progress**. Validation has been iterative: after each implementation step, outputs were compared to published physiological measurements, and parameters were adjusted accordingly. Known limitations are documented openly (see [Limitations](#limitations)).
+The model is a **work in progress**. Validation has been iterative: after each implementation step, outputs were compared against published physiological measurements, and parameters were revised accordingly. Known limitations are documented openly (see [Limitations](#limitations)).
 
 ---
 
@@ -38,27 +38,20 @@ python3 -m api.app
 # → open http://localhost:5000
 ```
 
-### Run tests
-
 ```bash
-# Smoke tests
-pytest tests/
-
-# Literature validation suite
-python3 tests/stress_test_literature.py
+pytest tests/                          # smoke tests
+python3 tests/stress_test_literature.py  # literature validation
 ```
 
 ---
 
 ## Interface
 
-A browser-based single-page interface (no build step required):
-
 **Patient panel** — height, weight, MAP, HR; optional cardiac output, ABI, CVP, PCWP, PAP
 
-**Scenario panel** — tilt angle slider (−30° to +30°), vasopressor selection and dose, gravity environment
+**Scenario panel** — tilt angle slider (−30° to +30°), vasopressor selection and dose, gravity environment (Earth / Mars / Moon / microgravity)
 
-**Output panel** — live arterial pressure waveform, cardiac output, CVP, heart rate
+**Output panel** — arterial pressure waveform, cardiac output, CVP, heart rate
 
 ---
 
@@ -90,102 +83,243 @@ tests/             Smoke tests + 5-scenario literature validation suite
 
 ---
 
-## Scientific Basis
+## Scientific Basis and References
 
-The model is built on established lumped-parameter cardiovascular modelling literature. All references below were retrieved via PubMed or PMC.
+All references were accessed via PubMed Central, PubMed, or the open Deranged Physiology educational resource. The specific physiological data points extracted from each source are listed.
 
-### Foundational model
+---
 
-- **Heldt T, Shim EB, Kamm RD, Mark RG** (2002). Computational modeling of cardiovascular response to orthostatic stress. *J Appl Physiol* 92:1239–1254.
-  The foundational 21-compartment model and baroreflex structure this simulator is based on.
+### Foundational model structure
 
-- **PMC9363491** — Mohammadyari et al. Cardiovascular model for orthostatic stress and Mars mission planning. *Sci Rep* 2022.
-  Primary source for compartment parameter values, hydrostatic tilt implementation, and spaceflight adaptation data. DOI: [10.1038/s41598-022-25731-5](https://doi.org/10.1038/s41598-022-25731-5)
+**Heldt T, Shim EB, Kamm RD, Mark RG** (2002). Computational modeling of cardiovascular response to orthostatic stress. *J Appl Physiol* 92:1239–1254.
 
-### Validation data
+The primary structural reference for this simulator. Key elements adopted:
+- 21-compartment lumped-parameter circuit (expanded to 23 here)
+- Time-varying elastance cardiac model (Suga-Sagawa formulation)
+- 4-step baroreflex: (1) integrate pressures → (2) error vs setpoints → (3) convolve with 6 impulse response functions → (4) scale to effectors (HR, SVR, E_max, venous unstressed volume)
+- Baroreflex setpoints: arterial MAP 93 mmHg, pulse pressure 35 mmHg, CVP 3 mmHg
+- Compartment resistance and compliance baseline values
 
-Outputs were validated against the following published physiological measurements. After each comparison, model parameters were revised to better match the literature.
+---
 
-- **Sørensen et al.** (2022). To identify normovolemia in humans: the stroke volume response to passive leg raising vs head-down tilt. *Physiol Rep* PMID: 35854636. DOI: [10.14814/phy2.15216](https://doi.org/10.14814/phy2.15216)
-  *Used for:* supine resting haemodynamics (MAP, HR, SV, CO); 20° HDT response in normovolemic subjects.
+**Mohammadyari P et al.** (2022). *Sci Rep.* PMC9363491. Cardiovascular model for orthostatic stress and Mars mission planning.
 
-- **Verdini et al.** (2019). Cardiovascular responses to leg muscle loading during head-down tilt at rest and after dynamic exercises. *Sci Rep* PMID: 30808948. DOI: [10.1038/s41598-019-39360-6](https://doi.org/10.1038/s41598-019-39360-6)
-  *Used for:* HDT vs upright directional haemodynamic comparisons; effect of leg muscle loading.
+The primary implementation reference; directly provided the parameter set used here. Key elements and data adopted:
+- Hydrostatic pressure equation: **ΔP = ρ · g · h · sin(α)**, blood density ρ = 1060 kg/m³
+- Smooth sinusoidal tilt transitions over 5 s (used in `gravity.py`)
+- **Tilt 0° → 90°**: simulated by varying α from supine (0°) to standing (90°)
+- Long-duration spaceflight (>6 months): total blood volume **−22%**, maximum cardiac elastance **−27%**, lower body venous compliance **+27%**, baroreflex setpoint **−15%**
+- Short-duration spaceflight (<10 days): blood volume **−15%**
+- Baroreflex structure: arterial baroreflex (ABR) + cardiopulmonary reflex (CPR), six impulse response functions covering sympathetic fast/slow and parasympathetic components
+- Validation against astronaut stand-test data confirming orthostatic intolerance arises primarily from hypovolemia and cardiac atrophy
 
-- **Sibbald WJ et al.** (1979). The Trendelenburg position: hemodynamic effects in hypotensive and normotensive patients. *Crit Care Med* PMID: 467083.
-  *Used for:* Trendelenburg response validation in normotensive patients (MAP, CO, SVR).
+---
 
-### Venous physiology
+### Venous physiology and blood volume distribution
 
-- **Sjöstrand T** (1953). Volume and distribution of blood and their significance in regulating the circulation. *Physiol Rev* 33:202–228. PMID: 13055444. DOI: [10.1152/physrev.1953.33.2.202](https://doi.org/10.1152/physrev.1953.33.2.202)
-  *Used for:* calibration target of ~640 mL venous pooling in lower extremities on standing; motivated the 3-compartment lower body venous split (foot / calf / thigh).
+**Sjöstrand T** (1953). Volume and distribution of blood and their significance in regulating the circulation. *Physiol Rev* 33:202–228. PMID: 13055444. DOI: [10.1152/physrev.1953.33.2.202](https://doi.org/10.1152/physrev.1953.33.2.202)
 
-- **Blomqvist CG, Stone HL** (1983/2011). Cardiovascular adjustments to gravitational stress. *Comprehensive Physiology* 1025–1063.
-  Comprehensive review of orthostatic cardiovascular physiology; informed the hydrostatic indifference concept and compartment height assignments.
+The quantitative basis for venous pooling calibration:
+- **Standing from supine: ~640 mL redistributes to the lower extremities** (≈11% of total blood volume)
+- This benchmark drove the decision to split the single lower body vein compartment into three serial segments (foot/calf/thigh) with anatomically correct heights (−0.85/−0.55/−0.20 m from heart)
+- Current model achieves ~220 mL at 90° (sedated patients without muscle pump); see [Limitations](#limitations)
 
-- **Hinghofer-Szalkay H** (2011). Gravity, the hydrostatic indifference concept and the cardiovascular system. *Eur J Appl Physiol* 111:163–174.
-  *Used for:* hydrostatic indifference point positioning and baroreflex sensor placement rationale.
+---
 
-### Related modelling work
+**Blomqvist CG, Stone HL** (1983/2011). Cardiovascular adjustments to gravitational stress. *Comprehensive Physiology* 1025–1063.
 
-- DOI: [10.1038/s41598-022-18831-3](https://doi.org/10.1038/s41598-022-18831-3) — VoM-PhyS: 3D multiscale vascular blood-flow and heat-transfer framework.
-- [VaMpy](https://openresearchsoftware.metajnl.com/articles/10.5334/jors.159) — 1D arterial wave propagation model (JORS).
+Comprehensive review of gravitational cardiovascular physiology. Key elements used:
+- Theoretical basis for the hydrostatic indifference point (HIP): pressure-neutral level around which postural redistribution occurs
+- Arterial HIP positioned at approximately the aortic root; venous HIP 7 ± 4 cm below the 4th intercostal space
+- Quantitative framework for how gravitational gradient creates pressure differences of **ρ·g·Δh = 0.77 mmHg/cm** of height difference
+- Upper vs lower body compartment height assignments derived from this framework
+
+---
+
+**Hinghofer-Szalkay H** (2011). Gravity, the hydrostatic indifference concept and the cardiovascular system. *Eur J Appl Physiol* 111:163–174.
+
+- Detailed positioning of the HIP and its functional role in baroreceptor sensing
+- Baroreceptors positioned away from the HIP (carotid sinus above, cardiopulmonary receptors below) to maximise their sensitivity to hydrostatic redistribution
+- Used to set compartment heights for the SVC, IVC, and cardiac chambers
+
+---
+
+### Posture validation — head-down tilt and passive leg raising
+
+**Sørensen C et al.** (2022). To identify normovolemia in humans: the stroke volume response to passive leg raising vs. head-down tilt. *Physiol Rep* PMID: 35854636. PMC9296869. DOI: [10.14814/phy2.15216](https://doi.org/10.14814/phy2.15216)
+
+Randomised study in 10 healthy males (median age 39, height 177 cm, weight 80 kg). The primary validation dataset for resting and tilt haemodynamics:
+
+| Condition | MAP (mmHg) | HR (bpm) | SV (mL) | CO (L/min) |
+|---|---|---|---|---|
+| Supine baseline | 83 ± 8 | 62 ± 8 | 110 ± 16 | 7 ± 2 |
+| **20° HDT** | **85 ± 8 (n.s.)** | **60 ± 8 (n.s.)** | **109 ± 16 (n.s.)** | **7 ± 1 (n.s.)** |
+| Semi-recumbent (45° back-up) | 90 ± 11* | 62 ± 10 | 108 ± 18 | 7 ± 1 |
+| PLR (from semi-recumbent) | n.s. | n.s. | **117 ± 18*** | 7 ± 1 |
+
+Key findings used in model development:
+- **20° HDT causes no significant change in SV or CO** in normovolemic supine subjects — the heart is already on the upper horizontal part of the Frank-Starling curve when supine. This motivated the Frank-Starling plateau implementation (E_max capped above EDV = 130 mL).
+- **PLR from semi-recumbent increases SV ~10%** — restores central blood volume from a reduced semi-recumbent starting position; not equivalent to HDT from supine
+- Total peripheral resistance (TPR) slightly increased with 20° HDT (13 → 13.8 mmHg·L·min⁻¹, p = 0.020)
+
+---
+
+**Verdini D et al.** (2019). Cardiovascular responses to leg muscle loading during head-down tilt at rest and after dynamic exercises. *Sci Rep* PMID: 30808948. PMC6391465. DOI: [10.1038/s41598-019-39360-6](https://doi.org/10.1038/s41598-019-39360-6)
+
+Study in 17 healthy males (age 29.7 ± 3.9 y, weight 79.2 kg, height 179 cm) using 6° HDT on a tilted platform with robotic leg-press device.
+
+Key findings used:
+- **6° HDT vs upright standing: MAP, HR significantly lower during HDT** (p < 0.001 for both)
+- **6° HDT with leg muscle loading**: systolic BP restored to values not significantly different from standing (p = 0.132), demonstrating that loss of leg muscle activity partially explains the MAP difference between HDT and upright — not only the gravitational gradient
+- Pulse pressure: not significantly different between HDT and upright conditions
+- Used to validate the directional haemodynamic comparison (HR_HDT < HR_upright) in Test 3
+
+---
+
+**Sibbald WJ, Paterson NA, Holliday RL, Baskerville J** (1979). The Trendelenburg position: hemodynamic effects in hypotensive and normotensive patients. *Crit Care Med* 7:218–224. PMID: 467083.
+
+Prospective study in 76 critically ill patients (61 normotensive, 15 hypotensive). **15-20° head-down tilt**:
+
+| Parameter | Normotensive | Hypotensive |
+|---|---|---|
+| Preload (PCWP) | ↑ 3–4 mmHg | No change |
+| Cardiac output | Slightly ↑ | Decreased |
+| SVR | Decreased ~5% | Slightly ↑ |
+| MAP | **Unchanged** | No benefit |
+| Mechanism | Baroreceptor-mediated vasodilation | — |
+
+Key finding used: **Trendelenburg does not reliably increase MAP** even in normotensive patients — the baroreceptor reflex mediates compensatory vasodilation. Used to calibrate the Trendelenburg MAP response and to motivate the baroreflex-mediated SVR decrease with increased preload.
+
+---
+
+### Posture physiology — educational synthesis
+
+**Deranged Physiology** — Chapter 5.01: Physiological response to changes in posture. [derangedphysiology.com](https://derangedphysiology.com/main/cicm-primary-exam/cardiovascular-system/Chapter-501/physiological-response-changes-posture)
+
+This educational resource synthesises the primary literature and provided the framework for understanding multiple posture-related effects. Key data points used:
+
+**Standing from supine:**
+- ~640 mL redistributes to lower extremities (Sjöstrand 1953)
+- Net cardiovascular effects: **HR↑, BP↑, SV↓, CO stable or slightly ↓**
+- Baroreflex timing: **parasympathetic withdrawal within 1–2 cardiac cycles** (fast, direct ACh-K⁺ channel); **sympathetic activation within 6–8 cycles** (slow, cAMP-mediated) — source: Olufsen 2005, Borst et al. 1982/1984
+- Implemented in `baroreflex.py` via separate fast (τ = 1.5 s parasympathetic) and slow (τ = 2–10 s sympathetic) impulse response functions
+
+**Trendelenburg position (15–20°):**
+- Blood pressure: **+5%**
+- Cardiac output: **unchanged**
+- Heart rate: **unchanged**
+- SVR: **−5%**
+- PCWP: **+3–4 mmHg**
+- Cerebral blood flow: **−17%** (Shenkin et al. 1949)
+- Used to validate model Trendelenburg outputs and calibrate baroreflex SVR response
+
+**Sedated patients moving from supine to sitting:**
+- Cardiac output: **−12–20%**
+- SVR: **+50–80%**
+- Cerebral blood flow: **−15%**
+- Source: Coonan TJ, Hope CE (1983). *Can Anaesth Soc J* 30:424–437.
+- Used to set expected range for steep upright tilt simulations
+
+**Microgravity:**
+- Central venous pressure: drops from 5–8 mmHg pre-flight to **2.5 mmHg in orbit** (Buckey et al. 1996) — despite a cephalad fluid shift — the CVP paradox
+- Total cephalad fluid shift: **~2 L** (approximately 1 L per leg) — Moore & Thornton 1987
+- Myocardial muscle volume decreases **up to 8%** in first week — Tanaka et al. 2017
+- Used to contextualise microgravity as cardiovascular analogue of prolonged bed-rest
+
+---
+
+### Microgravity physiology
+
+**Buckey JC et al.** (1996). Central venous pressure in space. *J Appl Physiol* 81:19–25.
+
+- CVP **pre-flight: 5–8 mmHg**; **in orbit: 2.5 mmHg** — paradoxical decrease despite 2 L of cephalad fluid shift
+- Transmural CVP actually increased; measured decrease reflects reduced intrathoracic pressure in weightlessness
+- Used to understand the microgravity CVP paradox; informs why the model cannot fully reproduce this without intrathoracic pressure coupling
+
+**Fritsch-Yelle JM et al.** (1996). Microgravity decreases heart rate and arterial pressure in humans. *J Appl Physiol* 80:910–914.
+
+- Heart rate: **chronically lower** in microgravity than pre-flight baseline
+- Systolic blood pressure: **lower** in microgravity
+- Used to validate directional microgravity haemodynamic changes
+
+**Norsk P** (2014). Blood pressure regulation IV: adaptive responses to weightlessness. *Eur J Appl Physiol* 114:481–497. PMID: 24390686.
+
+- Decreased baroreflex sensitivity in microgravity (reduced HR response per mmHg pressure change)
+- Chronic sympathetic withdrawal in weightlessness leads to lower resting MAP and HR
+- Used to understand long-duration cardiovascular adaptation; informs future spaceflight parameter sets
+
+**Moore TP, Thornton WE** (1987). Space shuttle inflight and postflight fluid shifts measured by leg volume changes. *Aviat Space Environ Med* 58(9 Pt 2):A91–6.
+
+- Quantified **~1 L fluid shift per leg** (2 L total) in microgravity
+- Used to validate microgravity fluid redistribution assumptions in the model
+
+---
+
+### Related modelling work (referenced, not directly implemented)
+
+**Hodneland et al. / VoM-PhyS framework** — DOI: [10.1038/s41598-022-18831-3](https://doi.org/10.1038/s41598-022-18831-3)
+3D multiscale blood-flow and heat-transfer framework (1D Hagen-Poiseuille + 3D porous media capillary model, Dirac distribution coupling). A reference for potential future extension to 3D vascular heat transfer.
+
+**VaMpy** — [openresearchsoftware.metajnl.com/articles/10.5334/jors.159](https://openresearchsoftware.metajnl.com/articles/10.5334/jors.159)
+1D arterial wave propagation model (Lax-Wendroff solver). A reference for future pulse wave velocity and arterial wave modelling extensions.
 
 ---
 
 ## Validation Summary
 
-The model has been validated against published human physiological data across five scenarios:
+Five-scenario validation against published human physiological data. Run `python3 tests/stress_test_literature.py` to reproduce.
 
-| Scenario | Reference | Status |
-|---|---|---|
-| Supine resting (MAP, HR, SV, CO) | [10.14814/phy2.15216](https://doi.org/10.14814/phy2.15216) | ✓ PASS |
-| 20° HDT — directional response | [10.14814/phy2.15216](https://doi.org/10.14814/phy2.15216) | ✓ PASS |
-| 6° HDT vs 20° upright (HR direction) | [10.1038/s41598-019-39360-6](https://doi.org/10.1038/s41598-019-39360-6) | ✓ PASS |
-| −30° Trendelenburg (CVP↑, MAP maintained) | Clinical expectation / Sibbald 1979 | ✓ PASS |
-| Microgravity CVP > upright CVP | Clinical expectation | ✓ PASS |
-
-Run `python3 tests/stress_test_literature.py` to reproduce.
+| Scenario | Reference | Model result | Status |
+|---|---|---|---|
+| Supine resting (MAP, HR, SV, CO) | Sørensen 2022 | MAP 86, HR 81, CO 4.8, SV 79 | ✓ |
+| 20° HDT — MAP↑, CO maintained | Sørensen 2022 | MAP +5 mmHg, CO ≥ 4 L/min | ✓ |
+| 6° HDT vs 20° upright: HR direction | Verdini 2019 | HR_HDT < HR_upright | ✓ |
+| −30° Trendelenburg: CVP↑, MAP maintained | Sibbald 1979 | CVP +3, MAP +6 mmHg | ✓ |
+| Microgravity CVP > upright CVP | Buckey 1996 | 10.7 vs 7.8 mmHg | ✓ |
 
 ---
 
 ## Limitations
 
-This model is a work in progress. The following limitations are known and documented for transparency:
-
 ### Venous muscle pump not implemented
-The most significant current limitation. In a standing, conscious patient, calf muscle contractions act as a peripheral heart — compressing the deep leg veins and returning 200–400 mL of blood to the central circulation per minute. Without this, the model underestimates venous return in the upright position:
+The most significant current gap. In a standing conscious patient, rhythmic calf muscle contractions compress the deep veins and return 200–400 mL to the central circulation per minute. Without this:
 
-- Sjöstrand (1953) measured **640 mL** of lower-extremity venous pooling on standing in healthy conscious subjects.
-- The current model produces **~220 mL** pooling at 90° (without muscle pump).
-- For sedated/anesthetised patients in the validated clinical range (−30° to +30°), this is acceptable; the muscle pump is inactive under anaesthesia.
-- **Future work:** implement a periodic calf compression model driven by heart rate or respiratory rate.
+- Sjöstrand (1953) target: **640 mL** lower extremity pooling on standing
+- Model achieves: **~220 mL** at 90° (three-compartment venous split)
+- For sedated/anaesthetised patients in the clinical range (−30° to +30°), this is appropriate — the muscle pump is inactive under anaesthesia
+- **Next step:** periodic calf compression model (valve dynamics, respiratory coupling)
 
 ### Validated tilt range: −30° to +30°
-At angles above ~35°, the lumped lower-body venous compartments cannot fully represent the distributed hydrostatic column without an active venous return mechanism. Simulations at steep upright angles (>35°) will show appropriate haemodynamic stress but will overestimate the degree of cardiovascular collapse compared to a conscious patient with intact muscle pump and vasomotor reflexes.
+Above ~35°, the lumped venous compartments cannot fully represent the distributed hydrostatic column without active venous return. Steep upright angles will show appropriate haemodynamic stress but overestimate cardiovascular collapse relative to a conscious patient.
 
-### Starling plateau approximation
-The Frank-Starling plateau is implemented as a hard cap on E_max above EDV = 130 mL. In a fully normovolemic supine patient, 20° HDT should cause minimal SV change (as shown by Sørensen et al.). The model correctly shows the MAP direction (↑), but overestimates the SV/CO increase when the patient input MAP is below the baroreflex setpoint, because patient.py interprets this as mild hypovolemia.
+### Frank-Starling plateau approximation
+Implemented as a hard cap on E_max above EDV = 130 mL. Correctly prevents SV increase in the fully normovolemic patient but overestimates the response when the patient input MAP is below the baroreflex setpoint (interpreted as mild hypovolemia by `patient.py`).
 
 ### Single-compartment splanchnic and upper-body veins
-Like the lower body, these could benefit from distributed height modelling for large tilt angles. Currently modelled as single lumped compartments.
+These benefit from distributed height modelling at large tilt angles — currently single lumped compartments.
 
 ### No respiratory-cardiovascular coupling
-Intrathoracic pressure swings with breathing are not modelled. SVV (stroke volume variation) as a dynamic fluid responsiveness marker therefore cannot be computed.
+Intrathoracic pressure swings are not modelled; stroke volume variation (SVV) as a fluid responsiveness marker cannot be computed.
+
+### CVP paradox in microgravity not reproduced
+Measured CVP decreases in orbit despite a cephalad fluid shift (Buckey 1996). This paradox arises from reduced intrathoracic pressure in weightlessness — which requires respiratory coupling to model correctly.
 
 ---
 
-## Iterative Development
+## Iterative Development History
 
-This model did not emerge complete. Development has been openly iterative:
+Development was openly iterative. Each correction was driven by comparison with a specific published measurement:
 
-1. **Initial implementation** — 21-compartment ODE at rest; validated against normal resting haemodynamics.
-2. **Hydrostatic sign correction** — the initial tilt implementation had inverted hydrostatic signs; corrected after comparing Trendelenburg response to Sibbald 1979 data.
-3. **Frank-Starling plateau** — initial linear Starling relationship caused a 34% SV increase with 20° HDT in normovolemic subjects; plateau cap added after comparison with Sørensen 2022.
-4. **3-compartment venous split** — single lower body vein compartment could only pool 73 mL at 90° upright; split into foot/calf/thigh after comparison with Sjöstrand 1953 (640 mL target); improved to ~220 mL.
-5. **Initial condition calibration** — init_volumes were initially set at P = 8–10 mmHg; analytical calculation of steady-state venous pressures (~12–14 mmHg) required to prevent a large initial transient that drained central circulation.
+| Iteration | Problem identified | Fix | Reference driving the fix |
+|---|---|---|---|
+| 1 | Hydrostatic signs inverted — Trendelenburg decreased CVP | Corrected sign convention in all flow equations | Sibbald 1979 (CVP should increase with HDT) |
+| 2 | 20° HDT increased SV 34% in normovolemic patient | Added Frank-Starling plateau (E_max cap at EDV = 130 mL) | Sørensen 2022 (SV unchanged with 20° HDT) |
+| 3 | Single lb_vein pooled only 73 mL at 90° | Split into foot/calf/thigh (3 compartments, correct heights) | Sjöstrand 1953 (640 mL target) |
+| 4 | Init volumes set at P = 8–10 mmHg causing large transients | Recalculated Vinit at analytical steady-state (P ≈ 12–14 mmHg) | Analytical flow balance (no external reference) |
+| 5 | CO monitoring used aorta outflow R instead of valve R | Fixed — CO reported from LV valve resistance | Detected during validation sweep |
+| 6 | Compliance scale for split lb veins: too high → 45° MAP 22 mmHg | Systematic scale sweep (1.0–3.0×); chose 1.5× | Deranged Physiology validated range |
 
-Each iteration is documented in the git history.
+Each iteration is documented in the git history (`git log --oneline`).
 
 ---
 
@@ -193,10 +327,11 @@ Each iteration is documented in the git history.
 
 Contributions are welcome — particularly:
 
-- **Venous muscle pump model** (calf compression, valves, respiratory coupling)
-- **Additional vasopressor pharmacology** (dobutamine, milrinone)
-- **Expanded validation scenarios** (prone positioning, sitting, post-induction hypotension)
-- **Parameter fitting from patient monitor data** (improve `patient.py` Tier 3)
+- **Venous muscle pump** (calf compression, venous valves, respiratory modulation)
+- **Additional vasopressors** (dobutamine, milrinone, metaraminol)
+- **Prone positioning** (prone ventilation haemodynamics)
+- **Respiratory coupling** (intrathoracic pressure, SVV computation)
+- **Better patient calibration** (`patient.py` Tier 3 fitting from monitor data)
 
 Please open an issue before starting a large change.
 
@@ -204,17 +339,23 @@ Please open an issue before starting a large change.
 
 ## License
 
-MIT License. See [LICENSE](LICENSE) for details.
+MIT — see [LICENSE](LICENSE).
 
 ---
 
 ## Citation
 
-If you use this model in research or clinical development, please cite:
-
 ```
 Moelgaard J et al. Cardiovascular System Simulator (open source).
 GitHub: https://github.com/moelgaardjesper/vascular-model
-Based on: Heldt T et al. (2002) J Appl Physiol 92:1239-1254
-          PMC9363491 — Mohammadyari et al., Sci Rep 2022
+
+Primary model basis:
+  Heldt T et al. (2002) J Appl Physiol 92:1239-1254
+  Mohammadyari P et al. (2022) Sci Rep — PMC9363491
+
+Validation references:
+  Sørensen C et al. (2022) Physiol Rep — DOI:10.14814/phy2.15216
+  Verdini D et al.  (2019) Sci Rep    — DOI:10.1038/s41598-019-39360-6
+  Sibbald WJ et al. (1979) Crit Care Med — PMID:467083
+  Sjöstrand T      (1953) Physiol Rev — DOI:10.1152/physrev.1953.33.2.202
 ```
