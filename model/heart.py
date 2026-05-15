@@ -89,9 +89,16 @@ def frank_starling_emax(
 LV_EMAX = 2.50   # mmHg/mL  left ventricle peak systolic elastance
 LV_EMIN = 0.08   # mmHg/mL  left ventricle diastolic elastance
 RV_EMAX = 1.15   # mmHg/mL  right ventricle peak systolic elastance
-RV_EMIN = 0.05   # mmHg/mL  right ventricle diastolic elastance
+# RV_EMIN reduced 0.05→0.02: the RV is highly compliant at diastole (thin wall).
+# With RV_EMIN=0.05 and EDV≈180 mL: P_rv_dia=5 mmHg, forcing RA (CVP) to stay ≥5 mmHg.
+# With RV_EMIN=0.02 and EDV≈163 mL: P_rv_dia=1.7 mmHg → CVP end-diastolic ≈2 mmHg ✓
+# ESV is unchanged (determined by P_pa/RV_EMAX = 15/1.15 ≈ 93 mL), so SV improves.
+RV_EMIN = 0.02   # mmHg/mL  right ventricle diastolic elastance (was 0.05)
 RA_EMAX = 0.25   # mmHg/mL  right atrium
-RA_EMIN = 0.07   # mmHg/mL
+# RA_EMIN reduced 0.07→0.04: with P_rv_dia≈1.4 mmHg (from RV_EMIN=0.02),
+# equilibrium RA pressure ≈ 3.8 mmHg, giving end-diastolic CVP ≈ 3 mmHg.
+# Analytical: at equilibrium 2×(P_svc−P_ra)/R = (P_ra−P_rv)/R → P_ra≈3.8 mmHg ✓
+RA_EMIN = 0.04   # mmHg/mL  right atrium diastolic elastance (was 0.07)
 LA_EMAX = 0.35   # mmHg/mL  left atrium
 LA_EMIN = 0.09   # mmHg/mL
 

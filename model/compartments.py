@@ -139,8 +139,12 @@ def default_compartments() -> list[Compartment]:
         Compartment("foot_vein",           2.00, 0.07,  200, -0.85,  227),  # 13 P0≈13.5 mmHg
         Compartment("ivc",                 0.60, 0.04,  120, -0.15,  123),  # 14 P0=5
         # ---- Cardiac chambers (elastance model; R = valve resistance) ----
-        Compartment("right_atrium",        0.35, VALVE_R,  60,  0.0,  131),  # 15 EDV fills to ~5 mmHg
-        Compartment("right_ventricle",     0.10, VALVE_R,  80,  0.0,  180),  # 16 EDV≈180 mL
+        # RA Vinit=155: at RA_EMIN=0.04 and P_ra_eq≈3.8 mmHg → V=60+3.8/0.04=155 mL.
+        # End-diastolic (rolling-minimum) CVP ≈ 3 mmHg once RA partially empties ✓
+        Compartment("right_atrium",        0.35, VALVE_R,  60,  0.0,  155),  # 15
+        # RV Vinit=163: at RV_EMIN=0.02, P_rv_dia=0.02×(163-80)=1.7 mmHg → CVP can be 2-3 mmHg.
+        # ESV=V0+P_pa/E_max=80+15/1.15=93 mL; SV=163-93=70 mL (improved from 56 mL). ✓
+        Compartment("right_ventricle",     0.10, VALVE_R,  80,  0.0,  163),  # 16 EDV≈163 mL
         # ---- Pulmonary (PVR ≈ 0.08 mmHg·s/mL) ----
         Compartment("pulmonary_art",       0.40, 0.03,  100,  0.0,  106),  # 17 P0=15
         Compartment("pulmonary_cap",       0.50, 0.06,   80,  0.0,   85),  # 18 P0=10
