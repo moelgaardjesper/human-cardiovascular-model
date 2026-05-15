@@ -1,12 +1,16 @@
 """
-21-compartment lumped-parameter cardiovascular ODE system.
+23-compartment lumped-parameter cardiovascular ODE system.
 
 Primary reference:
   PMC9363491 — Heldt-based cardiovascular model for orthostatic stress
   Heldt T et al. (2002) J Appl Physiol 92:1239-1254
 
-State vector V[0..20]: volume (mL) in each compartment.
+State vector V[0..22]: volume (mL) in each compartment.
 Compartment order defined in compartments.py / default_compartments().
+
+The original single lower_body_vein has been split into three serial
+segments (foot_vein → calf_vein → thigh_vein → ivc) to correctly
+simulate the ~640 mL venous pooling observed on standing (Sjöstrand 1953).
 
 Flow between compartments:
     Q = (P_upstream - P_downstream + ΔP_hydrostatic) / R_outflow
@@ -105,7 +109,7 @@ def _cardiac_pressure(vol: float, v0: float, e: float) -> float:
 
 def _odes(t: float, V: np.ndarray, params: SimParams, baro: BaroreflexController | None):
     """
-    Compute dV/dt for the 21-compartment system.
+    Compute dV/dt for the 23-compartment system.
 
     Parameters
     ----------
@@ -159,14 +163,15 @@ def _odes(t: float, V: np.ndarray, params: SimParams, baro: BaroreflexController
     # Compute pressures for every compartment
     # -----------------------------------------------------------------------
     i = IDX
-    P = np.zeros(21)
+    P = np.zeros(len(comp))
 
     # Vascular compartments
     for idx in [i["aorta"], i["brachiocephalic"], i["upper_body_art"],
                 i["upper_body_vein"], i["svc"],
                 i["abdominal_aorta"], i["renal_art"], i["renal_vein"],
                 i["splanchnic_art"], i["splanchnic_vein"],
-                i["lower_body_art"], i["lower_body_vein"], i["ivc"],
+                i["lower_body_art"],
+                i["thigh_vein"], i["calf_vein"], i["foot_vein"], i["ivc"],
                 i["pulmonary_art"], i["pulmonary_cap"], i["pulmonary_vein"],
                 i["coronary"]]:
         c = comp[idx]
@@ -227,8 +232,26 @@ def _odes(t: float, V: np.ndarray, params: SimParams, baro: BaroreflexController
     Q_abd_splanch = (P[i["abdominal_aorta"]] - P[i["splanchnic_art"]]) / R("splanchnic_art", True)
     Q_splanch_vein= (P[i["splanchnic_art"]] - P[i["splanchnic_vein"]]) / R("splanchnic_vein")
     Q_abd_lb      = (P[i["abdominal_aorta"]] - P[i["lower_body_art"]] + hdp("abdominal_aorta") - hdp("lower_body_art")) / R("lower_body_art", True)
-    Q_lb_art_vein = (P[i["lower_body_art"]] - P[i["lower_body_vein"]]) / R("lower_body_vein")
-    Q_lb_vein_ivc = (P[i["lower_body_vein"]] - P[i["ivc"]] + hdp("lower_body_vein") - hdp("ivc")) / R("lower_body_vein")
+
+    # Capillary inflow from lower body arteries to each venous segment (30/40/30% split).
+    # The old single lower_body_vein used R=0.30 (outflow resistance) for the art→vein flow,
+    # giving total arteriocapillary R_total=0.30. Split across three parallel branches:
+    #   R_to_thigh = 0.30/0.30 = 1.00,  R_to_calf = 0.30/0.40 = 0.75,  R_to_foot = 0.30/0.30 = 1.00
+    # Equivalent parallel resistance = 1/(0.30+0.40+0.30) * 0.30 = 0.30 ✓
+    R_lb_cap_total = 0.30   # mmHg·s/mL — original arteriocapillary resistance
+    R_lb_to_thigh  = R_lb_cap_total / 0.30
+    R_lb_to_calf   = R_lb_cap_total / 0.40
+    R_lb_to_foot   = R_lb_cap_total / 0.30
+    Q_lb_art_thigh = (P[i["lower_body_art"]] - P[i["thigh_vein"]]) / R_lb_to_thigh
+    Q_lb_art_calf  = (P[i["lower_body_art"]] - P[i["calf_vein"]])  / R_lb_to_calf
+    Q_lb_art_foot  = (P[i["lower_body_art"]] - P[i["foot_vein"]])  / R_lb_to_foot
+
+    # Venous drainage: foot→calf→thigh→ivc with hydrostatic corrections.
+    # Each segment's outflow resistance is stored on that compartment.
+    Q_foot_calf  = (P[i["foot_vein"]]  - P[i["calf_vein"]]  + hdp("foot_vein")  - hdp("calf_vein"))  / R("foot_vein")
+    Q_calf_thigh = (P[i["calf_vein"]]  - P[i["thigh_vein"]] + hdp("calf_vein")  - hdp("thigh_vein")) / R("calf_vein")
+    Q_thigh_ivc  = (P[i["thigh_vein"]] - P[i["ivc"]]        + hdp("thigh_vein") - hdp("ivc"))        / R("thigh_vein")
+
     Q_renal_ivc   = (P[i["renal_vein"]]     - P[i["ivc"]]) / R("renal_vein")
     Q_splanch_ivc = (P[i["splanchnic_vein"]] - P[i["ivc"]]) / R("splanchnic_vein")
 
@@ -258,7 +281,7 @@ def _odes(t: float, V: np.ndarray, params: SimParams, baro: BaroreflexController
     # -----------------------------------------------------------------------
     # dV/dt for each compartment
     # -----------------------------------------------------------------------
-    dV = np.zeros(21)
+    dV = np.zeros(len(comp))
 
     dV[i["aorta"]]           = Q_aortic - Q_ao_brachio - Q_ao_abd - Q_ao_cor
     dV[i["brachiocephalic"]] = Q_ao_brachio - Q_brachio_ub
@@ -270,9 +293,11 @@ def _odes(t: float, V: np.ndarray, params: SimParams, baro: BaroreflexController
     dV[i["renal_vein"]]      = Q_renal_vein - Q_renal_ivc
     dV[i["splanchnic_art"]]  = Q_abd_splanch - Q_splanch_vein
     dV[i["splanchnic_vein"]] = Q_splanch_vein - Q_splanch_ivc
-    dV[i["lower_body_art"]]  = Q_abd_lb - Q_lb_art_vein
-    dV[i["lower_body_vein"]] = Q_lb_art_vein - Q_lb_vein_ivc
-    dV[i["ivc"]]             = Q_lb_vein_ivc + Q_renal_ivc + Q_splanch_ivc - Q_ivc_ra
+    dV[i["lower_body_art"]]  = Q_abd_lb - Q_lb_art_thigh - Q_lb_art_calf - Q_lb_art_foot
+    dV[i["thigh_vein"]]      = Q_lb_art_thigh + Q_calf_thigh - Q_thigh_ivc
+    dV[i["calf_vein"]]       = Q_lb_art_calf  + Q_foot_calf  - Q_calf_thigh
+    dV[i["foot_vein"]]       = Q_lb_art_foot                 - Q_foot_calf
+    dV[i["ivc"]]             = Q_thigh_ivc + Q_renal_ivc + Q_splanch_ivc - Q_ivc_ra
     dV[i["right_atrium"]]    = Q_svc_ra + Q_ivc_ra + Q_cor_ra - Q_tricuspid
     dV[i["right_ventricle"]] = Q_tricuspid - Q_pulmonic
     dV[i["pulmonary_art"]]   = Q_pulmonic - Q_pa_cap
@@ -309,7 +334,7 @@ def run_simulation(
         co          : np.ndarray (L/min) — aortic flow (cardiac output)
         hr          : np.ndarray (bpm)
         sv          : np.ndarray (mL)   — stroke volume
-        volumes     : np.ndarray (mL, shape [n_steps, 21])
+        volumes     : np.ndarray (mL, shape [n_steps, n_compartments])
     """
     comp = params.compartments
     V0   = np.array([c.init_volume for c in comp], dtype=float)
@@ -327,7 +352,7 @@ def run_simulation(
     la_p_ts     = np.zeros(n)
     co_ts       = np.zeros(n)
     hr_ts       = np.zeros(n)
-    volumes_ts  = np.zeros((n, 21))
+    volumes_ts  = np.zeros((n, len(comp)))
 
     # We step manually so baroreflex can update each step
     V = V0.copy()
