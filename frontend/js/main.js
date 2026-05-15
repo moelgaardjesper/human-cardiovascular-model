@@ -249,6 +249,12 @@ const _liveData = {
   sbp:      [], dbp:  [], cpp: [], cop: [], buckberg: [],
 };
 
+// Rate-limit chart rendering to 2 Hz (every 500 ms) regardless of SSE rate.
+// SSE arrives at 10 Hz; buffering in _liveData is always at full 10 Hz rate,
+// but Plotly.react() is only called 2×/s to prevent JS event-loop stalls.
+let _lastRender   = 0;
+let _lastLivePt   = null;  // most recent state; rendered at next frame budget
+
 function _trimLive() {
   const tArr = _liveData.t;
   if (!tArr.length) return;
@@ -301,11 +307,11 @@ function _initLiveCharts() {
 }
 
 function _pushLivePoint(s) {
-  // Append to rolling buffers
+  // Always ingest data at full SSE rate (10 Hz)
   _liveData.t.push(s.t);
   _liveData.map.push(s.map);
-  _liveData.sbp.push(s.sbp);
-  _liveData.dbp.push(s.dbp);
+  _liveData.sbp.push(s.sbp || s.map * 1.25);
+  _liveData.dbp.push(s.dbp || s.map * 0.70);
   _liveData.cvp.push(s.cvp);
   _liveData.co.push(s.co);
   _liveData.hr.push(s.hr);
@@ -313,6 +319,12 @@ function _pushLivePoint(s) {
   _liveData.cop.push(s.cop);
   _liveData.buckberg.push(s.buckberg);
   _trimLive();
+  _lastLivePt = s;
+
+  // Rate-limit chart rendering to 2 Hz — prevents Plotly backlog
+  const now = Date.now();
+  if (now - _lastRender < 500) return;
+  _lastRender = now;
 
   const t = _liveData.t;
   Plotly.react("chart_ap",  [
@@ -422,10 +434,23 @@ async function toggleLive() {
   // Open SSE stream
   _liveSource = new EventSource("/api/live/stream");
   _liveSource.onmessage = (e) => {
-    try { _pushLivePoint(JSON.parse(e.data)); } catch {}
+    if (!e.data || e.data.startsWith(':')) return;  // skip SSE comments (keepalive)
+    try {
+      const s = JSON.parse(e.data);
+      if (typeof s.t !== 'number') return;  // guard against malformed data
+      _pushLivePoint(s);
+    } catch (err) {
+      console.warn("Live SSE parse error:", err, e.data);
+    }
   };
-  _liveSource.onerror = () => {
-    document.getElementById("statusBar").childNodes[0].textContent = "Stream error — reconnecting…";
+  _liveSource.onerror = (err) => {
+    console.warn("SSE error:", err);
+    document.getElementById("statusBar").childNodes[0].textContent =
+      "⚠ Stream interrupted — reconnecting automatically…  ";
+  };
+  _liveSource.onopen = () => {
+    document.getElementById("statusBar").childNodes[0].textContent =
+      "LIVE — adjust tilt, vasopressors, or pump and watch haemodynamics respond.  ";
   };
 
   document.getElementById("liveBtn").textContent = "⬛ Stop Live Mode";

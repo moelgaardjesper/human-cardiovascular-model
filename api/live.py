@@ -198,6 +198,14 @@ class LiveSimulator:
 
     def _run(self) -> None:
         """Main simulation loop — runs in the background thread."""
+        import traceback
+        try:
+            self._run_inner()
+        except Exception:
+            traceback.print_exc()
+            print("[live] Simulation thread crashed — check traceback above.")
+
+    def _run_inner(self) -> None:
         i = IDX
         lv_v0 = self.comps[i["left_ventricle"]].unstressed_volume
         ra_v0 = self.comps[i["right_atrium"]].unstressed_volume
@@ -320,19 +328,33 @@ def live_params():
 def live_stream():
     """SSE endpoint — push latest haemodynamic state at ~10 Hz."""
     def generate():
-        while True:
-            state = _session.latest
-            if state is not None:
-                yield f"data: {json.dumps(state)}\n\n"
-            time.sleep(TARGET_RATE)
+        tick = 0
+        try:
+            while True:
+                state = _session.latest
+                if state is not None:
+                    yield f"data: {json.dumps(state)}\n\n"
+                else:
+                    # Send keepalive comment while no state available yet
+                    yield ": waiting\n\n"
+
+                tick += 1
+                # Send keepalive comment every 5s to prevent proxy timeouts
+                if tick % 50 == 0:
+                    yield ": keepalive\n\n"
+
+                time.sleep(TARGET_RATE)
+        except GeneratorExit:
+            pass  # client disconnected — clean exit
 
     return Response(
         generate(),
         mimetype="text/event-stream",
         headers={
-            "Cache-Control":    "no-cache",
-            "X-Accel-Buffering": "no",  # disable nginx buffering
-            "Connection":       "keep-alive",
+            "Cache-Control":     "no-cache",
+            "X-Accel-Buffering": "no",   # disable nginx buffering
+            "Connection":        "keep-alive",
+            "Access-Control-Allow-Origin": "*",
         },
     )
 
