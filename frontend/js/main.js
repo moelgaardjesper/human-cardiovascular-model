@@ -245,18 +245,10 @@ const _ld = {   // live data buffers
 
 let _lastRender   = 0;
 let _relayoutTick = 0;
+let _rafPending   = false;   // true while a requestAnimationFrame is queued
+let _latestState  = null;    // most recent SSE state, used by the rAF render
 
-// Safety net: if charts go more than 8 s without a render, force relayout.
-// Detects Plotly internal freezes and recovers without user interaction.
 const _CHART_IDS = ['chart_ap','chart_co','chart_cvp','chart_cpp','chart_buckberg'];
-setInterval(() => {
-  if (!_liveActive) return;
-  if (Date.now() - _lastRender > 8000) {
-    console.warn('[live] Plotly freeze detected — forcing relayout');
-    _CHART_IDS.forEach(id => { try { Plotly.relayout(id, {}); } catch {} });
-    _lastRender = Date.now() - 400;   // allow next render in ~100 ms
-  }
-}, 3000);
 
 function _trimLive() {
   if (!_ld.t.length) return;
@@ -348,14 +340,14 @@ function _renderLiveCharts(s) {
        yaxis2: { title:'Buckberg', overlaying:'y', side:'right', range:[0,2], gridcolor:'#1f2937', color:'#6b7280' },
        shapes: buckZones() });
 
-  // Proactive relayout every 10 renders (~5 s) — preventive, not just reactive
-  if (++_relayoutTick % 10 === 0) {
+  // Proactive relayout every 20 renders (~10 s wall clock at 2 Hz render rate)
+  if (++_relayoutTick % 20 === 0) {
     _CHART_IDS.forEach(id => { try { Plotly.relayout(id, {}); } catch {} });
   }
 }
 
 function _onLivePoint(s) {
-  // Ingest at full SSE rate
+  // 1. Buffer data at full SSE rate (10 Hz) — always runs, non-blocking
   _ld.t.push(s.t);
   _ld.ap.push(s.aortic_p ?? s.map);
   _ld.sbp.push(s.sbp || s.map * 1.25);
@@ -368,19 +360,27 @@ function _onLivePoint(s) {
   _ld.buck.push(s.buckberg);
   _trimLive();
 
-  // Update vitals bar every message (lightweight)
+  // 2. Update vitals bar (lightweight DOM writes, fine in onmessage)
   updateVitals(s);
-  document.getElementById('tilt_val_lbl').textContent =
-    s.tilt === 0 ? '0° — Supine'
-    : s.tilt < 0  ? `${s.tilt}° — Head-down`
-                  : `+${s.tilt}° — Head-up`;
-  document.getElementById('s_tilt').textContent = (s.tilt ?? 0) + '°';
+  _latestState = s;   // always keep the freshest state for the render frame
 
-  // Rate-limit chart renders to 2 Hz
+  const tl = s.tilt ?? 0;
+  document.getElementById('tilt_val_lbl').textContent =
+    tl === 0 ? '0° — Supine' : tl < 0 ? `${tl}° — Head-down` : `+${tl}° — Head-up`;
+  document.getElementById('s_tilt').textContent = tl + '°';
+
+  // 3. Schedule a chart render on the next animation frame — at most 2 Hz.
+  //    requestAnimationFrame defers Plotly work OUT of the SSE onmessage
+  //    handler, preventing the synchronous Plotly block from stalling the
+  //    event loop and making the browser think the SSE stream has timed out.
   const now = Date.now();
-  if (now - _lastRender < 500) return;
-  _lastRender = now;
-  _renderLiveCharts(s);
+  if (_rafPending || now - _lastRender < 500) return;
+  _rafPending = true;
+  requestAnimationFrame(() => {
+    _rafPending   = false;
+    _lastRender   = Date.now();
+    if (_latestState) _renderLiveCharts(_latestState);
+  });
 }
 
 async function toggleLive() {
@@ -404,7 +404,7 @@ async function toggleLive() {
   // Start
   _liveActive = true;
   Object.keys(_ld).forEach(k => { _ld[k] = []; });
-  _lastRender = 0; _relayoutTick = 0;
+  _lastRender = 0; _relayoutTick = 0; _rafPending = false; _latestState = null;
 
   // Start server session
   await fetch('/api/live/start', {
