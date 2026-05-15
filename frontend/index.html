@@ -312,6 +312,31 @@
         <input type="number" id="tilt_dur" value="5" min="1" max="30" />
       </div>
 
+      <h2 style="margin-top:12px;">Muscle pump</h2>
+      <div class="field">
+        <label>Patient status</label>
+        <select id="pump_preset" onchange="applyPumpPreset(this.value)">
+          <option value="0">Sedated / anaesthetised (pump OFF)</option>
+          <option value="35">Conscious, minimal activity</option>
+          <option value="45">Ambulatory (walking)</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>Calf pump pressure (mmHg) — 0 = inactive</label>
+        <div class="range-row">
+          <input type="range" id="pump_pressure" min="0" max="60" value="0"
+                 oninput="document.getElementById('pump_pressure_v').textContent=this.value" />
+          <span id="pump_pressure_v">0</span>
+        </div>
+      </div>
+      <div class="field">
+        <label>Pump frequency (Hz)</label>
+        <select id="pump_freq">
+          <option value="0.5">0.5 Hz — slow walk</option>
+          <option value="1.0">1.0 Hz — brisk walk</option>
+        </select>
+      </div>
+
       <h2 style="margin-top:12px;">Vasopressors</h2>
 
       <div class="drug-row">
@@ -362,9 +387,13 @@
       <div class="metric"><span class="val" id="s_co">—</span><span class="lbl">CO (L/min)</span></div>
       <div class="metric"><span class="val" id="s_cvp">—</span><span class="lbl">CVP (mmHg)</span></div>
       <div class="metric"><span class="val" id="s_sv">—</span><span class="lbl">SV (mL)</span></div>
+      <div class="metric" style="border-left:1px solid #2d3148;padding-left:20px;">
+        <span class="val" id="s_cpp" style="color:#34d399;">—</span><span class="lbl">CPP (mmHg)</span></div>
+      <div class="metric"><span class="val" id="s_cop" style="color:#f472b6;">—</span><span class="lbl">CoPP (mmHg)</span></div>
+      <div class="metric"><span class="val" id="s_buckberg" style="color:#fbbf24;">—</span><span class="lbl">Buckberg</span></div>
     </div>
 
-    <div class="charts">
+    <div class="charts" style="grid-template-rows: 1fr 1fr 1fr;">
       <div class="chart-row">
         <div class="chart-container" id="chart_ap">
           <div class="placeholder">Arterial pressure waveform</div>
@@ -379,6 +408,14 @@
         </div>
         <div class="chart-container" id="chart_hr">
           <div class="placeholder">Heart rate</div>
+        </div>
+      </div>
+      <div class="chart-row">
+        <div class="chart-container" id="chart_cpp">
+          <div class="placeholder">Cerebral perfusion pressure (CPP)</div>
+        </div>
+        <div class="chart-container" id="chart_buckberg">
+          <div class="placeholder">Coronary / Buckberg index</div>
         </div>
       </div>
     </div>

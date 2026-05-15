@@ -90,6 +90,12 @@ class SimParams:
         # SVR scaling factor from patient.py (applied to arterial resistances)
         self.svr_scale = 1.0
 
+        # Muscle pump — calf squeeze driving venous return.
+        # Default 0 = inactive (sedated/anaesthetised patients).
+        # Walking: pressure ≈ 35–50 mmHg, freq ≈ 0.5–1.0 Hz.
+        self.muscle_pump_pressure = 0.0   # mmHg peak calf compression
+        self.muscle_pump_freq_hz  = 0.5   # Hz contraction frequency
+
 
 # ---------------------------------------------------------------------------
 # Pressure helpers
@@ -246,11 +252,20 @@ def _odes(t: float, V: np.ndarray, params: SimParams, baro: BaroreflexController
     Q_lb_art_calf  = (P[i["lower_body_art"]] - P[i["calf_vein"]])  / R_lb_to_calf
     Q_lb_art_foot  = (P[i["lower_body_art"]] - P[i["foot_vein"]])  / R_lb_to_foot
 
-    # Venous drainage: foot→calf→thigh→ivc with hydrostatic corrections.
-    # Each segment's outflow resistance is stored on that compartment.
-    Q_foot_calf  = (P[i["foot_vein"]]  - P[i["calf_vein"]]  + hdp("foot_vein")  - hdp("calf_vein"))  / R("foot_vein")
-    Q_calf_thigh = (P[i["calf_vein"]]  - P[i["thigh_vein"]] + hdp("calf_vein")  - hdp("thigh_vein")) / R("calf_vein")
-    Q_thigh_ivc  = (P[i["thigh_vein"]] - P[i["ivc"]]        + hdp("thigh_vein") - hdp("ivc"))        / R("thigh_vein")
+    # Muscle pump: rhythmic calf compression drives venous return.
+    # sin²(2πft) profile: always ≥ 0 (no suction phase), smooth, periodic.
+    # pump_p = 0 when muscle_pump_pressure = 0 → identical to current model.
+    pump_p = 0.0
+    if params.muscle_pump_pressure > 0:
+        pump_p = params.muscle_pump_pressure * np.sin(2 * np.pi * params.muscle_pump_freq_hz * t) ** 2
+
+    # Venous drainage: foot→calf→thigh→ivc.
+    # max(0,...) implements anatomical one-way venous valves — prevents retrograde flow
+    # that would otherwise occur when hydrostatic gradient exceeds driving pressure.
+    # Pump boost applied to foot→calf and calf→thigh (calf contraction zone).
+    Q_foot_calf  = max(0.0, (P[i["foot_vein"]]  - P[i["calf_vein"]]  + hdp("foot_vein")  - hdp("calf_vein")  + pump_p) / R("foot_vein"))
+    Q_calf_thigh = max(0.0, (P[i["calf_vein"]]  - P[i["thigh_vein"]] + hdp("calf_vein")  - hdp("thigh_vein") + pump_p) / R("calf_vein"))
+    Q_thigh_ivc  = max(0.0, (P[i["thigh_vein"]] - P[i["ivc"]]        + hdp("thigh_vein") - hdp("ivc"))                  / R("thigh_vein"))
 
     Q_renal_ivc   = (P[i["renal_vein"]]     - P[i["ivc"]]) / R("renal_vein")
     Q_splanch_ivc = (P[i["splanchnic_vein"]] - P[i["ivc"]]) / R("splanchnic_vein")
@@ -329,13 +344,23 @@ def run_simulation(
         t           : np.ndarray (s)
         aortic_p    : np.ndarray (mmHg) — instantaneous aortic pressure
         map         : np.ndarray (mmHg) — running 3-beat MAP approximation
-        cvp         : np.ndarray (mmHg) — right atrial pressure
+        cvp         : np.ndarray (mmHg) — right atrial end-diastolic pressure
         la_pressure : np.ndarray (mmHg) — left atrial / PCWP proxy
-        co          : np.ndarray (L/min) — aortic flow (cardiac output)
+        co          : np.ndarray (L/min) — cardiac output (LV volume decrease)
         hr          : np.ndarray (bpm)
         sv          : np.ndarray (mL)   — stroke volume
+        dbp         : np.ndarray (mmHg) — diastolic aortic pressure (rolling min)
+        sbp         : np.ndarray (mmHg) — systolic aortic pressure (rolling max)
+        lvedp       : np.ndarray (mmHg) — LV end-diastolic pressure
+        cpp         : np.ndarray (mmHg) — cerebral perfusion pressure
+        cop         : np.ndarray (mmHg) — coronary perfusion pressure (DBP − LVEDP)
+        buckberg    : np.ndarray        — Buckberg subendocardial viability ratio
         volumes     : np.ndarray (mL, shape [n_steps, n_compartments])
     """
+    from .perfusion import (cerebral_perfusion_pressure,
+                            coronary_perfusion_pressure, buckberg_index)
+    from .heart import LV_EMIN as _LV_EMIN
+
     comp = params.compartments
     V0   = np.array([c.init_volume for c in comp], dtype=float)
 
@@ -352,30 +377,38 @@ def run_simulation(
     la_p_ts     = np.zeros(n)
     co_ts       = np.zeros(n)
     hr_ts       = np.zeros(n)
+    dbp_ts      = np.zeros(n)
+    sbp_ts      = np.zeros(n)
+    lvedp_ts    = np.zeros(n)
+    cpp_ts      = np.zeros(n)
+    cop_ts      = np.zeros(n)
+    buckberg_ts = np.zeros(n)
     volumes_ts  = np.zeros((n, len(comp)))
 
     # We step manually so baroreflex can update each step
     V = V0.copy()
     i = IDX
 
-    # CVP: track rolling minimum of RA pressure over 2 beats (end-diastolic trough).
-    # This matches clinical CVP measurement (A-wave trough, lit: 2-3 mmHg normovolemia).
+    # CVP: rolling minimum of RA pressure over 2 beats (end-diastolic trough).
     from collections import deque as _deque
     _cvp_win_len = max(100, int(2 * 60.0 / params.hr_bpm / dt))
     _cvp_win     = _deque([10.0] * _cvp_win_len, maxlen=_cvp_win_len)
 
-    # CO / SV: measure directly from LV volume decrease (ejection) — avoids the
-    # phase-mismatch bug that occurs when monitoring uses nominal HR while the ODE
-    # uses the baroreflex-adjusted HR, creating spurious q_av spikes.
+    # DBP / SBP: rolling min / max of aortic pressure over 2 beats.
+    _bp_win_len  = _cvp_win_len
+    _dbp_win     = _deque([80.0]  * _bp_win_len, maxlen=_bp_win_len)
+    _sbp_win     = _deque([120.0] * _bp_win_len, maxlen=_bp_win_len)
+
+    # CO / SV: LV volume decrease per step (avoids HR phase-mismatch bug).
     _prev_V_lv   = V[i["left_ventricle"]]
-    _beat_ejected = 0.0      # mL ejected in current beat
+    _beat_ejected = 0.0
     _last_t_beat  = 0.0
     sv_ts         = np.zeros(n)
-    _sv_current   = 70.0    # initial guess
+    _sv_current   = 70.0
 
-    # Track actual HR from previous baroreflex step for consistent elastance evaluation
-    _hr_monitor   = params.hr_bpm   # HR used for monitoring (1-step lag, negligible)
-    _emax_monitor = params.lv_emax  # same lag for E_max scaling
+    # HR / E_max from previous step (1-step lag) for consistent monitoring.
+    _hr_monitor   = params.hr_bpm
+    _emax_monitor = params.lv_emax
 
     for step, t in enumerate(t_eval):
         c_ao = comp[i["aorta"]]
@@ -423,11 +456,32 @@ def run_simulation(
         _hr_monitor   = hr_eff
         _emax_monitor = params.lv_emax * (baro.emax_factor if baro is not None else 1.0)
 
-        aortic_p[step]   = p_ao
-        cvp_ts[step]     = p_cvp_edi
-        la_p_ts[step]    = p_la
-        hr_ts[step]      = hr_eff
-        volumes_ts[step] = V.copy()
+        # DBP / SBP tracking (rolling min / max)
+        _dbp_win.append(p_ao); _sbp_win.append(p_ao)
+        p_dbp = min(_dbp_win)
+        p_sbp = max(_sbp_win)
+
+        # LVEDP: LV diastolic elastance × stressed volume (same method as CVP)
+        lv_v0  = comp[i["left_ventricle"]].unstressed_volume
+        p_lvedp = max(0.0, params.lv_emin * (V[i["left_ventricle"]] - lv_v0))
+
+        # Current tilt for perfusion calculations
+        tilt_now = smooth_tilt_profile(
+            t, params.tilt_start_deg, params.tilt_end_deg,
+            params.tilt_onset_s, params.tilt_duration_s,
+        )
+
+        aortic_p[step]    = p_ao
+        cvp_ts[step]      = p_cvp_edi
+        la_p_ts[step]     = p_la
+        hr_ts[step]       = hr_eff
+        dbp_ts[step]      = p_dbp
+        sbp_ts[step]      = p_sbp
+        lvedp_ts[step]    = p_lvedp
+        cpp_ts[step]      = cerebral_perfusion_pressure(p_ao, tilt_now, params.gravity)
+        cop_ts[step]      = coronary_perfusion_pressure(p_dbp, p_lvedp)
+        buckberg_ts[step] = buckberg_index(p_dbp, p_lvedp, hr_eff, p_sbp)
+        volumes_ts[step]  = V.copy()
 
         # Euler step
         dV = _odes(t, V, params, baro)
@@ -453,5 +507,11 @@ def run_simulation(
         "co":          co_ts,
         "hr":          hr_ts,
         "sv":          sv_ts,
+        "dbp":         dbp_ts,
+        "sbp":         sbp_ts,
+        "lvedp":       lvedp_ts,
+        "cpp":         np.convolve(cpp_ts,      kernel, mode="same"),
+        "cop":         np.convolve(cop_ts,      kernel, mode="same"),
+        "buckberg":    np.convolve(buckberg_ts, kernel, mode="same"),
         "volumes":     volumes_ts,
     }

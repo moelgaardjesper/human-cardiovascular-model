@@ -114,10 +114,12 @@ def simulate():
         "microgravity": GravityEnvironment.MICROGRAVITY,
     }
     params.gravity         = gravity_map.get(scenario.get("gravity", "earth"), GravityEnvironment.EARTH)
-    params.tilt_start_deg  = float(scenario.get("tilt_start_deg", 0))
-    params.tilt_end_deg    = float(scenario.get("tilt_end_deg", 0))
-    params.tilt_onset_s    = float(scenario.get("tilt_onset_s", 5))
-    params.tilt_duration_s = float(scenario.get("tilt_duration_s", 5))
+    params.tilt_start_deg       = float(scenario.get("tilt_start_deg", 0))
+    params.tilt_end_deg         = float(scenario.get("tilt_end_deg", 0))
+    params.tilt_onset_s         = float(scenario.get("tilt_onset_s", 5))
+    params.tilt_duration_s      = float(scenario.get("tilt_duration_s", 5))
+    params.muscle_pump_pressure = float(scenario.get("muscle_pump_pressure", 0))
+    params.muscle_pump_freq_hz  = float(scenario.get("muscle_pump_freq_hz", 0.5))
 
     drugs = scenario.get("drugs", {})
     if drugs:
@@ -126,16 +128,20 @@ def simulate():
     # --- Run ---
     duration_s = min(float(sim_cfg.get("duration_s", 60)), 300)
     baro       = bool(sim_cfg.get("baroreflex_enabled", True))
-    dt         = 0.005   # 5 ms fixed step
+    dt         = 0.001   # 1 ms fixed step (required for stability)
 
     result = run_simulation(params, duration_s=duration_s, dt=dt, use_baroreflex=baro)
 
-    # --- Downsample to ~200 Hz for transfer (every 10th point at dt=5ms) ---
-    step = max(1, int(0.05 / dt))   # ~20 Hz output
+    # --- Downsample to ~20 Hz for transfer ---
+    step = max(1, int(0.05 / dt))
     idx  = slice(None, None, step)
+    h    = len(result["map"]) // 2   # second half for summary stats
 
     def _round(arr: np.ndarray, decimals: int = 2) -> list:
         return [round(float(v), decimals) for v in arr[idx]]
+
+    def _mean(key: str) -> float:
+        return round(float(np.mean(result[key][h:])), 2)
 
     return jsonify({
         "t":           _round(result["t"], 3),
@@ -146,12 +152,22 @@ def simulate():
         "co":          _round(result["co"]),
         "hr":          _round(result["hr"]),
         "sv":          _round(result["sv"]),
+        "dbp":         _round(result["dbp"]),
+        "sbp":         _round(result["sbp"]),
+        "cpp":         _round(result["cpp"]),
+        "cop":         _round(result["cop"]),
+        "buckberg":    _round(result["buckberg"], 3),
         "summary": {
-            "map_mean":  round(float(np.mean(result["map"][len(result["map"])//2:])), 1),
-            "hr_mean":   round(float(np.mean(result["hr"][len(result["hr"])//2:])), 1),
-            "co_mean":   round(float(np.mean(result["co"][len(result["co"])//2:])), 2),
-            "cvp_mean":  round(float(np.mean(result["cvp"][len(result["cvp"])//2:])), 1),
-            "sv_mean":   round(float(np.mean(result["sv"][len(result["sv"])//2:])), 1),
+            "map_mean":      _mean("map"),
+            "hr_mean":       _mean("hr"),
+            "co_mean":       _mean("co"),
+            "cvp_mean":      _mean("cvp"),
+            "sv_mean":       _mean("sv"),
+            "dbp_mean":      _mean("dbp"),
+            "sbp_mean":      _mean("sbp"),
+            "cpp_mean":      _mean("cpp"),
+            "cop_mean":      _mean("cop"),
+            "buckberg_mean": _mean("buckberg"),
         },
     })
 

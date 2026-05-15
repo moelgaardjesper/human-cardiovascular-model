@@ -64,7 +64,8 @@ def run_scenario(label, height_cm, weight_kg, map_mmhg=None, hr_bpm=70,
     params.baroreflex_enabled = baroreflex
 
     r = run_simulation(params, duration_s=DURATION, dt=DT)
-    return {k: last_half(r[k]) for k in ("map", "hr", "co", "cvp", "sv")}
+    return {k: last_half(r[k]) for k in ("map", "hr", "co", "cvp", "sv",
+                                          "cpp", "cop", "buckberg", "dbp", "sbp", "lvedp")}
 
 
 def check(label, value, lo, hi, unit=""):
@@ -351,6 +352,72 @@ print(f"  CO lower  at 30°:    {'PASS' if t8[3] else 'FAIL'} ({co_vals[0]:.2f} 
 print(f"\n  Overall: {'PASS' if all(t8) else 'FAIL'} ({sum(t8)}/{len(t8)})")
 
 # ============================================================
+# TEST 9 — Cerebral perfusion pressure (Pohl/Cullen 2005)
+# Beach-chair position under GA: MAP drops 30–35 mmHg vs supine.
+# CPP = MAP_brain − ICP.
+# Refs: Pohl A, Cullen DJ (2005) Anesth & Analg / JCA / APSF.
+#       Closhen D et al. (2013) Eur J Anaesthesiol 30:429–432
+# Expected:
+#   Supine: CPP ≈ 70–85 mmHg (MAP−ICP at horizontal)
+#   45° upright: CPP < supine (MAP_brain lower), but must stay > 50 mmHg
+#                if MAP ≥ 80 mmHg (adequate systemic pressure)
+#   Trendelenburg −30°: CPP slightly below supine (ICP rises with venous congestion)
+# ============================================================
+print("\n" + "=" * 65)
+print("TEST 9  Cerebral perfusion pressure (Pohl/Cullen 2005)")
+print("Supine CPP ~70–85 mmHg; 45° upright CPP < supine (brain above heart)")
+print("-" * 65)
+
+s9_sup  = run_scenario("Supine", 175, 75, hr_bpm=70, tilt_deg=0.0)
+s9_up45 = run_scenario("45° up", 175, 75, hr_bpm=70, tilt_deg=45.0)
+s9_tr30 = run_scenario("−30° T", 175, 75, hr_bpm=70, tilt_deg=-30.0, tilt_onset=5.0)
+
+print(f"  Supine:   MAP {s9_sup['map']:.1f}  CPP {s9_sup['cpp']:.1f} mmHg")
+print(f"  45° up:   MAP {s9_up45['map']:.1f}  CPP {s9_up45['cpp']:.1f} mmHg")
+print(f"  −30° T:   MAP {s9_tr30['map']:.1f}  CPP {s9_tr30['cpp']:.1f} mmHg")
+
+t9 = [
+    60 <= s9_sup["cpp"] <= 100,        # Supine CPP in normal range
+    s9_up45["cpp"] < s9_sup["cpp"],    # Upright CPP < supine (brain above heart)
+    s9_up45["cpp"] > 40,               # Still viable at 45°
+]
+print(f"\n  Supine CPP in 60–100 mmHg: {'PASS' if t9[0] else 'FAIL'} ({s9_sup['cpp']:.1f})")
+print(f"  CPP_upright < CPP_supine:  {'PASS' if t9[1] else 'FAIL'} ({s9_up45['cpp']:.1f} < {s9_sup['cpp']:.1f})")
+print(f"  CPP_upright > 40 mmHg:     {'PASS' if t9[2] else 'FAIL'} ({s9_up45['cpp']:.1f})")
+print(f"\n  Overall: {'PASS' if all(t9) else 'FAIL'} ({sum(t9)}/{len(t9)})")
+
+# ============================================================
+# TEST 10 — Coronary perfusion / Buckberg index (Buckberg 1972/1978)
+# DPTI/SPTI > 0.8 at resting HR; falls with tachycardia.
+# Refs: Buckberg GD et al. (1972) J Appl Physiol 31:598–604.
+#       Hoffman JI, Buckberg GD (1978) Am J Cardiol 41:327–332.
+# Expected:
+#   Resting (HR ~70): Buckberg > 0.8, CoPP > 40 mmHg
+#   Tachycardia (HR=130): Buckberg < 0.8 (diastolic time shortened)
+#   Tachycardia (HR=160): Buckberg < 0.5 (ischaemia risk zone)
+# ============================================================
+print("\n" + "=" * 65)
+print("TEST 10  Coronary perfusion — Buckberg index (Buckberg 1972/1978)")
+print("Resting: CoPP > 40, Buckberg > 0.8; tachycardia HR=160: Buckberg < 0.5")
+print("-" * 65)
+
+s10_rest = run_scenario("Rest",   175, 75, hr_bpm=70,  tilt_deg=0.0)
+s10_tachy = run_scenario("Tachy", 175, 75, hr_bpm=160, tilt_deg=0.0, baroreflex=False)
+
+print(f"  Rest  (HR {s10_rest['hr']:.0f}): CoPP {s10_rest['cop']:.1f} mmHg  Buckberg {s10_rest['buckberg']:.3f}")
+print(f"  Tachy (HR {s10_tachy['hr']:.0f}): CoPP {s10_tachy['cop']:.1f} mmHg  Buckberg {s10_tachy['buckberg']:.3f}")
+
+t10 = [
+    s10_rest["cop"] > 40,            # adequate coronary perfusion at rest
+    s10_rest["buckberg"] > 0.8,      # healthy subendocardial viability at rest
+    s10_tachy["buckberg"] < s10_rest["buckberg"],  # tachycardia worsens Buckberg
+]
+print(f"\n  CoPP_rest > 40 mmHg:           {'PASS' if t10[0] else 'FAIL'} ({s10_rest['cop']:.1f})")
+print(f"  Buckberg_rest > 0.8:           {'PASS' if t10[1] else 'FAIL'} ({s10_rest['buckberg']:.3f})")
+print(f"  Buckberg falls with tachycardia:{'PASS' if t10[2] else 'FAIL'} ({s10_tachy['buckberg']:.3f} < {s10_rest['buckberg']:.3f})")
+print(f"\n  Overall: {'PASS' if all(t10) else 'FAIL'} ({sum(t10)}/{len(t10)})")
+
+# ============================================================
 # Calibration gap — CVP baseline offset
 # Lloyd-Donald et al. (2025) DOI: 10.1111/anae.16633
 # Normal supine awake CVP = 2–3 mmHg
@@ -371,7 +438,8 @@ print("=" * 65)
 # ============================================================
 # Summary
 # ============================================================
-groups = [all(t1), all(t2), all(t3), all(t4), all(t5), all(t6), all(t7), all(t8)]
+groups = [all(t1), all(t2), all(t3), all(t4), all(t5),
+          all(t6), all(t7), all(t8), all(t9), all(t10)]
 labels = [
     "Supine baseline [Sørensen 2022]",
     "20° HDT normovolemic [Sørensen 2022]",
@@ -381,6 +449,8 @@ labels = [
     "−15° Trendelenburg [Likhvantsev 2025]",
     "30° HUT dynamics [Wieling 1998]",
     "Graded HUT monotonicity [Sarafian 2017]",
+    "Cerebral perfusion pressure [Pohl/Cullen 2005]",
+    "Coronary / Buckberg index [Buckberg 1972/1978]",
 ]
 print("\n" + "=" * 65)
 print("SUMMARY")
