@@ -358,54 +358,73 @@ def run_simulation(
     V = V0.copy()
     i = IDX
 
-    # Stroke volume tracking (from aortic flow integration per beat)
-    _beat_flow   = 0.0
-    _last_t_beat = 0.0
-    sv_ts        = np.zeros(n)
-    _sv_current  = 70.0   # initial guess
+    # CVP: track rolling minimum of RA pressure over 2 beats (end-diastolic trough).
+    # This matches clinical CVP measurement (A-wave trough, lit: 2-3 mmHg normovolemia).
+    from collections import deque as _deque
+    _cvp_win_len = max(100, int(2 * 60.0 / params.hr_bpm / dt))
+    _cvp_win     = _deque([10.0] * _cvp_win_len, maxlen=_cvp_win_len)
+
+    # CO / SV: measure directly from LV volume decrease (ejection) — avoids the
+    # phase-mismatch bug that occurs when monitoring uses nominal HR while the ODE
+    # uses the baroreflex-adjusted HR, creating spurious q_av spikes.
+    _prev_V_lv   = V[i["left_ventricle"]]
+    _beat_ejected = 0.0      # mL ejected in current beat
+    _last_t_beat  = 0.0
+    sv_ts         = np.zeros(n)
+    _sv_current   = 70.0    # initial guess
+
+    # Track actual HR from previous baroreflex step for consistent elastance evaluation
+    _hr_monitor   = params.hr_bpm   # HR used for monitoring (1-step lag, negligible)
+    _emax_monitor = params.lv_emax  # same lag for E_max scaling
 
     for step, t in enumerate(t_eval):
-        # Record
         c_ao = comp[i["aorta"]]
         c_ra = comp[i["right_atrium"]]
         c_la = comp[i["left_atrium"]]
-        c_lv = comp[i["left_ventricle"]]
 
-        E_lv_now = elastance(t, params.hr_bpm, params.lv_emax, params.lv_emin)
-        E_la_now = elastance(t + ATRIAL_PHASE_OFFSET * 60.0 / params.hr_bpm,
-                             params.hr_bpm, params.la_emax, params.la_emin)
-        E_ra_now = elastance(t + ATRIAL_PHASE_OFFSET * 60.0 / params.hr_bpm,
-                             params.hr_bpm, params.ra_emax, params.ra_emin)
+        # Use HR and E_max from PREVIOUS baroreflex step for consistent pressure monitoring.
+        # (ODE will use the CURRENT baro state computed below.)
+        T_atrial = ATRIAL_PHASE_OFFSET * 60.0 / _hr_monitor
+        E_ra_now = elastance(t + T_atrial, _hr_monitor, params.ra_emax, params.ra_emin)
+        E_la_now = elastance(t + T_atrial, _hr_monitor, params.la_emax, params.la_emin)
 
         p_ao = _vascular_pressure(V[i["aorta"]], c_ao.unstressed_volume, c_ao.compliance)
         p_ra = _cardiac_pressure(V[i["right_atrium"]], c_ra.unstressed_volume, E_ra_now)
         p_la = _cardiac_pressure(V[i["left_atrium"]], c_la.unstressed_volume, E_la_now)
-        p_lv = _cardiac_pressure(V[i["left_ventricle"]], c_lv.unstressed_volume, E_lv_now)
 
-        # Aortic valve flow (uses LV valve resistance, same as _odes)
-        q_av = max(0.0, (p_lv - p_ao) / c_lv.resistance)
-        _beat_flow += q_av * dt
-        # Report instantaneous CO as 3-beat rolling average (smoothed below)
-        co_ts[step] = q_av * 60.0 / 1000.0   # mL/s → L/min (instantaneous)
+        # CO: measure from LV volume decrease (no elastance-timing dependency).
+        curr_V_lv = V[i["left_ventricle"]]
+        dV_ejected = max(0.0, _prev_V_lv - curr_V_lv)  # positive during ejection
+        _beat_ejected += dV_ejected
+        _prev_V_lv = curr_V_lv
 
-        # Stroke volume: integrate over one nominal cardiac cycle
-        T_beat = 60.0 / params.hr_bpm
+        # CO (instantaneous rate): ejection rate * 60/1000 for L/min
+        co_ts[step] = dV_ejected / dt * 60.0 / 1000.0
+
+        # SV: sum ejected volume over one actual HR-based beat
+        T_beat = 60.0 / _hr_monitor
         if t - _last_t_beat >= T_beat:
-            _sv_current  = _beat_flow
-            _beat_flow   = 0.0
-            _last_t_beat = t
+            _sv_current   = _beat_ejected
+            _beat_ejected = 0.0
+            _last_t_beat  = t
         sv_ts[step] = _sv_current
 
+        # CVP: end-diastolic RA trough (pass to baroreflex too, not instantaneous p_ra)
+        _cvp_win.append(p_ra)
+        p_cvp_edi = min(_cvp_win)
+
+        # Update baroreflex — updates hr_delta, svr_factor etc. for NEXT ODE step
         hr_eff = params.hr_bpm
         if baro is not None:
-            # Pass beat-averaged MAP (aortic pressure) and RA pressure as CVP.
-            # PP not yet wired; baroreflex buffers handle averaging internally.
-            pp_approx = 40.0   # placeholder — set to setpoint so PP error = 0
-            baro.update(p_ao, pp_approx, p_ra)
+            baro.update(p_ao, 40.0, p_cvp_edi)
             hr_eff = max(30.0, min(180.0, params.hr_bpm + baro.hr_delta))
 
+        # Carry forward updated HR for next step's monitoring
+        _hr_monitor   = hr_eff
+        _emax_monitor = params.lv_emax * (baro.emax_factor if baro is not None else 1.0)
+
         aortic_p[step]   = p_ao
-        cvp_ts[step]     = p_ra
+        cvp_ts[step]     = p_cvp_edi
         la_p_ts[step]    = p_la
         hr_ts[step]      = hr_eff
         volumes_ts[step] = V.copy()
