@@ -235,43 +235,31 @@ function updateVitals(s) {
 // Live mode
 // ═══════════════════════════════════════════════════
 
-let _liveActive    = false;
-let _pollTimer     = null;
-const MAX_PTS      = 150;     // hard cap on array length (~15 s at 10 Hz)
-const LIVE_WIN   = 15;   // seconds of history shown (was 60 — data accumulated for
-                         // 60 s before _trimLive() fired, progressively slowing Plotly)
-
-const _ld = {   // live data buffers
-  t:[], ap:[], sbp:[], dbp:[], co:[], cvp:[], hr:[], cpp:[], cop:[], buck:[]
-};
-
-let _lastRender   = 0;
-let _relayoutTick = 0;
-let _rafPending   = false;   // true while a requestAnimationFrame is queued
-let _latestState  = null;    // most recent SSE state, used by the rAF render
+let _liveActive  = false;
+let _pollTimer   = null;
+const LIVE_WIN   = 15;    // seconds of rolling window shown
+const MAX_PTS    = 150;   // maxpoints passed to extendTraces (15 s × 10 Hz)
 
 const _CHART_IDS = ['chart_ap','chart_co','chart_cvp','chart_cpp','chart_buckberg'];
 
-function _trimLive() {
-  // Hard cap on number of points — keeps Plotly render time constant from t=0.
-  // Previous time-based trim (cut = t - LIVE_WIN) did nothing before t=LIVE_WIN,
-  // so 600 points accumulated before the first trim at t=60s, causing progressive
-  // Plotly slowdown and the observed 60-second freeze.
-  const excess = _ld.t.length - MAX_PTS;
-  if (excess > 0) Object.keys(_ld).forEach(k => { _ld[k] = _ld[k].slice(excess); });
-}
+// No _ld buffer arrays needed — Plotly.extendTraces manages data internally.
+// extendTraces appends exactly one point and trims to maxpoints in O(1),
+// eliminating the accumulation that caused the 15/60-second freeze.
+
+let _lastExtend  = 0;    // wall-clock time of last extendTraces call
+let _titleTick   = 0;    // counter for throttled title/axis updates
 
 function _initLiveCharts() {
   const cfg = { responsive: true, displayModeBar: false };
   Plotly.newPlot('chart_ap', [
-    { x:[], y:[], name:'Aortic P', line:{ color:C.ap,  width:1.5 } },
+    { x:[], y:[], name:'Aortic P', line:{ color:C.ap,      width:1.5 } },
     { x:[], y:[], name:'SBP',      line:{ color:'#f472b6', width:1, dash:'dot' } },
     { x:[], y:[], name:'DBP',      line:{ color:C.dbp,     width:1, dash:'dot' } },
   ], { ...BASE, title:{ text:'Arterial Pressure', font:{color:'#c7d2fe',size:11} },
        yaxis:{ ...BASE.yaxis, title:'mmHg', range:[20,180] } }, cfg);
 
   Plotly.newPlot('chart_co', [
-    { x:[], y:[], name:'CO', line:{ color:C.co,  width:2  } },
+    { x:[], y:[], name:'CO', line:{ color:C.co, width:2 } },
   ], { ...BASE, title:{ text:'Cardiac Output', font:{color:'#c7d2fe',size:11} },
        yaxis:{ ...BASE.yaxis, title:'L/min', range:[0,12] } }, cfg);
 
@@ -288,102 +276,53 @@ function _initLiveCharts() {
   Plotly.newPlot('chart_buckberg', [
     { x:[], y:[], name:'CoPP',    line:{ color:C.cop,  width:1.5 }, yaxis:'y'  },
     { x:[], y:[], name:'Buckberg',line:{ color:C.buck, width:2   }, yaxis:'y2' },
-  ], { ...BASE,
-       title:{ text:'Coronary / Buckberg', font:{color:'#c7d2fe',size:11} },
+  ], { ...BASE, title:{ text:'Coronary / Buckberg', font:{color:'#c7d2fe',size:11} },
        yaxis:  { ...BASE.yaxis, title:'CoPP (mmHg)', range:[0,100] },
-       yaxis2: { title:'Buckberg', overlaying:'y', side:'right', range:[0,2], gridcolor:'#1f2937', color:'#6b7280' },
+       yaxis2: { title:'Buckberg', overlaying:'y', side:'right', range:[0,2],
+                 gridcolor:'#1f2937', color:'#6b7280' },
        shapes: buckZones() }, cfg);
 }
 
-// Safe wrapper: catches Plotly errors per-chart so one bad chart can't block others.
-// On error, attempts a full newPlot reinitialisation of that chart.
-function _safeReact(id, traces, layout) {
-  try {
-    Plotly.react(id, traces, layout);
-  } catch (e) {
-    console.warn(`[live] Plotly.react failed for ${id}:`, e.message);
-    try { Plotly.newPlot(id, traces, layout, { responsive:true, displayModeBar:false }); }
-    catch {}
-  }
-}
-
-function _renderLiveCharts(s) {
-  const t = _ld.t;
-  const cppCol = (s.cpp || 70) < 50 ? C.cpp_bad : (s.cpp || 70) < 60 ? C.cpp_warn : C.cpp_ok;
-  const bkCol  = (s.buckberg || 1) < 0.5 ? C.cpp_bad : C.cpp_warn;
-
-  _safeReact('chart_ap', [
-    { x:t, y:_ld.ap,  name:'Aortic P', line:{ color:C.ap,      width:1.5 } },
-    { x:t, y:_ld.sbp, name:'SBP',      line:{ color:'#f472b6', width:1, dash:'dot' } },
-    { x:t, y:_ld.dbp, name:'DBP',      line:{ color:C.dbp,     width:1, dash:'dot' } },
-  ], { ...BASE, title:{ text:`BP  ${s.sbp}/${s.dbp} mmHg`, font:{color:'#c7d2fe',size:11} },
-       yaxis:{ ...BASE.yaxis, title:'mmHg', range:[20,180] } });
-
-  _safeReact('chart_co', [
-    { x:t, y:_ld.co, name:'CO', line:{ color:C.co, width:2 } },
-  ], { ...BASE, title:{ text:`CO  ${s.co} L/min  SV ${s.sv} mL`, font:{color:'#c7d2fe',size:11} },
-       yaxis:{ ...BASE.yaxis, title:'L/min', range:[0,12] } });
-
-  _safeReact('chart_cvp', [
-    { x:t, y:_ld.cvp, name:'CVP', line:{ color:C.cvp, width:2 } },
-  ], { ...BASE, title:{ text:`CVP  ${s.cvp} mmHg`, font:{color:'#c7d2fe',size:11} },
-       yaxis:{ ...BASE.yaxis, title:'mmHg', range:[0,20] } });
-
-  _safeReact('chart_cpp', [
-    { x:t, y:_ld.cpp, name:'CPP', line:{ color:cppCol, width:2 } },
-  ], { ...BASE, title:{ text:`CPP  ${s.cpp} mmHg`, font:{color:'#c7d2fe',size:11} },
-       yaxis:{ ...BASE.yaxis, title:'mmHg', range:[0,120] }, shapes:cppZones() });
-
-  _safeReact('chart_buckberg', [
-    { x:t, y:_ld.cop,  name:'CoPP',    line:{ color:C.cop,  width:1.5 }, yaxis:'y'  },
-    { x:t, y:_ld.buck, name:'Buckberg',line:{ color:bkCol,  width:2   }, yaxis:'y2' },
-  ], { ...BASE,
-       title:{ text:`CoPP ${s.cop} mmHg  Buckberg ${s.buckberg}`, font:{color:'#c7d2fe',size:11} },
-       yaxis:  { ...BASE.yaxis, title:'CoPP (mmHg)', range:[0,100] },
-       yaxis2: { title:'Buckberg', overlaying:'y', side:'right', range:[0,2], gridcolor:'#1f2937', color:'#6b7280' },
-       shapes: buckZones() });
-
-  // Proactive relayout every 20 renders (~10 s wall clock at 2 Hz render rate)
-  if (++_relayoutTick % 20 === 0) {
-    _CHART_IDS.forEach(id => { try { Plotly.relayout(id, {}); } catch {} });
+function _ext(id, update, indices) {
+  try { Plotly.extendTraces(id, update, indices, MAX_PTS); } catch(e) {
+    console.warn(`extendTraces ${id}:`, e.message);
   }
 }
 
 function _onLivePoint(s) {
-  // 1. Buffer data at full SSE rate (10 Hz) — always runs, non-blocking
-  _ld.t.push(s.t);
-  _ld.ap.push(s.aortic_p ?? s.map);
-  _ld.sbp.push(s.sbp || s.map * 1.25);
-  _ld.dbp.push(s.dbp || s.map * 0.70);
-  _ld.co.push(s.co);
-  _ld.cvp.push(s.cvp);
-  _ld.hr.push(s.hr);
-  _ld.cpp.push(s.cpp);
-  _ld.cop.push(s.cop);
-  _ld.buck.push(s.buckberg);
-  _trimLive();
-
-  // 2. Update vitals bar (lightweight DOM writes, fine in onmessage)
+  // 1. Vitals bar — lightweight, always runs
   updateVitals(s);
-  _latestState = s;   // always keep the freshest state for the render frame
-
   const tl = s.tilt ?? 0;
   document.getElementById('tilt_val_lbl').textContent =
     tl === 0 ? '0° — Supine' : tl < 0 ? `${tl}° — Head-down` : `+${tl}° — Head-up`;
   document.getElementById('s_tilt').textContent = tl + '°';
 
-  // 3. Schedule a chart render on the next animation frame — at most 2 Hz.
-  //    requestAnimationFrame defers Plotly work OUT of the SSE onmessage
-  //    handler, preventing the synchronous Plotly block from stalling the
-  //    event loop and making the browser think the SSE stream has timed out.
+  // 2. Append one data point to each chart — O(1), no accumulation
   const now = Date.now();
-  if (_rafPending || now - _lastRender < 500) return;
-  _rafPending = true;
-  requestAnimationFrame(() => {
-    _rafPending   = false;
-    _lastRender   = Date.now();
-    if (_latestState) _renderLiveCharts(_latestState);
-  });
+  if (now - _lastExtend < 100) return;   // cap at 10 Hz chart updates
+  _lastExtend = now;
+
+  const t  = [[s.t]];
+  _ext('chart_ap',        { x:[t,t,t], y:[[s.aortic_p??s.map],[s.sbp??s.map],[s.dbp??s.map]] }, [0,1,2]);
+  _ext('chart_co',        { x:[t],     y:[[s.co]]                                             }, [0]    );
+  _ext('chart_cvp',       { x:[t],     y:[[s.cvp]]                                            }, [0]    );
+  _ext('chart_cpp',       { x:[t],     y:[[s.cpp]]                                            }, [0]    );
+  _ext('chart_buckberg',  { x:[t,t],   y:[[s.cop],[s.buckberg]]                               }, [0,1]  );
+
+  // 3. Scroll x-axis and refresh titles every second
+  _titleTick++;
+  if (_titleTick % 10 === 0) {
+    const xr = { 'xaxis.range': [s.t - LIVE_WIN, s.t + 0.5] };
+    const cppCol = (s.cpp||70)<50 ? C.cpp_bad : (s.cpp||70)<60 ? C.cpp_warn : C.cpp_ok;
+    const bkCol  = (s.buckberg||1)<0.5 ? C.cpp_bad : C.cpp_warn;
+    try { Plotly.relayout('chart_ap',       { ...xr, 'title.text':`BP  ${s.sbp}/${s.dbp} mmHg` }); } catch {}
+    try { Plotly.relayout('chart_co',       { ...xr, 'title.text':`CO  ${s.co} L/min` });          } catch {}
+    try { Plotly.relayout('chart_cvp',      { ...xr, 'title.text':`CVP  ${s.cvp} mmHg` });         } catch {}
+    try { Plotly.relayout('chart_cpp',      { ...xr, 'title.text':`CPP  ${s.cpp} mmHg`,
+                                              'data[0].line.color': cppCol });                      } catch {}
+    try { Plotly.relayout('chart_buckberg', { ...xr, 'title.text':`CoPP ${s.cop}  Buckberg ${s.buckberg}`,
+                                              'data[1].line.color': bkCol });                       } catch {}
+  }
 }
 
 async function toggleLive() {
@@ -403,8 +342,7 @@ async function toggleLive() {
 
   // Start
   _liveActive = true;
-  Object.keys(_ld).forEach(k => { _ld[k] = []; });
-  _lastRender = 0; _relayoutTick = 0; _rafPending = false; _latestState = null;
+  _lastExtend = 0; _titleTick = 0;
 
   // Start server session
   await fetch('/api/live/start', {
