@@ -26,7 +26,7 @@ function applyPumpPreset(val) {
 window._pumpPressure = 0;
 
 function clearDrugs() {
-  ['drug_norepi','drug_phenyl','drug_vaso','drug_epi'].forEach(id => {
+  ['drug_propofol','drug_norepi','drug_phenyl','drug_vaso','drug_epi'].forEach(id => {
     document.getElementById(id).value = 0;
   });
   liveUpdate();
@@ -59,10 +59,11 @@ function buildPatient() {
 
 function buildScenario() {
   const drugs = {};
-  const norepi = optFloat('drug_norepi'); if (norepi) drugs.norepinephrine = norepi;
-  const phenyl = optFloat('drug_phenyl'); if (phenyl) drugs.phenylephrine  = phenyl;
-  const vaso   = optFloat('drug_vaso');   if (vaso)   drugs.vasopressin    = vaso;
-  const epi    = optFloat('drug_epi');    if (epi)    drugs.epinephrine    = epi;
+  const prop   = optFloat('drug_propofol'); if (prop)   drugs.propofol       = prop;
+  const norepi = optFloat('drug_norepi');   if (norepi) drugs.norepinephrine = norepi;
+  const phenyl = optFloat('drug_phenyl');   if (phenyl) drugs.phenylephrine  = phenyl;
+  const vaso   = optFloat('drug_vaso');     if (vaso)   drugs.vasopressin    = vaso;
+  const epi    = optFloat('drug_epi');      if (epi)    drugs.epinephrine    = epi;
 
   return {
     gravity:              document.getElementById('gravity').value,
@@ -381,10 +382,11 @@ async function toggleLive() {
 function liveUpdate() {
   if (!_liveActive) return;
   const drugs = {};
-  const norepi = optFloat('drug_norepi'); if (norepi) drugs.norepinephrine = norepi;
-  const phenyl = optFloat('drug_phenyl'); if (phenyl) drugs.phenylephrine  = phenyl;
-  const vaso   = optFloat('drug_vaso');   if (vaso)   drugs.vasopressin    = vaso;
-  const epi    = optFloat('drug_epi');    if (epi)    drugs.epinephrine    = epi;
+  const prop   = optFloat('drug_propofol'); if (prop)   drugs.propofol       = prop;
+  const norepi = optFloat('drug_norepi');   if (norepi) drugs.norepinephrine = norepi;
+  const phenyl = optFloat('drug_phenyl');   if (phenyl) drugs.phenylephrine  = phenyl;
+  const vaso   = optFloat('drug_vaso');     if (vaso)   drugs.vasopressin    = vaso;
+  const epi    = optFloat('drug_epi');      if (epi)    drugs.epinephrine    = epi;
 
   fetch('/api/live/params', {
     method: 'PATCH',

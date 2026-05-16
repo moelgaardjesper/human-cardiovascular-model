@@ -418,6 +418,69 @@ print(f"  Buckberg falls with tachycardia:{'PASS' if t10[2] else 'FAIL'} ({s10_t
 print(f"\n  Overall: {'PASS' if all(t10) else 'FAIL'} ({sum(t10)}/{len(t10)})")
 
 # ============================================================
+# TEST 11 — Propofol haemodynamic effects (Claeys et al. 1988)
+# Claeys MA, Gepts E, Camu F. Br J Anaesth 1988;60:3–9.
+# DOI: 10.1093/bja/60.1.3  PMID: 3257393
+# n=10 elderly patients, propofol 2 mg/kg IV induction:
+#   SVR:  −21% at 2 min, −30% during infusion
+#   SBP:  −28%, DBP: −19%   (→ MAP drops ~25%)
+#   CO:   unchanged throughout
+#   HR:   unchanged throughout
+#   Mechanism: peripheral vasodilation (α1 inhibition), no chronotropy
+#
+# Model note: Claeys studied ELDERLY patients with impaired baroreflex.
+# With full baroreflex, the MAP drop is compensated in younger patients.
+# Testing with baroreflex=False (simulates impaired/blocked baroreflex)
+# confirms the pharmacological SVR effect; clinical MAP drop is smaller
+# when baroreflex is intact. This is physiologically correct behaviour.
+# ============================================================
+print("\n" + "=" * 65)
+print("TEST 11  [PMID: 3257393 — Claeys 1988] Propofol 2 mg/kg")
+print("Literature: SVR −21%, MAP −25%, CO unchanged, HR unchanged (elderly patients)")
+print("Model: tested with baroreflex OFF (simulates impaired baroreflex in elderly)")
+print("-" * 65)
+
+from model.pharmacology import combined_drug_factors as _cdf
+
+def run_propofol(dose, baro=False):
+    from model.circulation import SimParams, run_simulation
+    from model.heart import LV_EMAX, RV_EMAX
+    p = SimParams()
+    p.baroreflex_enabled = baro
+    p.drug_factors = _cdf({"propofol": dose})
+    r = run_simulation(p, duration_s=20, dt=DT)
+    h = len(r['map'])//2
+    return {k: float(np.mean(r[k][h:])) for k in ('map','hr','co','cvp','sv')}
+
+s11_base    = run_propofol(0.0, baro=False)
+s11_prop2   = run_propofol(2.0, baro=False)
+s11_prop2br = run_propofol(2.0, baro=True)
+
+dmap_nobaro = (s11_prop2['map']   - s11_base['map']) / s11_base['map'] * 100
+dco_nobaro  = (s11_prop2['co']    - s11_base['co'])  / s11_base['co']  * 100
+dhr_nobaro  =  s11_prop2['hr']    - s11_base['hr']
+dmap_baro   = (s11_prop2br['map'] - s11_base['map']) / s11_base['map'] * 100
+
+print(f"  Baseline (no baro):          MAP {s11_base['map']:.1f}  CO {s11_base['co']:.2f}  HR {s11_base['hr']:.1f}")
+print(f"  Propofol 2mg/kg (no baro):   MAP {s11_prop2['map']:.1f}  CO {s11_prop2['co']:.2f}  HR {s11_prop2['hr']:.1f}")
+print(f"  Propofol 2mg/kg (baro ON):   MAP {s11_prop2br['map']:.1f}  CO {s11_prop2br['co']:.2f}  HR {s11_prop2br['hr']:.1f}")
+print(f"  ΔMAP no-baro: {dmap_nobaro:+.1f}%  (lit elderly: −25%; model=healthy adult without baroreflex)")
+print(f"  ΔMAP baro-ON: {dmap_baro:+.1f}%   (baroreflex partially compensates — appropriate in young healthy)")
+print(f"  ΔCO:  {dco_nobaro:+.1f}%  (lit: ~0%)    ΔHR: {dhr_nobaro:+.1f} bpm  (lit: ~0)")
+
+t11 = [
+    dmap_nobaro < -5,              # MAP must drop (vasodilatory effect present)
+    abs(dco_nobaro) < 15,          # CO approximately maintained (lit: unchanged)
+    abs(dhr_nobaro) < 5,           # HR unchanged (no chronotropy)
+    s11_prop2['map'] > 50,         # MAP stays viable (not zero)
+]
+print(f"\n  MAP drops (vasodilation):     {'PASS' if t11[0] else 'FAIL'} ({dmap_nobaro:.1f}%)")
+print(f"  CO maintained (±15%):         {'PASS' if t11[1] else 'FAIL'} ({dco_nobaro:.1f}%)")
+print(f"  HR unchanged (±5 bpm):        {'PASS' if t11[2] else 'FAIL'} (Δ{dhr_nobaro:.1f} bpm)")
+print(f"  MAP remains viable (>50):     {'PASS' if t11[3] else 'FAIL'} ({s11_prop2['map']:.1f} mmHg)")
+print(f"\n  Overall: {'PASS' if all(t11) else 'FAIL'} ({sum(t11)}/{len(t11)})")
+
+# ============================================================
 # Calibration gap — CVP baseline offset
 # Lloyd-Donald et al. (2025) DOI: 10.1111/anae.16633
 # Normal supine awake CVP = 2–3 mmHg
@@ -439,7 +502,7 @@ print("=" * 65)
 # Summary
 # ============================================================
 groups = [all(t1), all(t2), all(t3), all(t4), all(t5),
-          all(t6), all(t7), all(t8), all(t9), all(t10)]
+          all(t6), all(t7), all(t8), all(t9), all(t10), all(t11)]
 labels = [
     "Supine baseline [Sørensen 2022]",
     "20° HDT normovolemic [Sørensen 2022]",
@@ -451,6 +514,7 @@ labels = [
     "Graded HUT monotonicity [Sarafian 2017]",
     "Cerebral perfusion pressure [Pohl/Cullen 2005]",
     "Coronary / Buckberg index [Buckberg 1972/1978]",
+    "Propofol 2 mg/kg — MAP↓, CO maintained, HR unchanged [Claeys 1988]",
 ]
 print("\n" + "=" * 65)
 print("SUMMARY")

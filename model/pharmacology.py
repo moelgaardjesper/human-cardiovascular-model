@@ -1,11 +1,11 @@
 """
-Vasopressor pharmacodynamic models.
+Intravenous anaesthetic and vasopressor pharmacodynamic models.
 
 Each function returns a dict of multiplicative factors applied to the
 baseline haemodynamic parameters in circulation.py.
 
-Dose-response curves use Hill equations calibrated to standard clinical
-pharmacology references (not in the three primary papers; standard PD).
+Dose-response curves use Hill equations calibrated to published clinical
+pharmacology data (see individual function docstrings for references).
 """
 
 import numpy as np
@@ -93,6 +93,57 @@ def epinephrine(dose_mcg_kg_min: float) -> dict:
     }
 
 
+def propofol(dose_mg_kg: float) -> dict:
+    """
+    Propofol — IV induction and maintenance anaesthetic.
+
+    Primary mechanism: peripheral arteriolar vasodilation (α1 inhibition)
+    + moderate venous dilation (increases venous capacitance).
+    No significant direct chronotropy. Mild negative inotropy at higher doses.
+    Cardiac output is maintained at clinical doses (afterload reduction
+    partially compensates for reduced preload).
+
+    Calibration — Claeys MA, Gepts E, Camu F (1988). Haemodynamic changes
+    during anaesthesia induced and maintained with propofol. Br J Anaesth
+    60:3–9. DOI: 10.1093/bja/60.1.3  (PubMed PMID: 3257393)
+      n=10 elderly patients, propofol 2 mg/kg IV:
+        SVR:  −21% at 2 min after induction, −30% during infusion
+        SBP:  −28% at 2 min, −30% during infusion
+        DBP:  −19% at 2 min, −25% during infusion
+        CO:   unchanged throughout
+        HR:   unchanged throughout
+
+    Hill parameters calibrated so that dose=2.0 gives SVR reduction ~22%
+    (midpoint of reported 21–30% range):
+      ec50_svr = 1.5 mg/kg, emax_svr = 0.40  →  effect(2) = 0.229 ≈ 23% ✓
+      ec50_vein = 2.0 mg/kg, emax_vein = 0.18 →  10% venous capacitance ↑ at 2 mg/kg
+
+    Parameters
+    ----------
+    dose_mg_kg : float
+        Equivalent propofol dose (mg/kg).
+        0   = no drug
+        1   = light sedation / low induction dose
+        2   = standard induction dose (target: SVR −20–25%)
+        2.5 = induction in elderly or compromised patients
+        3   = high induction dose (SVR −30%)
+    """
+    # Arteriolar vasodilation (primary effect — reduces afterload)
+    svr_reduction      = _hill(dose_mg_kg, ec50=1.5, e_max=0.40, n=1.0)
+    # Venous dilation (increases unstressed venous volume → reduces preload)
+    venous_dilation    = _hill(dose_mg_kg, ec50=2.0, e_max=0.18, n=1.0)
+    # Mild negative inotropy (only relevant at high doses; CO unchanged at 2 mg/kg)
+    inotropy_reduction = _hill(dose_mg_kg, ec50=3.0, e_max=0.12, n=1.5)
+
+    return {
+        "svr_factor":       1.0 - svr_reduction,        # e.g. 0.77 at 2 mg/kg
+        "hr_factor":        1.0,                         # no direct chronotropy
+        "lv_emax_factor":   1.0 - inotropy_reduction,   # e.g. 0.95 at 2 mg/kg
+        "rv_emax_factor":   1.0 - inotropy_reduction,
+        "venous_tone_factor": 1.0 + venous_dilation,    # e.g. 1.10 at 2 mg/kg
+    }
+
+
 def combined_drug_factors(drugs: dict) -> dict:
     """
     Merge effects of multiple concurrent drugs by multiplying their factors.
@@ -107,6 +158,7 @@ def combined_drug_factors(drugs: dict) -> dict:
         "phenylephrine":  phenylephrine,
         "vasopressin":    vasopressin,
         "epinephrine":    epinephrine,
+        "propofol":       propofol,
     }
     combined = {
         "svr_factor": 1.0,
