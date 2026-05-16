@@ -236,8 +236,10 @@ function updateVitals(s) {
 // ═══════════════════════════════════════════════════
 
 let _liveActive    = false;
-let _pollTimer     = null;    // setInterval handle for polling
-const LIVE_WIN   = 60;   // seconds of history shown
+let _pollTimer     = null;
+const MAX_PTS      = 150;     // hard cap on array length (~15 s at 10 Hz)
+const LIVE_WIN   = 15;   // seconds of history shown (was 60 — data accumulated for
+                         // 60 s before _trimLive() fired, progressively slowing Plotly)
 
 const _ld = {   // live data buffers
   t:[], ap:[], sbp:[], dbp:[], co:[], cvp:[], hr:[], cpp:[], cop:[], buck:[]
@@ -251,11 +253,12 @@ let _latestState  = null;    // most recent SSE state, used by the rAF render
 const _CHART_IDS = ['chart_ap','chart_co','chart_cvp','chart_cpp','chart_buckberg'];
 
 function _trimLive() {
-  if (!_ld.t.length) return;
-  const cut = _ld.t[_ld.t.length - 1] - LIVE_WIN;
-  let i = 0;
-  while (i < _ld.t.length && _ld.t[i] < cut) i++;
-  if (i > 0) Object.keys(_ld).forEach(k => { _ld[k] = _ld[k].slice(i); });
+  // Hard cap on number of points — keeps Plotly render time constant from t=0.
+  // Previous time-based trim (cut = t - LIVE_WIN) did nothing before t=LIVE_WIN,
+  // so 600 points accumulated before the first trim at t=60s, causing progressive
+  // Plotly slowdown and the observed 60-second freeze.
+  const excess = _ld.t.length - MAX_PTS;
+  if (excess > 0) Object.keys(_ld).forEach(k => { _ld[k] = _ld[k].slice(excess); });
 }
 
 function _initLiveCharts() {
