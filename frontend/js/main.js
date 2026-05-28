@@ -11,6 +11,7 @@ function onTiltMove(val) {
                         : `+${val}° — Head-up`;
   document.getElementById('tilt_val_lbl').textContent = label;
   document.getElementById('s_tilt').textContent = val + '°';
+  updateAvatar({ tilt: val });
   liveUpdate();
 }
 
@@ -192,6 +193,48 @@ function buckZones() {
 }
 
 // ═══════════════════════════════════════════════════
+// Patient avatar
+// ═══════════════════════════════════════════════════
+
+function updateAvatar(s) {
+  const tilt = s.tilt ?? 0;
+
+  // Tilt body around hip (100, 45); positive SVG rotation = head dips
+  const body = document.getElementById('av-body');
+  if (body) body.setAttribute('transform', `rotate(${-tilt}, 100, 45)`);
+
+  // Head: CPP traffic-light
+  const cpp  = s.cpp ?? null;
+  const head = document.getElementById('av-head');
+  if (head && cpp != null) {
+    head.setAttribute('fill',
+      cpp < 50 ? '#ef4444' : cpp < 60 ? '#f59e0b' : '#10b981');
+  }
+
+  // Torso: Buckberg traffic-light (subtle dark tint)
+  const bk    = s.buckberg ?? null;
+  const torso = document.getElementById('av-torso');
+  if (torso && bk != null) {
+    torso.setAttribute('fill',
+      bk < 0.5 ? '#3b0f0f' : bk < 0.8 ? '#291a06' : '#1f2937');
+  }
+
+  // Legs: venous pooling proxy — opacity rises when head-up
+  const legs = document.getElementById('av-legs');
+  if (legs) {
+    const pool = Math.max(0, Math.min(1, tilt / 45));
+    legs.setAttribute('opacity', (0.3 + pool * 0.55).toFixed(2));
+  }
+
+  // Heart rate: speed up animation duration
+  const hr    = s.hr ?? null;
+  const heart = document.getElementById('av-heart');
+  if (heart && hr != null) {
+    heart.style.animationDuration = (60 / Math.max(30, hr)).toFixed(2) + 's';
+  }
+}
+
+// ═══════════════════════════════════════════════════
 // Vitals update (shared by live + static summary)
 // ═══════════════════════════════════════════════════
 
@@ -230,6 +273,8 @@ function updateVitals(s) {
     bkEl.className = 'vital ' + (bk < 0.5 ? 'red' : bk < 0.8 ? 'amber' : '');
     bkV.style.color = bk < 0.5 ? 'var(--red)' : bk < 0.8 ? 'var(--amber)' : '#fbbf24';
   }
+
+  updateAvatar(s);
 }
 
 // ═══════════════════════════════════════════════════
@@ -291,8 +336,9 @@ function _ext(id, update, indices) {
 }
 
 function _onLivePoint(s) {
-  // 1. Vitals bar — lightweight, always runs
+  // 1. Vitals bar + avatar — lightweight, always runs
   updateVitals(s);
+  updateAvatar(s);
   const tl = s.tilt ?? 0;
   document.getElementById('tilt_val_lbl').textContent =
     tl === 0 ? '0° — Supine' : tl < 0 ? `${tl}° — Head-down` : `+${tl}° — Head-up`;
