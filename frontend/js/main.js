@@ -201,7 +201,7 @@ function updateAvatar(s) {
 
   // Tilt body around hip (100, 45); positive SVG rotation = head dips
   const body = document.getElementById('av-body');
-  if (body) body.setAttribute('transform', `rotate(${-tilt}, 100, 45)`);
+  if (body) body.setAttribute('transform', `rotate(${tilt}, 100, 45)`);
 
   // Head: CPP traffic-light
   const cpp  = s.cpp ?? null;
@@ -286,14 +286,7 @@ let _pollTimer   = null;
 const LIVE_WIN   = 15;    // seconds of rolling window shown
 const MAX_PTS    = 150;   // maxpoints passed to extendTraces (15 s × 10 Hz)
 
-const _CHART_IDS = ['chart_ap','chart_co','chart_cvp','chart_cpp','chart_buckberg'];
-
-// No _ld buffer arrays needed — Plotly.extendTraces manages data internally.
-// extendTraces appends exactly one point and trims to maxpoints in O(1),
-// eliminating the accumulation that caused the 15/60-second freeze.
-
-let _lastExtend  = 0;    // wall-clock time of last extendTraces call
-let _titleTick   = 0;    // counter for throttled title/axis updates
+let _titleTick   = 0;    // counter for throttled title/axis updates (~1 Hz)
 
 function _initLiveCharts() {
   const cfg = { responsive: true, displayModeBar: false };
@@ -344,12 +337,10 @@ function _onLivePoint(s) {
     tl === 0 ? '0° — Supine' : tl < 0 ? `${tl}° — Head-down` : `+${tl}° — Head-up`;
   document.getElementById('s_tilt').textContent = tl + '°';
 
-  // 2. Append one data point to each chart — O(1), no accumulation
-  const now = Date.now();
-  if (now - _lastExtend < 100) return;   // cap at 10 Hz chart updates
-  _lastExtend = now;
-
-  const t  = [[s.t]];
+  // 2. Append one data point to each chart — O(1), no accumulation.
+  // Poll interval (100ms) is the natural rate limiter; no separate throttle needed.
+  // t must be [s.t] (not [[s.t]]) — extendTraces wraps it into [[s.t]] per trace.
+  const t  = [s.t];
   _ext('chart_ap',        { x:[t,t,t], y:[[s.aortic_p??s.map],[s.sbp??s.map],[s.dbp??s.map]] }, [0,1,2]);
   _ext('chart_co',        { x:[t],     y:[[s.co]]                                             }, [0]    );
   _ext('chart_cvp',       { x:[t],     y:[[s.cvp]]                                            }, [0]    );
@@ -389,7 +380,7 @@ async function toggleLive() {
 
   // Start
   _liveActive = true;
-  _lastExtend = 0; _titleTick = 0;
+  _titleTick = 0;
 
   // Start server session
   await fetch('/api/live/start', {
