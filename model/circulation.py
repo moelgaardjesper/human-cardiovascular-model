@@ -41,6 +41,7 @@ from .heart import (
 from .gravity import hydrostatic_delta_mmhg, GravityEnvironment, smooth_tilt_profile
 from .baroreflex import BaroreflexController
 from .pharmacology import combined_drug_factors, NEUTRAL_FACTORS
+from .respiration import intrathoracic_pressure, respiratory_sinus_arrhythmia
 
 
 # ---------------------------------------------------------------------------
@@ -96,6 +97,16 @@ class SimParams:
         self.muscle_pump_pressure = 0.0   # mmHg peak calf compression
         self.muscle_pump_freq_hz  = 0.5   # Hz contraction frequency
 
+        # Ventilation — respiratory-cardiovascular coupling.
+        # mode 'none'        : ITP = 0, no RSA (default, sedated/apnoeic)
+        # mode 'spontaneous' : negative-pressure breathing; ITP swings −5 to −13 cmH₂O
+        # mode 'mechanical'  : positive-pressure PPV; ITP swings PEEP → PIP
+        self.ventilation_mode = 'none'   # 'none' | 'spontaneous' | 'mechanical'
+        self.resp_rate_bpm    = 14.0     # breaths/min (8–25 typical)
+        self.peep_cmh2o       = 5.0      # cmH₂O — PEEP for mechanical ventilation
+        self.pip_cmh2o        = 20.0     # cmH₂O — peak inspiratory pressure
+        self.ie_ratio         = 0.33     # inspiratory fraction (0.33 = 1:2 I:E)
+
 
 # ---------------------------------------------------------------------------
 # Pressure helpers
@@ -128,11 +139,16 @@ def _odes(t: float, V: np.ndarray, params: SimParams, baro: BaroreflexController
     drugs = params.drug_factors
 
     # -----------------------------------------------------------------------
-    # Effective heart rate (baroreflex delta + drug factor)
+    # Effective heart rate (baroreflex + drug + RSA)
     # -----------------------------------------------------------------------
     hr = params.hr_bpm * drugs.get("hr_factor", 1.0)
     if baro is not None:
         hr = max(30.0, min(180.0, hr + baro.hr_delta))
+    # Respiratory sinus arrhythmia: additive HR modulation at respiratory freq.
+    # Active only when ventilation_mode != 'none'.
+    if params.ventilation_mode != 'none':
+        hr = max(30.0, min(180.0, hr + respiratory_sinus_arrhythmia(
+            t, params.ventilation_mode, params.resp_rate_bpm, params.ie_ratio)))
 
     # -----------------------------------------------------------------------
     # Elastance parameters (baroreflex + drug modulation)
@@ -188,6 +204,31 @@ def _odes(t: float, V: np.ndarray, params: SimParams, baro: BaroreflexController
     P[i["right_ventricle"]] = _cardiac_pressure(V[i["right_ventricle"]], comp[i["right_ventricle"]].unstressed_volume, E_rv)
     P[i["left_atrium"]]     = _cardiac_pressure(V[i["left_atrium"]],     comp[i["left_atrium"]].unstressed_volume,     E_la)
     P[i["right_atrium"]]    = _cardiac_pressure(V[i["right_atrium"]],    comp[i["right_atrium"]].unstressed_volume,    E_ra)
+
+    # -----------------------------------------------------------------------
+    # Intrathoracic pressure (ITP) — respiratory-cardiovascular coupling
+    #
+    # Add ITP to all thoracic compartments (including aorta so that ITP cancels
+    # for the LV→aorta aortic-valve flow and is correctly transmitted to the
+    # peripheral arterial tree).
+    #
+    # Effect on cross-boundary flows:
+    #   Venous return:  Q_SVC/IVC_→_RA = (P_SVC/IVC − (P_RA_transmural + ITP)) / R
+    #     → ITP negative (spontaneous insp.) → venous return ↑ ✓
+    #     → ITP positive (PPV insp.)          → venous return ↓ ✓
+    #   Aorta→peripheral: Q = ((P_ao_transmural + ITP) − P_brachio) / R
+    #     → transmits ITP pulse to systemic arteries (basis of PPV/SVV marker) ✓
+    #   Intra-thoracic flows: ITP cancels between both thoracic compartments ✓
+    # -----------------------------------------------------------------------
+    if params.ventilation_mode != 'none':
+        itp = intrathoracic_pressure(
+            t, params.ventilation_mode, params.resp_rate_bpm,
+            params.peep_cmh2o, params.pip_cmh2o, params.ie_ratio,
+        )
+        for _ti in (i["aorta"], i["right_atrium"], i["right_ventricle"],
+                    i["pulmonary_art"], i["pulmonary_cap"], i["pulmonary_vein"],
+                    i["left_atrium"], i["left_ventricle"]):
+            P[_ti] += itp
 
     # -----------------------------------------------------------------------
     # Tilt angle at current time
@@ -451,6 +492,10 @@ def run_simulation(
         if baro is not None:
             baro.update(p_ao, 40.0, p_cvp_edi)
             hr_eff = max(30.0, min(180.0, params.hr_bpm + baro.hr_delta))
+        if params.ventilation_mode != 'none':
+            rsa = respiratory_sinus_arrhythmia(
+                t, params.ventilation_mode, params.resp_rate_bpm, params.ie_ratio)
+            hr_eff = max(30.0, min(180.0, hr_eff + rsa))
 
         # Carry forward updated HR for next step's monitoring
         _hr_monitor   = hr_eff

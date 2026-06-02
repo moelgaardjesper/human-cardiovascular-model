@@ -426,6 +426,45 @@
 
     <div class="divider"></div>
 
+    <!-- Ventilation -->
+    <div class="section">
+      <div class="section-header">Ventilation</div>
+
+      <div class="field">
+        <label>Mode</label>
+        <select id="vent_mode" onchange="updateVentUI(); liveUpdate()">
+          <option value="none">None / apnoeic</option>
+          <option value="spontaneous">Spontaneous (−pressure)</option>
+          <option value="mechanical">Mechanical PPV (+pressure)</option>
+        </select>
+      </div>
+
+      <div id="vent_params" style="display:none;gap:6px;flex-direction:column;">
+        <div class="drug-field">
+          <label>Rate</label>
+          <input type="number" id="resp_rate" value="14" step="1" min="8" max="30"
+                 onchange="liveUpdate()" onkeydown="if(event.key==='Enter')this.blur()" />
+          <span class="drug-unit">bpm</span>
+        </div>
+        <div id="vent_ppv_params" style="display:none;gap:6px;flex-direction:column;">
+          <div class="drug-field">
+            <label>PEEP</label>
+            <input type="number" id="peep" value="5" step="1" min="0" max="20"
+                   onchange="liveUpdate()" onkeydown="if(event.key==='Enter')this.blur()" />
+            <span class="drug-unit">cmH₂O</span>
+          </div>
+          <div class="drug-field">
+            <label>PIP</label>
+            <input type="number" id="pip" value="20" step="1" min="10" max="40"
+                   onchange="liveUpdate()" onkeydown="if(event.key==='Enter')this.blur()" />
+            <span class="drug-unit">cmH₂O</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="divider"></div>
+
     <!-- Vasopressors -->
     <div class="section">
       <div class="section-header">

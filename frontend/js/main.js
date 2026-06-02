@@ -20,11 +20,18 @@ function onTiltMove(val) {
 // ═══════════════════════════════════════════════════
 
 function applyPumpPreset(val) {
-  // Store internal pump pressure (used in buildPayload / liveUpdate)
   window._pumpPressure = parseFloat(val);
   liveUpdate();
 }
 window._pumpPressure = 0;
+
+function updateVentUI() {
+  const mode = document.getElementById('vent_mode').value;
+  const params = document.getElementById('vent_params');
+  const ppv    = document.getElementById('vent_ppv_params');
+  params.style.display = mode === 'none'   ? 'none' : 'flex';
+  ppv.style.display    = mode === 'mechanical' ? 'flex' : 'none';
+}
 
 function clearDrugs() {
   ['drug_propofol','drug_norepi','drug_phenyl','drug_vaso','drug_epi'].forEach(id => {
@@ -67,6 +74,7 @@ function buildScenario() {
   const vaso   = optFloat('drug_vaso');     if (vaso)   drugs.vasopressin    = vaso;
   const epi    = optFloat('drug_epi');      if (epi)    drugs.epinephrine    = epi;
 
+  const ventMode = document.getElementById('vent_mode').value;
   return {
     gravity:              document.getElementById('gravity').value,
     tilt_start_deg:       parseFloat(document.getElementById('tilt_current').value),
@@ -75,6 +83,10 @@ function buildScenario() {
     tilt_duration_s:      5,
     muscle_pump_pressure: window._pumpPressure || 0,
     muscle_pump_freq_hz:  0.5,
+    ventilation_mode:     ventMode,
+    resp_rate_bpm:        parseFloat(document.getElementById('resp_rate').value) || 14,
+    peep_cmh2o:           parseFloat(document.getElementById('peep').value)      || 5,
+    pip_cmh2o:            parseFloat(document.getElementById('pip').value)        || 20,
     drugs,
   };
 }
@@ -436,6 +448,7 @@ function liveUpdate() {
   const vaso   = optFloat('drug_vaso');     if (vaso)   drugs.vasopressin    = vaso;
   const epi    = optFloat('drug_epi');      if (epi)    drugs.epinephrine    = epi;
 
+  const ventMode = document.getElementById('vent_mode').value;
   fetch('/api/live/params', {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
@@ -444,7 +457,11 @@ function liveUpdate() {
       gravity:              document.getElementById('gravity').value,
       muscle_pump_pressure: window._pumpPressure || 0,
       muscle_pump_freq_hz:  0.5,
-      drugs:     Object.keys(drugs).length ? drugs : undefined,
+      ventilation_mode:     ventMode,
+      resp_rate_bpm:        parseFloat(document.getElementById('resp_rate').value) || 14,
+      peep_cmh2o:           parseFloat(document.getElementById('peep').value)      || 5,
+      pip_cmh2o:            parseFloat(document.getElementById('pip').value)        || 20,
+      drugs:       Object.keys(drugs).length ? drugs : undefined,
       drugs_reset: !Object.keys(drugs).length,
     }}),
   }).catch(console.error);

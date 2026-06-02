@@ -40,8 +40,12 @@ live_bp = Blueprint("live", __name__)
 # ---------------------------------------------------------------------------
 # Simulation constants
 # ---------------------------------------------------------------------------
-DT          = 0.002   # s — integration step (Euler stable for all compartments)
-PUSH_STEPS  = 50      # steps per push → 50 × 0.002 = 0.1 s simulated per push
+# DT=0.001 s: stability criterion for forward Euler is DT < τ_min/2 where
+# τ_min = VALVE_R × C_RV = 0.08 × 0.05 = 0.004 s → need DT < 0.002 s.
+# DT=0.002 sat right at the boundary; small numerical drift caused the model
+# to diverge at ~150 s into a long live run. DT=0.001 gives 4× safety margin.
+DT          = 0.001   # s — integration step
+PUSH_STEPS  = 100     # steps per push → 100 × 0.001 = 0.1 s simulated per push
 TARGET_RATE = 0.1     # target wall-clock seconds per push (≈ real-time)
 HISTORY_LEN = 600     # max points kept (60 s at 10 Hz)
 
@@ -205,6 +209,17 @@ class LiveSimulator:
             self.params.muscle_pump_pressure = float(scenario["muscle_pump_pressure"])
         if "muscle_pump_freq_hz" in scenario:
             self.params.muscle_pump_freq_hz = float(scenario["muscle_pump_freq_hz"])
+
+        if "ventilation_mode" in scenario:
+            self.params.ventilation_mode = str(scenario["ventilation_mode"])
+        if "resp_rate_bpm" in scenario:
+            self.params.resp_rate_bpm = float(scenario["resp_rate_bpm"])
+        if "peep_cmh2o" in scenario:
+            self.params.peep_cmh2o = float(scenario["peep_cmh2o"])
+        if "pip_cmh2o" in scenario:
+            self.params.pip_cmh2o = float(scenario["pip_cmh2o"])
+        if "ie_ratio" in scenario:
+            self.params.ie_ratio = float(scenario["ie_ratio"])
 
     def _run(self) -> None:
         """Main simulation loop — runs in the background thread."""

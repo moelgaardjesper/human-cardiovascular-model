@@ -120,6 +120,11 @@ def simulate():
     params.tilt_duration_s      = float(scenario.get("tilt_duration_s", 5))
     params.muscle_pump_pressure = float(scenario.get("muscle_pump_pressure", 0))
     params.muscle_pump_freq_hz  = float(scenario.get("muscle_pump_freq_hz", 0.5))
+    params.ventilation_mode     = str(scenario.get("ventilation_mode", "none"))
+    params.resp_rate_bpm        = float(scenario.get("resp_rate_bpm", 14.0))
+    params.peep_cmh2o           = float(scenario.get("peep_cmh2o", 5.0))
+    params.pip_cmh2o            = float(scenario.get("pip_cmh2o", 20.0))
+    params.ie_ratio             = float(scenario.get("ie_ratio", 0.33))
 
     drugs = scenario.get("drugs", {})
     if drugs:

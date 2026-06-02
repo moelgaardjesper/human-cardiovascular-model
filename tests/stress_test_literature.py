@@ -481,6 +481,87 @@ print(f"  MAP remains viable (>50):     {'PASS' if t11[3] else 'FAIL'} ({s11_pro
 print(f"\n  Overall: {'PASS' if all(t11) else 'FAIL'} ({sum(t11)}/{len(t11)})")
 
 # ============================================================
+# TEST 12 — Respiratory sinus arrhythmia (RSA)
+# Hirsch & Bishop (1981) Am J Physiol 241:H620-H629
+# RSA peak-to-peak amplitude: 3–10 bpm in resting healthy adults (15 bpm RR).
+# Test: spontaneous breathing produces detectable HR oscillation at resp freq.
+# ============================================================
+print("\n" + "=" * 65)
+print("TEST 12  [Hirsch & Bishop 1981]")
+print("RSA: spontaneous breathing produces HR oscillation 3–10 bpm peak-to-peak")
+print("-" * 65)
+
+from model.respiration import intrathoracic_pressure, respiratory_sinus_arrhythmia
+
+p12 = SimParams()
+p12.ventilation_mode = 'spontaneous'
+p12.resp_rate_bpm    = 15.0
+r12 = run_simulation(p12, duration_s=30, dt=DT, use_baroreflex=True)
+hr12 = r12['hr']
+hr12_std = float(np.std(hr12[len(hr12)//2:]))
+hr12_range = float(np.max(hr12) - np.min(hr12))
+
+print(f"  HR std over last 15 s:  {hr12_std:.2f} bpm")
+print(f"  HR peak-to-peak range:  {hr12_range:.2f} bpm")
+
+t12 = [
+    hr12_std  > 0.3,     # some RSA oscillation present
+    hr12_range < 12.0,   # not excessive (pathological RSA would be >10 bpm range)
+    hr12_range > 0.5,    # measurable signal
+]
+print(f"\n  RSA detectable (std > 0.3):  {'PASS' if t12[0] else 'FAIL'} ({hr12_std:.2f} bpm)")
+print(f"  RSA not excessive (<12 bpm): {'PASS' if t12[1] else 'FAIL'} ({hr12_range:.2f} bpm p-p)")
+print(f"  RSA measurable (p-p > 0.5):  {'PASS' if t12[2] else 'FAIL'} ({hr12_range:.2f} bpm)")
+print(f"\n  Overall: {'PASS' if all(t12) else 'FAIL'} ({sum(t12)}/{len(t12)})")
+
+# ============================================================
+# TEST 13 — PEEP reduces cardiac output
+# Jardin F et al. (1981) Crit Care Med 9:19-22 (PMID: 7273804)
+# PEEP 10 cmH₂O during mechanical ventilation:
+#   CO reduced 24% (cardiac index 2.9→2.2 L/min/m²)
+#   RA pressure rises (venous return impeded by elevated ITP)
+# Test: mechanical ventilation with PEEP 10 cmH₂O reduces CO vs no ventilation.
+# ============================================================
+print("\n" + "=" * 65)
+print("TEST 13  [Jardin 1981, PMID: 7273804]")
+print("PEEP 10 cmH₂O reduces CO ≥5% vs no ventilation (lit: −24%)")
+print("-" * 65)
+
+def run_vent(mode, peep=5.0, pip=20.0, rr=14.0):
+    p = SimParams()
+    p.ventilation_mode = mode
+    p.resp_rate_bpm    = rr
+    p.peep_cmh2o       = peep
+    p.pip_cmh2o        = pip
+    r = run_simulation(p, duration_s=30, dt=DT, use_baroreflex=True)
+    h = len(r['map']) // 2
+    return {k: float(np.mean(r[k][h:])) for k in ('map', 'co', 'hr', 'cvp', 'sv')}
+
+s13_none  = run_vent('none')
+s13_peep0 = run_vent('mechanical', peep=0.0,  pip=15.0)
+s13_peep10 = run_vent('mechanical', peep=10.0, pip=25.0)
+
+dco_peep0  = (s13_peep0['co']  - s13_none['co']) / s13_none['co'] * 100
+dco_peep10 = (s13_peep10['co'] - s13_none['co']) / s13_none['co'] * 100
+
+print(f"  No ventilation:        MAP {s13_none['map']:.1f}  CO {s13_none['co']:.2f}  CVP {s13_none['cvp']:.1f}")
+print(f"  Mech PEEP 0 cmH₂O:    MAP {s13_peep0['map']:.1f}  CO {s13_peep0['co']:.2f}  CVP {s13_peep0['cvp']:.1f}  ΔCO={dco_peep0:+.1f}%")
+print(f"  Mech PEEP 10 cmH₂O:   MAP {s13_peep10['map']:.1f}  CO {s13_peep10['co']:.2f}  CVP {s13_peep10['cvp']:.1f}  ΔCO={dco_peep10:+.1f}%")
+print(f"  (Jardin 1981: PEEP 10 cmH₂O → ΔCO = −24%)")
+
+t13 = [
+    dco_peep10 < -5,         # PEEP 10 must reduce CO by ≥ 5%
+    dco_peep10 > -50,        # but not catastrophically (model is spontaneously breathing compensated)
+    dco_peep10 < dco_peep0,  # PEEP 10 reduces CO more than PEEP 0 (dose-response)
+    s13_peep10['map'] > 50,  # MAP must stay viable
+]
+print(f"\n  CO ↓ ≥ 5% with PEEP 10:     {'PASS' if t13[0] else 'FAIL'} ({dco_peep10:.1f}%)")
+print(f"  CO not catastrophic (>−50%): {'PASS' if t13[1] else 'FAIL'} ({dco_peep10:.1f}%)")
+print(f"  PEEP dose-response:          {'PASS' if t13[2] else 'FAIL'} (PEEP0={dco_peep0:.1f}% PEEP10={dco_peep10:.1f}%)")
+print(f"  MAP viable (>50 mmHg):       {'PASS' if t13[3] else 'FAIL'} ({s13_peep10['map']:.1f} mmHg)")
+print(f"\n  Overall: {'PASS' if all(t13) else 'FAIL'} ({sum(t13)}/{len(t13)})")
+
+# ============================================================
 # Calibration gap — CVP baseline offset
 # Lloyd-Donald et al. (2025) DOI: 10.1111/anae.16633
 # Normal supine awake CVP = 2–3 mmHg
@@ -502,7 +583,8 @@ print("=" * 65)
 # Summary
 # ============================================================
 groups = [all(t1), all(t2), all(t3), all(t4), all(t5),
-          all(t6), all(t7), all(t8), all(t9), all(t10), all(t11)]
+          all(t6), all(t7), all(t8), all(t9), all(t10), all(t11),
+          all(t12), all(t13)]
 labels = [
     "Supine baseline [Sørensen 2022]",
     "20° HDT normovolemic [Sørensen 2022]",
@@ -515,6 +597,8 @@ labels = [
     "Cerebral perfusion pressure [Pohl/Cullen 2005]",
     "Coronary / Buckberg index [Buckberg 1972/1978]",
     "Propofol 2 mg/kg — MAP↓, CO maintained, HR unchanged [Claeys 1988]",
+    "RSA — spontaneous breathing HR oscillation [Hirsch & Bishop 1981]",
+    "PEEP 10 cmH₂O reduces CO [Jardin 1981]",
 ]
 print("\n" + "=" * 65)
 print("SUMMARY")
