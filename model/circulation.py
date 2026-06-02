@@ -225,7 +225,16 @@ def _odes(t: float, V: np.ndarray, params: SimParams, baro: BaroreflexController
             t, params.ventilation_mode, params.resp_rate_bpm,
             params.peep_cmh2o, params.pip_cmh2o, params.ie_ratio,
         )
-        for _ti in (i["aorta"], i["right_atrium"], i["right_ventricle"],
+        # Aorta deliberately excluded: including it creates an unphysical
+        # retrograde peripheral arterial flow when ITP is negative (spontaneous
+        # breathing) because the arterial connections have no one-way valve and
+        # ITP large enough to invert P_ao − P_brachio drives blood backward,
+        # accumulating volume in the aorta and raising diastolic pressure.
+        # Without aorta in this set, the LV→aorta valve flow retains ITP
+        # (LV thoracic, aorta not) giving a correct pulsus inspiratorius during
+        # spontaneous breathing and the correct ITP-assisted ejection during PPV
+        # (the mechanism behind PPV/SVV as a fluid-responsiveness marker).
+        for _ti in (i["right_atrium"], i["right_ventricle"],
                     i["pulmonary_art"], i["pulmonary_cap"], i["pulmonary_vein"],
                     i["left_atrium"], i["left_ventricle"]):
             P[_ti] += itp
