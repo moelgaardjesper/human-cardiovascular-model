@@ -101,7 +101,7 @@ class SimParams:
         # mode 'none'        : ITP = 0, no RSA (default, sedated/apnoeic)
         # mode 'spontaneous' : negative-pressure breathing; ITP swings −5 to −13 cmH₂O
         # mode 'mechanical'  : positive-pressure PPV; ITP swings PEEP → PIP
-        self.ventilation_mode = 'none'   # 'none' | 'spontaneous' | 'mechanical'
+        self.ventilation_mode = 'spontaneous'  # 'none' | 'spontaneous' | 'mechanical'
         self.resp_rate_bpm    = 14.0     # breaths/min (8–25 typical)
         self.peep_cmh2o       = 5.0      # cmH₂O — PEEP for mechanical ventilation
         self.pip_cmh2o        = 20.0     # cmH₂O — peak inspiratory pressure
@@ -320,9 +320,11 @@ def _odes(t: float, V: np.ndarray, params: SimParams, baro: BaroreflexController
     Q_renal_ivc   = (P[i["renal_vein"]]     - P[i["ivc"]]) / R("renal_vein")
     Q_splanch_ivc = (P[i["splanchnic_vein"]] - P[i["ivc"]]) / R("splanchnic_vein")
 
-    # Right heart inflows
-    Q_svc_ra = (P[i["svc"]] - P[i["right_atrium"]] + hdp("svc") - hdp("right_atrium")) / R("right_atrium")
-    Q_ivc_ra = (P[i["ivc"]] - P[i["right_atrium"]] + hdp("ivc") - hdp("right_atrium")) / R("right_atrium")
+    # Right heart inflows — one-way valves prevent retrograde venous flow.
+    # Without the max(0,...) guard, positive ITP (mechanical PPV) can raise
+    # P_RA above P_SVC/IVC and drive blood backward through the great veins.
+    Q_svc_ra = max(0.0, (P[i["svc"]] - P[i["right_atrium"]] + hdp("svc") - hdp("right_atrium")) / R("right_atrium"))
+    Q_ivc_ra = max(0.0, (P[i["ivc"]] - P[i["right_atrium"]] + hdp("ivc") - hdp("right_atrium")) / R("right_atrium"))
 
     # Tricuspid valve (RA → RV)
     Q_tricuspid = max(0.0, (P[i["right_atrium"]] - P[i["right_ventricle"]]) / comp[i["right_ventricle"]].resistance)

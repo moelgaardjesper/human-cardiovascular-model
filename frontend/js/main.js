@@ -29,9 +29,11 @@ function updateVentUI() {
   const mode = document.getElementById('vent_mode').value;
   const params = document.getElementById('vent_params');
   const ppv    = document.getElementById('vent_ppv_params');
-  params.style.display = mode === 'none'   ? 'none' : 'flex';
+  params.style.display = mode === 'none'       ? 'none' : 'flex';
   ppv.style.display    = mode === 'mechanical' ? 'flex' : 'none';
 }
+// Show resp rate field immediately since spontaneous is the default selection
+updateVentUI();
 
 function clearDrugs() {
   ['drug_propofol','drug_norepi','drug_phenyl','drug_vaso','drug_epi'].forEach(id => {

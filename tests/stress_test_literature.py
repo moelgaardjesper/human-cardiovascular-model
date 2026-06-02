@@ -51,17 +51,24 @@ def last_half(arr):
 
 def run_scenario(label, height_cm, weight_kg, map_mmhg=None, hr_bpm=70,
                  tilt_deg=0.0, tilt_onset=5.0, gravity=GravityEnvironment.EARTH,
-                 baroreflex=True):
+                 baroreflex=True, ventilation_mode='spontaneous', resp_rate=14.0):
+    """
+    Run a scenario. Default ventilation_mode='spontaneous' because most
+    literature validation studies used awake, spontaneously-breathing volunteers.
+    Pass ventilation_mode='none' for anaesthetised/apnoeic scenarios.
+    """
     comps, cardiac = build_patient_params(height_cm, weight_kg, map_mmhg=map_mmhg, hr_bpm=hr_bpm)
     params = SimParams(compartments=comps)
-    params.hr_bpm          = hr_bpm
-    params.lv_emax         = LV_EMAX * cardiac.get("lv_emax_factor", 1.0)
-    params.rv_emax         = RV_EMAX * cardiac.get("rv_emax_factor", 1.0)
-    params.tilt_start_deg  = tilt_deg
-    params.tilt_end_deg    = tilt_deg
-    params.tilt_onset_s    = tilt_onset
-    params.gravity         = gravity
+    params.hr_bpm             = hr_bpm
+    params.lv_emax            = LV_EMAX * cardiac.get("lv_emax_factor", 1.0)
+    params.rv_emax            = RV_EMAX * cardiac.get("rv_emax_factor", 1.0)
+    params.tilt_start_deg     = tilt_deg
+    params.tilt_end_deg       = tilt_deg
+    params.tilt_onset_s       = tilt_onset
+    params.gravity            = gravity
     params.baroreflex_enabled = baroreflex
+    params.ventilation_mode   = ventilation_mode
+    params.resp_rate_bpm      = resp_rate
 
     r = run_simulation(params, duration_s=DURATION, dt=DT)
     return {k: last_half(r[k]) for k in ("map", "hr", "co", "cvp", "sv",

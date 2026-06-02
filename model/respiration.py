@@ -71,25 +71,40 @@ def intrathoracic_pressure(
     phase = (t % T) / T                    # 0–1 within one breath cycle
 
     if mode == 'spontaneous':
-        # Resting end-expiratory ITP: −5 cmH₂O (Heldt 2002).
-        # Drops to ~−13 cmH₂O at mid-inspiration with normal tidal volume.
-        # Smooth half-sine during inspiration; flat (passive) during expiration.
-        baseline  = -5.0   # cmH₂O
-        swing     = -8.0   # additional cmH₂O depression at mid-inspiration
+        # Model constraint: the SVC→RA and IVC→RA connections use VALVE_R=0.08
+        # (low resistance, as appropriate for large veins). With a normal driving
+        # pressure of ~2 mmHg, even a −5 mmHg ITP would drive Q_svc_ra to 88 mL/s
+        # (3.5× the normal 25 mL/s), flooding the RA every inspiration cycle.
+        # The physiological limiter (vein collapse / Guyton waterfall at thoracic
+        # inlet) is not modelled, so ITP must be kept small enough that the RA
+        # self-limits via its own compliance before the cascade destabilises.
+        #
+        # Calibration: baseline −2 cmH₂O, swing −1 cmH₂O (peak −3 cmH₂O =
+        # −2.2 mmHg). At peak inspiration: Q_svc_ra ≈ 53 mL/s (2× normal),
+        # which raises RA transmural pressure enough to restore equilibrium within
+        # the same breath. RSA (modelled separately) remains the main respiratory
+        # signature in HR.
+        baseline  = -2.0   # cmH₂O, resting end-expiratory
+        swing     = -1.0   # additional cmH₂O at mid-inspiration (total: −3 cmH₂O)
         if phase < ie_ratio:
             itp_cmh2o = baseline + swing * math.sin(math.pi * phase / ie_ratio)
         else:
             itp_cmh2o = baseline
 
     elif mode == 'mechanical':
-        # Pressure swings from PEEP (expiration) to PIP (peak inspiration).
-        # Half-sine rise during the inspiratory fraction; falls back to PEEP.
+        # Airway pressure (PEEP→PIP) is attenuated by chest-wall compliance
+        # before reaching the pleural space. The pleural pressure transmission
+        # fraction is typically 0.4–0.5 (Suter 1978; Talmor 2008). Using 0.5
+        # keeps the CO reduction from PEEP within the Jardin 1981 range while
+        # preventing complete venous-return block at PEEP 10 cmH₂O.
+        _TRANSMISSION = 0.5
         if phase < ie_ratio:
-            itp_cmh2o = peep_cmh2o + (pip_cmh2o - peep_cmh2o) * math.sin(
+            airway    = peep_cmh2o + (pip_cmh2o - peep_cmh2o) * math.sin(
                 math.pi * phase / ie_ratio
             )
         else:
-            itp_cmh2o = peep_cmh2o
+            airway    = peep_cmh2o
+        itp_cmh2o = airway * _TRANSMISSION
 
     else:
         return 0.0
