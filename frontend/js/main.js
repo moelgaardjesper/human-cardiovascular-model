@@ -60,7 +60,8 @@ function buildPatient() {
 
 function buildScenario() {
   const drugs = {};
-  const prop   = optFloat('drug_propofol'); if (prop)   drugs.propofol       = prop;
+  const wt     = parseFloat(document.getElementById('weight_kg').value) || 75;
+  const prop   = optFloat('drug_propofol'); if (prop)   drugs.propofol       = prop / wt;
   const norepi = optFloat('drug_norepi');   if (norepi) drugs.norepinephrine = norepi;
   const phenyl = optFloat('drug_phenyl');   if (phenyl) drugs.phenylephrine  = phenyl;
   const vaso   = optFloat('drug_vaso');     if (vaso)   drugs.vasopressin    = vaso;
@@ -347,20 +348,29 @@ function _onLivePoint(s) {
   _ext('chart_cpp',       { x:[t],     y:[[s.cpp]]                                            }, [0]    );
   _ext('chart_buckberg',  { x:[t,t],   y:[[s.cop],[s.buckberg]]                               }, [0,1]  );
 
-  // 3. Scroll x-axis and refresh titles every second
+  // 3. Scroll x-axis every tick so new points never land outside the visible window.
+  //    Titles refresh at 1 Hz (every 10 ticks) merged into the same relayout call
+  //    to avoid a second render.
   _titleTick++;
-  if (_titleTick % 10 === 0) {
-    const xr = { 'xaxis.range': [s.t - LIVE_WIN, s.t + 0.5] };
-    const cppCol = (s.cpp||70)<50 ? C.cpp_bad : (s.cpp||70)<60 ? C.cpp_warn : C.cpp_ok;
-    const bkCol  = (s.buckberg||1)<0.5 ? C.cpp_bad : C.cpp_warn;
-    try { Plotly.relayout('chart_ap',       { ...xr, 'title.text':`BP  ${s.sbp}/${s.dbp} mmHg` }); } catch {}
-    try { Plotly.relayout('chart_co',       { ...xr, 'title.text':`CO  ${s.co} L/min` });          } catch {}
-    try { Plotly.relayout('chart_cvp',      { ...xr, 'title.text':`CVP  ${s.cvp} mmHg` });         } catch {}
-    try { Plotly.relayout('chart_cpp',      { ...xr, 'title.text':`CPP  ${s.cpp} mmHg`,
-                                              'data[0].line.color': cppCol });                      } catch {}
-    try { Plotly.relayout('chart_buckberg', { ...xr, 'title.text':`CoPP ${s.cop}  Buckberg ${s.buckberg}`,
-                                              'data[1].line.color': bkCol });                       } catch {}
-  }
+  const showTitle = (_titleTick % 10 === 0);
+  const xr = [s.t - LIVE_WIN, s.t + 0.5];
+  const cppCol = (s.cpp||70)<50 ? C.cpp_bad : (s.cpp||70)<60 ? C.cpp_warn : C.cpp_ok;
+  const bkCol  = (s.buckberg||1)<0.5 ? C.cpp_bad : C.cpp_warn;
+  try { Plotly.relayout('chart_ap', showTitle
+    ? { 'xaxis.range': xr, 'title.text': `BP  ${s.sbp}/${s.dbp} mmHg` }
+    : { 'xaxis.range': xr }); } catch {}
+  try { Plotly.relayout('chart_co', showTitle
+    ? { 'xaxis.range': xr, 'title.text': `CO  ${s.co} L/min` }
+    : { 'xaxis.range': xr }); } catch {}
+  try { Plotly.relayout('chart_cvp', showTitle
+    ? { 'xaxis.range': xr, 'title.text': `CVP  ${s.cvp} mmHg` }
+    : { 'xaxis.range': xr }); } catch {}
+  try { Plotly.relayout('chart_cpp', showTitle
+    ? { 'xaxis.range': xr, 'title.text': `CPP  ${s.cpp} mmHg`, 'data[0].line.color': cppCol }
+    : { 'xaxis.range': xr }); } catch {}
+  try { Plotly.relayout('chart_buckberg', showTitle
+    ? { 'xaxis.range': xr, 'title.text': `CoPP ${s.cop}  Buckberg ${s.buckberg}`, 'data[1].line.color': bkCol }
+    : { 'xaxis.range': xr }); } catch {}
 }
 
 async function toggleLive() {
@@ -419,7 +429,8 @@ async function toggleLive() {
 function liveUpdate() {
   if (!_liveActive) return;
   const drugs = {};
-  const prop   = optFloat('drug_propofol'); if (prop)   drugs.propofol       = prop;
+  const wt     = parseFloat(document.getElementById('weight_kg').value) || 75;
+  const prop   = optFloat('drug_propofol'); if (prop)   drugs.propofol       = prop / wt;
   const norepi = optFloat('drug_norepi');   if (norepi) drugs.norepinephrine = norepi;
   const phenyl = optFloat('drug_phenyl');   if (phenyl) drugs.phenylephrine  = phenyl;
   const vaso   = optFloat('drug_vaso');     if (vaso)   drugs.vasopressin    = vaso;
