@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-A 21-compartment lumped-parameter cardiovascular simulator for clinical use.  
+A 23-compartment lumped-parameter cardiovascular simulator for clinical use.  
 Models blood pressure dynamics, cardiac output, and fluid shifts under:
 - Intraoperative posture changes (Trendelenburg, reverse Trendelenburg)
 - Vasopressor administration (norepinephrine, phenylephrine, vasopressin, epinephrine)
@@ -32,7 +32,7 @@ python -m api.app
 
 ```
 model/
-  compartments.py   21 compartments (index 0-20), Compartment dataclass, IDX dict
+  compartments.py   23 compartments (index 0-22), Compartment dataclass, IDX dict
   heart.py          Time-varying elastance (Suga-Sagawa), Frank-Starling scaling
   gravity.py        Hydrostatic pressure correction: ρgh·sin(α); smooth tilt profile
   baroreflex.py     BaroreflexController — 4-step ABR+CPR, impulse response convolution
@@ -53,13 +53,13 @@ frontend/
 
 1. `build_patient_params()` in `patient.py` scales compartments from clinical inputs.
 2. Caller fills a `SimParams` and passes it to `run_simulation()`.
-3. `run_simulation()` steps the ODE with Euler integration (dt = 5 ms), updating the `BaroreflexController` every step.
+3. `run_simulation()` steps the ODE with Euler integration (dt = 1 ms), updating the `BaroreflexController` every step.
 4. Results (time-series pressures, flows, HR) are returned as a dict and serialised to JSON by the Flask route.
 
 ### Compartment index order
 
-See `IDX` dict in `compartments.py`. Cardiac chambers: RA=13, RV=14, LA=18, LV=19.  
-State vector `V[0..20]` stores volumes in mL. Pressures are derived at every step — not stored in the state.
+See `IDX` dict in `compartments.py`. Cardiac chambers: RA=15, RV=16, LA=20, LV=21.  
+State vector `V[0..22]` stores volumes in mL. Pressures are derived at every step — not stored in the state.
 
 ### Adding a new intervention
 
@@ -69,7 +69,7 @@ State vector `V[0..20]` stores volumes in mL. Pressures are derived at every ste
 
 ## References
 
-- PMC9363491 — primary model basis (21-compartment orthostatic stress model, Heldt-based)  
+- PMC9363491 — primary model basis (21-compartment orthostatic stress model, Heldt-based; expanded to 23 compartments here)  
 - Heldt T et al. (2002) J Appl Physiol 92:1239-1254 — foundational lumped-parameter model  
 - DOI 10.1038/s41598-022-18831-3 — VoM-PhyS: 3D multiscale blood-flow and heat transfer  
 - VaMpy (JORS): https://openresearchsoftware.metajnl.com/articles/10.5334/jors.159 — 1D arterial wave model

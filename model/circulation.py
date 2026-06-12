@@ -33,7 +33,7 @@ from scipy.integrate import solve_ivp
 
 from .compartments import default_compartments, IDX
 from .heart import (
-    elastance, frank_starling_emax,
+    elastance_from_phase, frank_starling_emax,
     LV_EMAX, LV_EMIN, RV_EMAX, RV_EMIN,
     RA_EMAX, RA_EMIN, LA_EMAX, LA_EMIN,
     ATRIAL_PHASE_OFFSET,
@@ -124,31 +124,25 @@ def _cardiac_pressure(vol: float, v0: float, e: float) -> float:
 # Main ODE function
 # ---------------------------------------------------------------------------
 
-def _odes(t: float, V: np.ndarray, params: SimParams, baro: BaroreflexController | None):
+def _odes(t: float, V: np.ndarray, params: SimParams, baro: BaroreflexController | None,
+          cardiac_phase: float):
     """
     Compute dV/dt for the 23-compartment system.
 
     Parameters
     ----------
-    t      : time (s)
-    V      : state vector, volumes (mL)
-    params : SimParams
-    baro   : BaroreflexController (or None)
+    t             : time (s)
+    V             : state vector, volumes (mL)
+    params        : SimParams
+    baro          : BaroreflexController (or None)
+    cardiac_phase : continuously-integrated ventricular cycle phase
+                    (fraction of RR interval, wrapped to [0, 1) by the
+                    caller). Driving elastance from this rather than
+                    (t % T)/T avoids phase discontinuities when HR varies
+                    every step (baroreflex/RSA).
     """
     comp  = params.compartments
     drugs = params.drug_factors
-
-    # -----------------------------------------------------------------------
-    # Effective heart rate (baroreflex + drug + RSA)
-    # -----------------------------------------------------------------------
-    hr = params.hr_bpm * drugs.get("hr_factor", 1.0)
-    if baro is not None:
-        hr = max(30.0, min(180.0, hr + baro.hr_delta))
-    # Respiratory sinus arrhythmia: additive HR modulation at respiratory freq.
-    # Active only when ventilation_mode != 'none'.
-    if params.ventilation_mode != 'none':
-        hr = max(30.0, min(180.0, hr + respiratory_sinus_arrhythmia(
-            t, params.ventilation_mode, params.resp_rate_bpm, params.ie_ratio)))
 
     # -----------------------------------------------------------------------
     # Elastance parameters (baroreflex + drug modulation)
@@ -170,16 +164,17 @@ def _odes(t: float, V: np.ndarray, params: SimParams, baro: BaroreflexController
         rv_emax_eff = frank_starling_emax(rv_emax_eff, edv_rv, edv_ref=100.0)
 
     # -----------------------------------------------------------------------
-    # Instantaneous elastances
+    # Instantaneous elastances, driven by the continuously-integrated
+    # cardiac phase (see docstring above for why not (t % T)/T).
     # -----------------------------------------------------------------------
-    T = 60.0 / hr
-    E_lv = elastance(t, hr, lv_emax_eff, params.lv_emin)
-    E_rv = elastance(t, hr, rv_emax_eff, params.rv_emin)
+    t_n_v = cardiac_phase % 1.0
+    E_lv = elastance_from_phase(t_n_v, lv_emax_eff, params.lv_emin)
+    E_rv = elastance_from_phase(t_n_v, rv_emax_eff, params.rv_emin)
 
     # Atria fire ~60% of cycle before ventricles (offset in phase)
-    t_atrial = t + ATRIAL_PHASE_OFFSET * T
-    E_la = elastance(t_atrial, hr, params.la_emax, params.la_emin)
-    E_ra = elastance(t_atrial, hr, params.ra_emax, params.ra_emin)
+    t_n_a = (cardiac_phase + ATRIAL_PHASE_OFFSET) % 1.0
+    E_la = elastance_from_phase(t_n_a, params.la_emax, params.la_emin)
+    E_ra = elastance_from_phase(t_n_a, params.ra_emax, params.ra_emin)
 
     # -----------------------------------------------------------------------
     # Compute pressures for every compartment
@@ -461,17 +456,26 @@ def run_simulation(
     # HR / E_max from previous step (1-step lag) for consistent monitoring.
     _hr_monitor   = params.hr_bpm
     _emax_monitor = params.lv_emax
+    drugs = params.drug_factors
+
+    # Continuously-integrated cardiac-cycle phase (cycles, wrapped to [0,1)).
+    # _cardiac_phase drives the ODE's elastances (advanced using the HR seen
+    # by _odes this step); _monitor_phase drives the 1-step-lagged E_ra/E_la
+    # used for CVP/PCWP monitoring (advanced using _hr_monitor). Both replace
+    # (t % T)/T, which is discontinuous whenever HR varies step-to-step.
+    _cardiac_phase = 0.0
+    _monitor_phase = 0.0
 
     for step, t in enumerate(t_eval):
         c_ao = comp[i["aorta"]]
         c_ra = comp[i["right_atrium"]]
         c_la = comp[i["left_atrium"]]
 
-        # Use HR and E_max from PREVIOUS baroreflex step for consistent pressure monitoring.
-        # (ODE will use the CURRENT baro state computed below.)
-        T_atrial = ATRIAL_PHASE_OFFSET * 60.0 / _hr_monitor
-        E_ra_now = elastance(t + T_atrial, _hr_monitor, params.ra_emax, params.ra_emin)
-        E_la_now = elastance(t + T_atrial, _hr_monitor, params.la_emax, params.la_emin)
+        # Use E_ra/E_la from PREVIOUS step's monitor phase for consistent
+        # pressure monitoring. (ODE will use the CURRENT baro state computed below.)
+        t_n_a_monitor = (_monitor_phase + ATRIAL_PHASE_OFFSET) % 1.0
+        E_ra_now = elastance_from_phase(t_n_a_monitor, params.ra_emax, params.ra_emin)
+        E_la_now = elastance_from_phase(t_n_a_monitor, params.la_emax, params.la_emin)
 
         p_ao = _vascular_pressure(V[i["aorta"]], c_ao.unstressed_volume, c_ao.compliance)
         p_ra = _cardiac_pressure(V[i["right_atrium"]], c_ra.unstressed_volume, E_ra_now)
@@ -500,17 +504,27 @@ def run_simulation(
 
         # Update baroreflex — updates hr_delta, svr_factor etc. for NEXT ODE step
         hr_eff = params.hr_bpm
+        rsa_now = 0.0
         if baro is not None:
             baro.update(p_ao, 40.0, p_cvp_edi)
             hr_eff = max(30.0, min(180.0, params.hr_bpm + baro.hr_delta))
         if params.ventilation_mode != 'none':
-            rsa = respiratory_sinus_arrhythmia(
+            rsa_now = respiratory_sinus_arrhythmia(
                 t, params.ventilation_mode, params.resp_rate_bpm, params.ie_ratio)
-            hr_eff = max(30.0, min(180.0, hr_eff + rsa))
+            hr_eff = max(30.0, min(180.0, hr_eff + rsa_now))
 
         # Carry forward updated HR for next step's monitoring
         _hr_monitor   = hr_eff
         _emax_monitor = params.lv_emax * (baro.emax_factor if baro is not None else 1.0)
+
+        # HR driving _odes's elastance this step (hr_bpm * drug hr_factor,
+        # then baroreflex, then RSA — same formula _odes used internally
+        # before this refactor moved phase-integration out to the caller).
+        hr_now = params.hr_bpm * drugs.get("hr_factor", 1.0)
+        if baro is not None:
+            hr_now = max(30.0, min(180.0, hr_now + baro.hr_delta))
+        if params.ventilation_mode != 'none':
+            hr_now = max(30.0, min(180.0, hr_now + rsa_now))
 
         # DBP / SBP tracking (rolling min / max)
         _dbp_win.append(p_ao); _sbp_win.append(p_ao)
@@ -540,8 +554,12 @@ def run_simulation(
         volumes_ts[step]  = V.copy()
 
         # Euler step
-        dV = _odes(t, V, params, baro)
+        dV = _odes(t, V, params, baro, _cardiac_phase)
         V  = V + dV * dt
+
+        # Advance integrated cardiac phases for the next step.
+        _cardiac_phase = (_cardiac_phase + hr_now / 60.0 * dt) % 1.0
+        _monitor_phase = (_monitor_phase + _hr_monitor / 60.0 * dt) % 1.0
 
         # Guard: volumes can't go negative; replace NaN/inf from overflow
         V = np.maximum(V, 0.0)

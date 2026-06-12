@@ -17,10 +17,13 @@ State is extracted after each batch and stored in self._state.  The SSE generato
 reads that dict and pushes it to all connected clients.
 """
 
+import csv
 import json
 import math
+import os
 import threading
 import time
+from datetime import datetime
 import numpy as np
 from collections import deque
 from flask import Blueprint, Response, jsonify, request
@@ -34,6 +37,7 @@ from model.perfusion import (
     cerebral_perfusion_pressure, coronary_perfusion_pressure, buckberg_index
 )
 from model.heart import RA_EMIN, LV_EMIN
+from model.respiration import respiratory_sinus_arrhythmia
 
 live_bp = Blueprint("live", __name__)
 
@@ -49,6 +53,10 @@ PUSH_STEPS  = 100     # steps per push → 100 × 0.001 = 0.1 s simulated per pu
 TARGET_RATE = 0.1     # target wall-clock seconds per push (≈ real-time)
 HISTORY_LEN = 600     # max points kept (60 s at 10 Hz)
 
+# Every live session's full state history (one row per push, ~10 Hz) is
+# written here on stop/restart so runs can be examined afterwards.
+LOG_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "logs")
+
 
 # ---------------------------------------------------------------------------
 # LiveSimulator — runs ODE in a background thread
@@ -63,6 +71,7 @@ class LiveSimulator:
         self.V       = np.array([c.init_volume for c in self.comps], dtype=float)
         self.baro    = BaroreflexController(dt=DT)
         self.t       = 0.0
+        self._cardiac_phase = 0.0
 
         self._lock        = threading.Lock()
         self._stop_event  = threading.Event()
@@ -98,6 +107,11 @@ class LiveSimulator:
         # Current tilt (tracked for smooth transitions when user changes it)
         self._current_tilt = 0.0
 
+        # Full per-push state history for this session, written to LOG_DIR
+        # on stop()/reset() so runs can be examined afterwards.
+        self._history: list[dict] = []
+        self.last_log_path: str | None = None
+
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------
@@ -106,6 +120,7 @@ class LiveSimulator:
         """Start (or restart) the background simulation thread."""
         self.stop()
         self._stop_event.clear()
+        self._history = []
         self._thread = threading.Thread(target=self._run, daemon=True, name="live-sim")
         self._thread.start()
 
@@ -115,6 +130,22 @@ class LiveSimulator:
         if self._thread and self._thread.is_alive():
             self._thread.join(timeout=2.0)
         self._thread = None
+        self._save_history()
+
+    def _save_history(self) -> None:
+        """Write the accumulated per-push state history to LOG_DIR as CSV."""
+        if not self._history:
+            return
+        os.makedirs(LOG_DIR, exist_ok=True)
+        fname = datetime.now().strftime("live_%Y%m%d_%H%M%S.csv")
+        path = os.path.join(LOG_DIR, fname)
+        fieldnames = list(self._history[0].keys())
+        with open(path, "w", newline="") as f:
+            writer = csv.DictWriter(f, fieldnames=fieldnames)
+            writer.writeheader()
+            writer.writerows(self._history)
+        self.last_log_path = path
+        self._history = []
 
     def reset(self, scenario: dict | None = None, patient: dict | None = None) -> None:
         """Reinitialise state to default and optionally apply scenario/patient."""
@@ -126,6 +157,7 @@ class LiveSimulator:
         self.V       = np.array([c.init_volume for c in self.comps], dtype=float)
         self.baro    = BaroreflexController(dt=DT)
         self.t       = 0.0
+        self._cardiac_phase = 0.0
         self._state  = None
 
         win = max(100, int(2 * 60.0 / 70.0 / DT))
@@ -245,9 +277,15 @@ class LiveSimulator:
             with self._lock:
                 params = self.params   # reference; read-only for this batch
 
+            drugs = params.drug_factors
+
             # ---- Run PUSH_STEPS ODE steps ----
             for _ in range(PUSH_STEPS):
-                dV = _odes(self.t, self.V, params, self.baro)
+                # hr_delta in effect for THIS step's _odes call (set by the
+                # previous iteration's baroreflex update, below).
+                hr_delta_now = self.baro.hr_delta
+
+                dV = _odes(self.t, self.V, params, self.baro, self._cardiac_phase)
                 self.V = np.maximum(self.V + dV * DT, 0.0)
                 self.t += DT
 
@@ -289,6 +327,17 @@ class LiveSimulator:
                 self._hr_monitor = max(30.0, min(180.0,
                                                  params.hr_bpm + self.baro.hr_delta))
 
+                # Advance the continuously-integrated cardiac phase using the
+                # HR _odes actually used this step (hr_bpm * drug hr_factor,
+                # then baroreflex, then RSA) — see model/circulation.py for
+                # why this replaces (t % T)/T.
+                hr_now = params.hr_bpm * drugs.get("hr_factor", 1.0)
+                hr_now = max(30.0, min(180.0, hr_now + hr_delta_now))
+                if params.ventilation_mode != 'none':
+                    hr_now = max(30.0, min(180.0, hr_now + respiratory_sinus_arrhythmia(
+                        self.t, params.ventilation_mode, params.resp_rate_bpm, params.ie_ratio)))
+                self._cardiac_phase = (self._cardiac_phase + hr_now / 60.0 * DT) % 1.0
+
             # ---- Extract state for this push ----
             tilt = smooth_tilt_profile(
                 self.t,
@@ -320,6 +369,7 @@ class LiveSimulator:
                 "cop":      round(coronary_perfusion_pressure(dbp_val, float(p_lvedp)), 1),
                 "buckberg": round(buckberg_index(dbp_val, float(p_lvedp), hr, sbp_val), 3),
             }
+            self._history.append(dict(self._state))
 
             # ---- Pace to real-time ----
             elapsed   = time.monotonic() - t0
@@ -351,7 +401,7 @@ def live_start():
 @live_bp.route("/api/live/stop", methods=["POST"])
 def live_stop():
     _session.stop()
-    return jsonify({"ok": True})
+    return jsonify({"ok": True, "log_path": _session.last_log_path})
 
 
 @live_bp.route("/api/live/params", methods=["PATCH"])

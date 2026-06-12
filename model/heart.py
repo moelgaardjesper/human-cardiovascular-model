@@ -34,6 +34,25 @@ def _normalised_activation(t_n: float) -> float:
         return 0.0
 
 
+def elastance_from_phase(
+    t_n: float,
+    e_max: float,
+    e_min: float,
+) -> float:
+    """
+    Instantaneous ventricular elastance (mmHg/mL) from a cardiac-cycle phase.
+
+    Parameters
+    ----------
+    t_n    : cardiac-cycle phase (fraction of RR interval, any real value —
+             wrapped to [0, 1) internally)
+    e_max  : peak systolic elastance (mmHg/mL)
+    e_min  : diastolic elastance (mmHg/mL)
+    """
+    e_n = _normalised_activation(t_n)
+    return (e_max - e_min) * e_n + e_min
+
+
 def elastance(
     t: float,
     hr_bpm: float,
@@ -49,11 +68,16 @@ def elastance(
     hr_bpm : heart rate (beats per minute)
     e_max  : peak systolic elastance (mmHg/mL)
     e_min  : diastolic elastance (mmHg/mL)
+
+    Note: with a continuously time-varying hr_bpm (e.g. baroreflex
+    feedback), (t % T)/T is discontinuous every step and should not be
+    used to drive the ODE — use a continuously-integrated phase with
+    elastance_from_phase() instead. This wrapper remains for callers with
+    a fixed hr_bpm.
     """
     T = 60.0 / hr_bpm          # cardiac period (s)
     t_n = (t % T) / T          # normalised phase [0, 1)
-    e_n = _normalised_activation(t_n)
-    return (e_max - e_min) * e_n + e_min
+    return elastance_from_phase(t_n, e_max, e_min)
 
 
 def frank_starling_emax(
