@@ -465,9 +465,9 @@ def test_ankle_brachial_gradient_postural(
     ankle-brachial gradient should increase monotonically across the same
     range and should be more negative supine than at 45 deg upright.
 
-    See docs/ankle_brachial_pressure_caveats.md for the absolute-value caveats
-    of `ankle_p`/`brachial_p` — only the direction/ordering across tilt is
-    asserted here.
+    See docs/known_model_limitations.md (section 6) for the absolute-value
+    caveats of `ankle_p`/`brachial_p` — only the direction/ordering across
+    tilt is asserted here.
     """
     scenarios = [hdt30_onset10_175_75, hdt15_175_75, supine_175_75,
                   hut20_175_75, hut30_175_75, upright45_175_75]

@@ -28,10 +28,10 @@ import numpy as np
 from collections import deque
 from flask import Blueprint, Response, jsonify, request
 
-from model.circulation import _odes, SimParams, IDX, region_volumes
+from model.circulation import _odes, SimParams, IDX, region_volumes, _vascular_pressure
 from model.compartments import default_compartments
 from model.baroreflex import BaroreflexController
-from model.gravity import smooth_tilt_profile, GravityEnvironment
+from model.gravity import smooth_tilt_profile, GravityEnvironment, hydrostatic_delta_mmhg
 from model.pharmacology import combined_drug_factors, NEUTRAL_FACTORS
 from model.perfusion import (
     cerebral_perfusion_pressure, coronary_perfusion_pressure, buckberg_index
@@ -360,6 +360,15 @@ class LiveSimulator:
             hr       = self._hr_monitor
             co       = sv * hr / 1000.0
 
+            # Ankle / brachial pressures — same convention as run_simulation
+            # (model/circulation.py): P_site = P_transmural - hdp(site).
+            c_lba = self.comps[IDX["lower_body_art"]]
+            c_bc  = self.comps[IDX["brachiocephalic"]]
+            p_lba = _vascular_pressure(self.V[IDX["lower_body_art"]], c_lba.unstressed_volume, c_lba.compliance)
+            p_bc  = _vascular_pressure(self.V[IDX["brachiocephalic"]], c_bc.unstressed_volume, c_bc.compliance)
+            ankle_p    = p_lba - hydrostatic_delta_mmhg(c_lba.height_m, tilt, params.gravity)
+            brachial_p = p_bc  - hydrostatic_delta_mmhg(c_bc.height_m,  tilt, params.gravity)
+
             # Body-region fluid distribution — % change from baseline volume
             regions_now = region_volumes(self.V)
             regions_pct = {
@@ -381,6 +390,8 @@ class LiveSimulator:
                 "cpp":      round(cerebral_perfusion_pressure(map_val, tilt, params.gravity), 1),
                 "cop":      round(coronary_perfusion_pressure(dbp_val, float(p_lvedp)), 1),
                 "buckberg": round(buckberg_index(dbp_val, float(p_lvedp), hr, sbp_val), 3),
+                "ankle_p":    round(float(ankle_p), 1),
+                "brachial_p": round(float(brachial_p), 1),
                 "regions":  regions_pct,
             }
             hist_row = {k: v for k, v in self._state.items() if k != "regions"}

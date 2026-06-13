@@ -73,6 +73,88 @@ frontend/          Plain HTML + Plotly.js; no build step
 tests/             Smoke tests + 5-scenario literature validation suite
 ```
 
+### Compartment flow diagram
+
+```mermaid
+flowchart LR
+    subgraph RH["Right Heart"]
+        RA([Right Atrium])
+        RV([Right Ventricle])
+    end
+
+    subgraph PUL["Pulmonary Circulation"]
+        PA[Pulmonary Artery]
+        PCAP[Pulmonary Capillaries]
+        PV[Pulmonary Vein]
+    end
+
+    subgraph LH["Left Heart"]
+        LA([Left Atrium])
+        LV([Left Ventricle])
+    end
+
+    subgraph ART["Systemic Arteries"]
+        AO[Aorta]
+        BC[Brachiocephalic]
+        UBA[Upper-Body Artery]
+        AAO[Abdominal Aorta]
+        RAR[Renal Artery]
+        SPL[Splanchnic Artery]
+        LBA[Lower-Body Artery]
+    end
+
+    subgraph VEN["Systemic Veins"]
+        UBV[Upper-Body Vein]
+        SVC[SVC]
+        RVN[Renal Vein]
+        SPV[Splanchnic Vein]
+        FV[Foot Vein]
+        CV[Calf Vein]
+        TV[Thigh Vein]
+        IVC[IVC]
+    end
+
+    COR[Coronary]
+
+    RA -- tricuspid --> RV
+    RV -- pulmonic --> PA
+    PA --> PCAP --> PV
+    PV --> LA
+    LA -- mitral --> LV
+    LV -- aortic --> AO
+
+    AO --> BC --> UBA --> UBV --> SVC
+    AO --> AAO
+    AAO --> RAR --> RVN --> IVC
+    AAO --> SPL --> SPV --> IVC
+    AAO --> LBA
+    LBA --> TV
+    LBA --> CV
+    LBA --> FV
+    FV -- valve --> CV
+    CV -- valve --> TV
+    TV -- valve --> IVC
+
+    SVC -- valve --> RA
+    IVC -- valve --> RA
+
+    AO --> COR --> RA
+
+    classDef art fill:#fdd,stroke:#c00,color:#000
+    classDef vein fill:#ddf,stroke:#006,color:#000
+    classDef heart fill:#fde,stroke:#909,color:#000
+    classDef lung fill:#dff,stroke:#099,color:#000
+    classDef cor fill:#ffd,stroke:#aa0,color:#000
+
+    class AO,BC,UBA,AAO,RAR,SPL,LBA art
+    class UBV,SVC,RVN,SPV,FV,CV,TV,IVC vein
+    class RA,RV,LA,LV heart
+    class PA,PCAP,PV lung
+    class COR cor
+```
+
+23 compartments: 7 systemic arterial, 8 systemic venous (the lower limb is split into foot/calf/thigh veins to model the distributed hydrostatic column and muscle pump), 4 cardiac chambers, 3 pulmonary, 1 coronary. Labelled edges (`tricuspid`, `pulmonic`, `mitral`, `aortic`, `valve`) are one-way (`max(0, ...)`) in `_odes` — this includes the lower-limb venous valve chain and the coronary sinus return to the right atrium.
+
 ### Patient input tiers
 
 | Tier | Required inputs | What is estimated |
