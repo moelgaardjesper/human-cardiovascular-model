@@ -12,8 +12,8 @@ POST /api/estimate        → fit parameters to clinical observations
 import numpy as np
 from flask import Blueprint, jsonify, request, send_from_directory, current_app
 
-from model.circulation import SimParams, run_simulation
-from model.compartments import default_compartments
+from model.circulation import SimParams, run_simulation, BODY_REGIONS
+from model.compartments import default_compartments, IDX
 from model.gravity import GravityEnvironment
 from model.pharmacology import combined_drug_factors, NEUTRAL_FACTORS
 from model.patient import build_patient_params
@@ -148,6 +148,16 @@ def simulate():
     def _mean(key: str) -> float:
         return round(float(np.mean(result[key][h:])), 2)
 
+    # --- Body-region fluid distribution (% change from sim-start volume) ---
+    volumes = result["volumes"]
+    region_cols = {region: [IDX[name] for name in names] for region, names in BODY_REGIONS.items()}
+    baseline_regions = {region: float(volumes[0, cols].sum()) for region, cols in region_cols.items()}
+    region_means = {region: float(volumes[h:, cols].sum(axis=1).mean()) for region, cols in region_cols.items()}
+    regions_pct = {
+        region: round(100.0 * (region_means[region] / baseline_regions[region] - 1.0), 1)
+        for region in BODY_REGIONS
+    }
+
     return jsonify({
         "t":           _round(result["t"], 3),
         "aortic_p":    _round(result["aortic_p"]),
@@ -173,6 +183,7 @@ def simulate():
             "cpp_mean":      _mean("cpp"),
             "cop_mean":      _mean("cop"),
             "buckberg_mean": _mean("buckberg"),
+            "regions":       regions_pct,
         },
     })
 

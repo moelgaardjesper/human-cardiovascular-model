@@ -7,3 +7,6 @@ dist/
 build/
 .env
 logs/
+
+# Working notes — not part of the repo
+docs/

@@ -211,6 +211,21 @@ function buckZones() {
 // Patient avatar
 // ═══════════════════════════════════════════════════
 
+// Diverging fluid-shift scale: red (depleted) ← gray (baseline) → blue (engorged).
+// pct is % change from sim-start regional volume; ±FLUID_SCALE_PCT spans full color range.
+const FLUID_SCALE_PCT = 20;
+const FLUID_NEUTRAL  = [55, 65, 81];   // #374151
+const FLUID_DEPLETED = [239, 68, 68];  // #ef4444
+const FLUID_ENGORGED = [59, 130, 246]; // #3b82f6
+
+function fluidColor(pct) {
+  const t = Math.max(-1, Math.min(1, pct / FLUID_SCALE_PCT));
+  const target = t >= 0 ? FLUID_ENGORGED : FLUID_DEPLETED;
+  const f = Math.abs(t);
+  const rgb = FLUID_NEUTRAL.map((c, i) => Math.round(c + (target[i] - c) * f));
+  return `rgb(${rgb[0]},${rgb[1]},${rgb[2]})`;
+}
+
 function updateAvatar(s) {
   const tilt = s.tilt ?? 0;
 
@@ -226,17 +241,36 @@ function updateAvatar(s) {
       cpp < 50 ? '#ef4444' : cpp < 60 ? '#f59e0b' : '#10b981');
   }
 
-  // Torso: Buckberg traffic-light (subtle dark tint)
-  const bk    = s.buckberg ?? null;
-  const torso = document.getElementById('av-torso');
-  if (torso && bk != null) {
-    torso.setAttribute('fill',
+  // Thorax: Buckberg traffic-light (subtle dark tint)
+  const bk     = s.buckberg ?? null;
+  const thorax = document.getElementById('av-thorax');
+  if (thorax && bk != null) {
+    thorax.setAttribute('fill',
       bk < 0.5 ? '#3b0f0f' : bk < 0.8 ? '#291a06' : '#1f2937');
   }
 
-  // Legs: venous pooling proxy — opacity rises when head-up
-  const legs = document.getElementById('av-legs');
-  if (legs) {
+  // Fluid-distribution overlay (thorax/abdomen/legs) — % change from sim-start volume
+  const regions = s.regions ?? null;
+  const thoraxFluid = document.getElementById('av-thorax-fluid');
+  const abdomen     = document.getElementById('av-abdomen');
+  const legs        = document.getElementById('av-legs');
+
+  if (regions) {
+    if (thoraxFluid) {
+      const pct = regions.thorax ?? 0;
+      thoraxFluid.setAttribute('fill', fluidColor(pct));
+      thoraxFluid.setAttribute('opacity', Math.min(0.6, Math.abs(pct) / FLUID_SCALE_PCT * 0.6).toFixed(2));
+    }
+    if (abdomen) {
+      abdomen.setAttribute('fill', fluidColor(regions.abdomen ?? 0));
+    }
+    if (legs) {
+      legs.setAttribute('fill', fluidColor(regions.legs ?? 0));
+      legs.setAttribute('opacity', (0.45 + Math.min(0.4, Math.abs(regions.legs ?? 0) / FLUID_SCALE_PCT * 0.4)).toFixed(2));
+    }
+  } else if (legs) {
+    // Fallback (no region data yet): venous pooling proxy — opacity rises when head-up
+    legs.setAttribute('fill', '#3b82f6');
     const pool = Math.max(0, Math.min(1, tilt / 45));
     legs.setAttribute('opacity', (0.3 + pool * 0.55).toFixed(2));
   }

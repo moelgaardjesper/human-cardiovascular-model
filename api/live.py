@@ -28,7 +28,7 @@ import numpy as np
 from collections import deque
 from flask import Blueprint, Response, jsonify, request
 
-from model.circulation import _odes, SimParams, IDX
+from model.circulation import _odes, SimParams, IDX, region_volumes
 from model.compartments import default_compartments
 from model.baroreflex import BaroreflexController
 from model.gravity import smooth_tilt_profile, GravityEnvironment
@@ -72,6 +72,10 @@ class LiveSimulator:
         self.baro    = BaroreflexController(dt=DT)
         self.t       = 0.0
         self._cardiac_phase = 0.0
+
+        # Body-region baseline volumes (mL) for the fluid-distribution
+        # avatar — region volumes are reported as % change from these.
+        self._region_baseline = region_volumes(self.V)
 
         self._lock        = threading.Lock()
         self._stop_event  = threading.Event()
@@ -176,6 +180,8 @@ class LiveSimulator:
             self._apply_patient(patient)
         if scenario:
             self._apply_scenario(scenario, smooth_transition=False)
+
+        self._region_baseline = region_volumes(self.V)
 
         if was_running:
             self.start()
@@ -354,6 +360,13 @@ class LiveSimulator:
             hr       = self._hr_monitor
             co       = sv * hr / 1000.0
 
+            # Body-region fluid distribution — % change from baseline volume
+            regions_now = region_volumes(self.V)
+            regions_pct = {
+                name: round(100.0 * (vol / self._region_baseline[name] - 1.0), 1)
+                for name, vol in regions_now.items()
+            }
+
             self._state = {
                 "t":        round(self.t, 2),
                 "aortic_p": round(self._p_ao_last, 1),   # instantaneous — shows cardiac cycle
@@ -368,8 +381,11 @@ class LiveSimulator:
                 "cpp":      round(cerebral_perfusion_pressure(map_val, tilt, params.gravity), 1),
                 "cop":      round(coronary_perfusion_pressure(dbp_val, float(p_lvedp)), 1),
                 "buckberg": round(buckberg_index(dbp_val, float(p_lvedp), hr, sbp_val), 3),
+                "regions":  regions_pct,
             }
-            self._history.append(dict(self._state))
+            hist_row = {k: v for k, v in self._state.items() if k != "regions"}
+            hist_row.update({f"region_{name}_pct": pct for name, pct in regions_pct.items()})
+            self._history.append(hist_row)
 
             # ---- Pace to real-time ----
             elapsed   = time.monotonic() - t0
