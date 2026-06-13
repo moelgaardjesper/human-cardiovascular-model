@@ -65,6 +65,22 @@ References
 [11] Lloyd-Donald et al. (2025) DOI: 10.1111/anae.16633
      Normal supine awake CVP = 2-3 mmHg.
 
+[12] Lie SA et al. (2023) DOI: 10.1186/s40635-023-00561-z
+     Graded LBNP in healthy volunteers: baseline CO 4.85+/-1.08 L/min,
+     dCO = -0.245 L/min per 10 mmHg LBNP (approx-linear dose-response).
+
+[13] Vettorello M et al. (2016)
+     LBNP -30 mmHg ~ 500-1000 mL central-hypovolemia equivalent; HR rises
+     with severity (69+/-2 -> 107+/-4 bpm at -70/-80 mmHg).
+
+[14] Hamilton F et al. (2021) DOI: 10.1016/j.crad.2021.01.016
+     Mild hypovolemia affects RV/pulmonary preload (CVP falls) before
+     systemic MAP; both ventricles affected only at greater severity.
+
+[15] Herrera AM et al. (2017) DOI: 10.1055/s-0037-1615788
+     500 mL crystalloid bolus: SV 71+/-11 -> 90+/-19 mL (+27%),
+     HR 87+/-9 -> 83+/-8 bpm (-5%).
+
 Known model limitations (documented here for transparency)
 ------------------------------------------------------------
 - Frank-Starling plateau: implemented as a hard cap above EDV_ref=130 mL.
@@ -80,6 +96,11 @@ Known model limitations (documented here for transparency)
   -30° to +45° range.
 - CVP baseline: model reports end-diastolic RA pressure trough (2-4 mmHg),
   matching [11] (normal supine awake CVP = 2-3 mmHg).
+- Hemorrhage sensitivity: total model blood volume (~3.8 L) and stressed
+  volume (~0.7 L) are smaller than typical adult values (~5 L / ~1-1.5 L),
+  so MAP/CO fall more steeply per mL removed than in vivo. Hemorrhage tests
+  therefore validate DIRECTION and dose-response shape (matching [12], [13])
+  on the model's own volume scale, not mL-for-mL clinical magnitudes.
 """
 
 import numpy as np
@@ -136,7 +157,8 @@ def run_scenario(height_cm, weight_kg, map_mmhg=None, hr_bpm=70,
 
     r = run_simulation(params, duration_s=duration, dt=DT)
     return {k: last_half(r[k]) for k in ("map", "hr", "co", "cvp", "sv",
-                                          "cpp", "cop", "buckberg", "dbp", "sbp", "lvedp")}
+                                          "cpp", "cop", "buckberg", "dbp", "sbp", "lvedp",
+                                          "ankle_p", "brachial_p")}
 
 
 # ===========================================================================
@@ -429,6 +451,44 @@ def test_cerebral_perfusion_pressure_pohl_cullen2005(supine_175_75, upright45_17
     assert s_up45["cpp"] > 40, f"CPP not viable at 45 deg: {s_up45['cpp']:.1f}"
 
 
+def test_ankle_brachial_gradient_postural(
+    hdt30_onset10_175_75, hdt15_175_75, supine_175_75,
+    hut20_175_75, hut30_175_75, upright45_175_75,
+):
+    """Ankle-brachial pressure gradient vs tilt — hydrostatic column physiology.
+
+    Standard orthostatic physiology (e.g. [PMID 9640339] Wieling 1998 — heart-
+    level MAP changes only +1+/-7 mmHg with upright tilt, while lower-leg
+    arterial pressure rises by roughly the hydrostatic column height): ankle
+    pressure should rise and heart-level/brachial pressure should fall (or stay
+    flat) monotonically as tilt goes from head-down to head-up, so the
+    ankle-brachial gradient should increase monotonically across the same
+    range and should be more negative supine than at 45 deg upright.
+
+    See docs/ankle_brachial_pressure_caveats.md for the absolute-value caveats
+    of `ankle_p`/`brachial_p` — only the direction/ordering across tilt is
+    asserted here.
+    """
+    scenarios = [hdt30_onset10_175_75, hdt15_175_75, supine_175_75,
+                  hut20_175_75, hut30_175_75, upright45_175_75]
+    ankle = [s["ankle_p"] for s in scenarios]
+    brach = [s["brachial_p"] for s in scenarios]
+    grad  = [a - b for a, b in zip(ankle, brach)]
+
+    assert all(ankle[i] < ankle[i + 1] for i in range(len(ankle) - 1)), (
+        f"ankle_p not monotonically increasing with tilt: {ankle}"
+    )
+    assert all(brach[i] > brach[i + 1] for i in range(len(brach) - 1)), (
+        f"brachial_p not monotonically decreasing with tilt: {brach}"
+    )
+    assert all(grad[i] < grad[i + 1] for i in range(len(grad) - 1)), (
+        f"ankle-brachial gradient not monotonically increasing with tilt: {grad}"
+    )
+    assert grad[-1] > grad[2], (
+        f"45 deg upright gradient ({grad[-1]:.1f}) not > supine gradient ({grad[2]:.1f})"
+    )
+
+
 def test_coronary_perfusion_buckberg1972(supine_175_75, tachycardia_175_75_nobaro):
     """Coronary perfusion / Buckberg index (Buckberg 1972/1978).
 
@@ -536,3 +596,130 @@ def test_peep_reduces_co_jardin1981():
         f"No PEEP dose-response: PEEP0={dco_peep0:+.1f}%, PEEP10={dco_peep10:+.1f}%"
     )
     assert s_peep10['map'] > 50, f"MAP not viable with PEEP 10: {s_peep10['map']:.1f} mmHg"
+
+
+# ===========================================================================
+# 7. Hemorrhage / fluid bolus / resuscitation — [12]-[15]
+# ===========================================================================
+
+def _run_hem_bolus(hem_ml=0.0, hem_start=3.0, hem_dur=5.0,
+                   bolus_ml=0.0, bolus_start=10.0, bolus_dur=5.0,
+                   duration=30.0):
+    p = SimParams()
+    if hem_ml > 0:
+        p.hemorrhage_rate_mlmin = hem_ml / hem_dur * 60.0
+        p.hemorrhage_start_s    = hem_start
+        p.hemorrhage_duration_s = hem_dur
+    if bolus_ml > 0:
+        p.fluid_bolus_ml         = bolus_ml
+        p.fluid_bolus_start_s    = bolus_start
+        p.fluid_bolus_duration_s = bolus_dur
+    r = run_simulation(p, duration_s=duration, dt=DT)
+    h = len(r['map']) // 2
+    return {k: float(np.mean(r[k][h:])) for k in ('map', 'hr', 'co', 'cvp', 'sv')}
+
+
+@pytest.fixture(scope="module")
+def baseline_hem():
+    return _run_hem_bolus()
+
+
+@pytest.fixture(scope="module")
+def hem100():
+    return _run_hem_bolus(hem_ml=100)
+
+
+@pytest.fixture(scope="module")
+def hem200():
+    return _run_hem_bolus(hem_ml=200)
+
+
+@pytest.fixture(scope="module")
+def hem300():
+    return _run_hem_bolus(hem_ml=300)
+
+
+def test_hemorrhage_volume_conserved():
+    """Hemorrhage removes exactly the prescribed volume from the
+    circulation (mass conservation of the dV adjustment)."""
+    p = SimParams()
+    p.hemorrhage_rate_mlmin = 1200.0  # 100 mL over 5 s
+    p.hemorrhage_start_s    = 3.0
+    p.hemorrhage_duration_s = 5.0
+    r = run_simulation(p, duration_s=15.0, dt=DT)
+    removed = r["volumes"][0].sum() - r["volumes"][-1].sum()
+    assert abs(removed - 100.0) < 0.5, f"Expected ~100 mL removed, got {removed:.2f} mL"
+
+
+def test_graded_hemorrhage_monotonic_lie2023(baseline_hem, hem100, hem200, hem300):
+    """[12] Lie 2023 — CO falls approximately linearly with central
+    hypovolemia severity; [13] Vettorello 2016 — HR rises with severity.
+    Graded hemorrhage (100/200/300 mL) should reproduce this monotonic
+    dose-response."""
+    map_vals = [baseline_hem['map'], hem100['map'], hem200['map'], hem300['map']]
+    co_vals  = [baseline_hem['co'],  hem100['co'],  hem200['co'],  hem300['co']]
+    hr_vals  = [baseline_hem['hr'],  hem100['hr'],  hem200['hr'],  hem300['hr']]
+
+    assert all(map_vals[i] > map_vals[i + 1] for i in range(3)), (
+        f"MAP not monotonically falling with hemorrhage severity: {map_vals}"
+    )
+    assert all(co_vals[i] > co_vals[i + 1] for i in range(3)), (
+        f"CO not monotonically falling with hemorrhage severity: {co_vals}"
+    )
+    assert all(hr_vals[i] < hr_vals[i + 1] for i in range(3)), (
+        f"HR not monotonically rising with hemorrhage severity: {hr_vals}"
+    )
+    assert hem300['map'] > 40, f"MAP collapsed at 300 mL hemorrhage: {hem300['map']:.1f} mmHg"
+
+
+def test_mild_hemorrhage_preload_sensitivity_hamilton2021(baseline_hem, hem100):
+    """[14] Hamilton 2021 — at mild hypovolemia, preload (CVP) falls
+    proportionally more than systemic MAP (RV/pulmonary preload is affected
+    before the systemic circulation decompensates)."""
+    dcvp_pct = pct(hem100['cvp'], baseline_hem['cvp'])
+    dmap_pct = pct(hem100['map'], baseline_hem['map'])
+
+    assert dcvp_pct < 0, f"CVP did not fall with mild hemorrhage: {dcvp_pct:+.1f}%"
+    assert dmap_pct < 0, f"MAP did not fall with mild hemorrhage: {dmap_pct:+.1f}%"
+    assert dcvp_pct < dmap_pct, (
+        f"CVP should fall proportionally more than MAP at mild hypovolemia: "
+        f"dCVP={dcvp_pct:+.1f}%, dMAP={dmap_pct:+.1f}%"
+    )
+
+
+def test_severe_hemorrhage_decompensation(baseline_hem, hem300):
+    """300 mL hemorrhage (the most severe graded step) produces a
+    clinically significant MAP drop — decompensation, unlike the mild
+    (100 mL) case."""
+    dmap = hem300['map'] - baseline_hem['map']
+    assert dmap < -15, f"MAP did not drop substantially at 300 mL hemorrhage: d={dmap:+.1f} mmHg"
+    assert hem300['map'] > 40, f"MAP non-viable at 300 mL hemorrhage: {hem300['map']:.1f} mmHg"
+
+
+def test_fluid_bolus_increases_sv_co_herrera2017(baseline_hem):
+    """[15] Herrera 2017 — crystalloid bolus increases SV and CO, with HR
+    unchanged or slightly reduced (improved filling reduces compensatory
+    tachycardia)."""
+    bolus = _run_hem_bolus(bolus_ml=300)
+    dsv = pct(bolus['sv'], baseline_hem['sv'])
+    dco = pct(bolus['co'], baseline_hem['co'])
+    dhr = bolus['hr'] - baseline_hem['hr']
+
+    assert dsv > 0, f"SV did not increase with fluid bolus: {dsv:+.1f}% (lit +27%)"
+    assert dco > 0, f"CO did not increase with fluid bolus: {dco:+.1f}%"
+    assert dhr <= 0, f"HR increased with fluid bolus: d={dhr:+.1f} bpm (lit -5%)"
+    assert bolus['map'] < 160, f"MAP excessively high after bolus: {bolus['map']:.1f} mmHg"
+
+
+def test_hemorrhage_resuscitation_restores_map_and_co(hem200):
+    """Resuscitation scenario: a 300 mL crystalloid bolus following a
+    200 mL hemorrhage partially restores MAP and CO toward (or above)
+    baseline, compared to hemorrhage alone."""
+    resus = _run_hem_bolus(hem_ml=200, bolus_ml=300)
+
+    assert resus['map'] > hem200['map'], (
+        f"Resuscitation did not raise MAP: {hem200['map']:.1f} -> {resus['map']:.1f}"
+    )
+    assert resus['co'] > hem200['co'], (
+        f"Resuscitation did not raise CO: {hem200['co']:.2f} -> {resus['co']:.2f}"
+    )

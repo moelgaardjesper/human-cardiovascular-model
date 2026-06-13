@@ -44,6 +44,42 @@ from .pharmacology import combined_drug_factors, NEUTRAL_FACTORS
 from .respiration import intrathoracic_pressure, respiratory_sinus_arrhythmia
 
 
+# Systemic venous reservoir — holds the bulk of circulating blood volume.
+# Hemorrhage removes volume from these compartments proportionally to their
+# current stressed volume; this avoids creating an artificial localised
+# pressure sink at any single site.
+VENOUS_RESERVOIR = (
+    "upper_body_vein", "svc", "renal_vein", "splanchnic_vein",
+    "thigh_vein", "calf_vein", "foot_vein", "ivc",
+)
+
+
+# Body regions for the fluid-distribution avatar — groups compartments into
+# anatomical zones. Each zone's total volume, tracked relative to its value
+# at simulation start, indicates net fluid shift (e.g. leg pooling on tilt,
+# abdominal/leg depletion on hemorrhage, thoracic engorgement on fluid bolus
+# or Trendelenburg).
+BODY_REGIONS = {
+    "thorax": (
+        "aorta", "brachiocephalic", "upper_body_art", "upper_body_vein", "svc",
+        "right_atrium", "right_ventricle", "pulmonary_art", "pulmonary_cap",
+        "pulmonary_vein", "left_atrium", "left_ventricle", "coronary",
+    ),
+    "abdomen": (
+        "abdominal_aorta", "renal_art", "renal_vein", "splanchnic_art", "splanchnic_vein",
+    ),
+    "legs": (
+        "lower_body_art", "thigh_vein", "calf_vein", "foot_vein", "ivc",
+    ),
+}
+
+
+def region_volumes(V: np.ndarray) -> dict[str, float]:
+    """Sum compartment volumes (mL) into the BODY_REGIONS zones."""
+    return {region: float(sum(V[IDX[name]] for name in names))
+            for region, names in BODY_REGIONS.items()}
+
+
 # ---------------------------------------------------------------------------
 # Simulation parameters dataclass
 # ---------------------------------------------------------------------------
@@ -106,6 +142,21 @@ class SimParams:
         self.peep_cmh2o       = 5.0      # cmH₂O — PEEP for mechanical ventilation
         self.pip_cmh2o        = 20.0     # cmH₂O — peak inspiratory pressure
         self.ie_ratio         = 0.33     # inspiratory fraction (0.33 = 1:2 I:E)
+
+        # Hemorrhage — constant-rate blood volume loss over [start, start+duration].
+        # Removed proportionally from the systemic venous reservoir (see
+        # VENOUS_RESERVOIR), the compartments holding most circulating volume.
+        # duration_s = 0 disables hemorrhage (default).
+        self.hemorrhage_rate_mlmin  = 0.0
+        self.hemorrhage_start_s     = 0.0
+        self.hemorrhage_duration_s  = 0.0
+
+        # Fluid bolus — constant-rate crystalloid infusion into the upper-body
+        # venous compartment (peripheral/central IV access) over
+        # [start, start+duration]. duration_s = 0 disables the bolus (default).
+        self.fluid_bolus_ml         = 0.0
+        self.fluid_bolus_start_s    = 0.0
+        self.fluid_bolus_duration_s = 0.0
 
 
 # ---------------------------------------------------------------------------
@@ -369,6 +420,27 @@ def _odes(t: float, V: np.ndarray, params: SimParams, baro: BaroreflexController
     dV[i["left_ventricle"]]  = Q_mitral - Q_aortic
     dV[i["coronary"]]        = Q_ao_cor - Q_cor_ra
 
+    # -----------------------------------------------------------------------
+    # Hemorrhage / fluid bolus — net volume change to the circulation
+    # -----------------------------------------------------------------------
+    if params.hemorrhage_duration_s > 0:
+        t_end = params.hemorrhage_start_s + params.hemorrhage_duration_s
+        if params.hemorrhage_start_s <= t < t_end:
+            hem_rate = params.hemorrhage_rate_mlmin / 60.0  # mL/s
+            stressed = np.array([
+                max(0.0, V[i[name]] - comp[i[name]].unstressed_volume)
+                for name in VENOUS_RESERVOIR
+            ])
+            total_stressed = stressed.sum()
+            if total_stressed > 1e-6:
+                for name, s in zip(VENOUS_RESERVOIR, stressed):
+                    dV[i[name]] -= hem_rate * (s / total_stressed)
+
+    if params.fluid_bolus_duration_s > 0:
+        t_end = params.fluid_bolus_start_s + params.fluid_bolus_duration_s
+        if params.fluid_bolus_start_s <= t < t_end:
+            dV[i["upper_body_vein"]] += params.fluid_bolus_ml / params.fluid_bolus_duration_s
+
     return dV
 
 
@@ -430,6 +502,8 @@ def run_simulation(
     cpp_ts      = np.zeros(n)
     cop_ts      = np.zeros(n)
     buckberg_ts = np.zeros(n)
+    ankle_p_ts    = np.zeros(n)
+    brachial_p_ts = np.zeros(n)
     volumes_ts  = np.zeros((n, len(comp)))
 
     # We step manually so baroreflex can update each step
@@ -541,6 +615,20 @@ def run_simulation(
             params.tilt_onset_s, params.tilt_duration_s,
         )
 
+        # Ankle / brachial pressures: compartment transmural pressure,
+        # hydrostatically referenced to heart level (same convention as
+        # map_at_brain in perfusion.py — P_site = P_transmural − hdp(site)).
+        # lower_body_art (height_m=-0.50) is the model's only lower-limb
+        # arterial compartment; brachiocephalic (height_m=0.12) is the
+        # proximal-arm conduit artery used as the brachial-cuff proxy.
+        # See docs/avatar caveats doc for limitations of this mapping.
+        c_lba = comp[i["lower_body_art"]]
+        c_bc  = comp[i["brachiocephalic"]]
+        p_lba = _vascular_pressure(V[i["lower_body_art"]], c_lba.unstressed_volume, c_lba.compliance)
+        p_bc  = _vascular_pressure(V[i["brachiocephalic"]], c_bc.unstressed_volume, c_bc.compliance)
+        ankle_p_ts[step]    = p_lba - hydrostatic_delta_mmhg(c_lba.height_m, tilt_now, params.gravity)
+        brachial_p_ts[step] = p_bc  - hydrostatic_delta_mmhg(c_bc.height_m,  tilt_now, params.gravity)
+
         aortic_p[step]    = p_ao
         cvp_ts[step]      = p_cvp_edi
         la_p_ts[step]     = p_la
@@ -587,5 +675,7 @@ def run_simulation(
         "cpp":         np.convolve(cpp_ts,      kernel, mode="same"),
         "cop":         np.convolve(cop_ts,      kernel, mode="same"),
         "buckberg":    np.convolve(buckberg_ts, kernel, mode="same"),
+        "ankle_p":     ankle_p_ts,
+        "brachial_p":  brachial_p_ts,
         "volumes":     volumes_ts,
     }
