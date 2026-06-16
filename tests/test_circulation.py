@@ -13,7 +13,7 @@ Two groups of tests:
 References
 ----------
 [1] DOI: 10.14814/phy2.15216  (PMID: 35854636, PMC9296869)
-    Sørensen et al., Physiol Rep 2022
+    Sejersen et al., Physiol Rep 2022
     "To identify normovolemia: SV response to HDT vs PLR"
     n=10 healthy males, 177 cm, 80 kg; 20° HDT for 10 min.
     Key finding: SV/CO unchanged during HDT in normovolemic supine subjects.
@@ -238,7 +238,7 @@ def test_microgravity_equalises_pressures():
 
 @pytest.fixture(scope="module")
 def supine_177_80():
-    """80 kg, 177 cm, MAP 83, HR 62 — Sørensen 2022 [1] cohort."""
+    """80 kg, 177 cm, MAP 83, HR 62 — Sejersen 2022 [1] cohort."""
     return run_scenario(177, 80, map_mmhg=83, hr_bpm=62, tilt_deg=0.0)
 
 
@@ -311,8 +311,8 @@ def tachycardia_175_75_nobaro():
 # 3. Literature validation — tests
 # ===========================================================================
 
-def test_supine_baseline_sorensen2022(supine_177_80):
-    """[DOI: 10.14814/phy2.15216] Sørensen 2022 — supine, 80 kg / 177 cm.
+def test_supine_baseline_sejersen2022(supine_177_80):
+    """[DOI: 10.14814/phy2.15216] Sejersen 2022 — supine, 80 kg / 177 cm.
 
     Literature: MAP 83+/-8 mmHg, HR 62+/-8 bpm, SV 110+/-16 mL, CO 7+/-2 L/min.
     """
@@ -323,8 +323,8 @@ def test_supine_baseline_sorensen2022(supine_177_80):
     assert 60 <= s["sv"]  <= 150, f"SV {s['sv']:.1f} mL out of range (lit 110+/-16)"
 
 
-def test_hdt20_normovolemic_sorensen2022(supine_177_80, hdt20_177_80):
-    """[DOI: 10.14814/phy2.15216] 20° HDT, normovolemic.
+def test_hdt20_normovolemic_sejersen2022(supine_177_80, hdt20_177_80):
+    """[DOI: 10.14814/phy2.15216] Sejersen 2022 — 20° HDT, normovolemic.
 
     Literature: dSV ~ 0 (n.s.), dCO ~ 0, dMAP ~ +2 mmHg (n.s.) — SV/CO
     should not increase substantially and MAP should not drop.

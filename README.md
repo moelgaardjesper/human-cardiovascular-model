@@ -77,21 +77,14 @@ tests/             Smoke tests + 5-scenario literature validation suite
 
 ```mermaid
 flowchart LR
-    subgraph RH["Right Heart"]
-        RA([Right Atrium])
-        RV([Right Ventricle])
-    end
-
-    subgraph PUL["Pulmonary Circulation"]
-        PA[Pulmonary Artery]
-        PCAP[Pulmonary Capillaries]
-        PV[Pulmonary Vein]
-    end
-
-    subgraph LH["Left Heart"]
-        LA([Left Atrium])
-        LV([Left Ventricle])
-    end
+    RA([Right Atrium])
+    RV([Right Ventricle])
+    LA([Left Atrium])
+    LV([Left Ventricle])
+    PA[Pulmonary Artery]
+    PCAP[Pulmonary Capillaries]
+    PV[Pulmonary Vein]
+    COR[Coronary]
 
     subgraph ART["Systemic Arteries"]
         AO[Aorta]
@@ -101,6 +94,11 @@ flowchart LR
         RAR[Renal Artery]
         SPL[Splanchnic Artery]
         LBA[Lower-Body Artery]
+        AO --> BC --> UBA
+        AO --> AAO
+        AAO --> RAR
+        AAO --> SPL
+        AAO --> LBA
     end
 
     subgraph VEN["Systemic Veins"]
@@ -114,8 +112,6 @@ flowchart LR
         IVC[IVC]
     end
 
-    COR[Coronary]
-
     RA -- tricuspid --> RV
     RV -- pulmonic --> PA
     PA --> PCAP --> PV
@@ -123,21 +119,21 @@ flowchart LR
     LA -- mitral --> LV
     LV -- aortic --> AO
 
-    AO --> BC --> UBA --> UBV --> SVC
-    AO --> AAO
-    AAO --> RAR --> RVN --> IVC
-    AAO --> SPL --> SPV --> IVC
-    AAO --> LBA
+    UBA --> UBV
+    RAR --> RVN
+    SPL --> SPV
     LBA --> TV
     LBA --> CV
     LBA --> FV
     FV -- valve --> CV
     CV -- valve --> TV
     TV -- valve --> IVC
+    RVN --> IVC
+    SPV --> IVC
+    UBV --> SVC
 
     SVC -- valve --> RA
     IVC -- valve --> RA
-
     AO --> COR --> RA
 
     classDef art fill:#fdd,stroke:#c00,color:#000
@@ -228,7 +224,7 @@ Comprehensive review of gravitational cardiovascular physiology. Key elements us
 
 ### Posture validation — head-down tilt and passive leg raising
 
-**Sørensen C et al.** (2022). To identify normovolemia in humans: the stroke volume response to passive leg raising vs. head-down tilt. *Physiol Rep* PMID: 35854636. PMC9296869. DOI: [10.14814/phy2.15216](https://doi.org/10.14814/phy2.15216)
+**Sejersen C et al.** (2022). To identify normovolemia in humans: the stroke volume response to passive leg raising vs. head-down tilt. *Physiol Rep* PMID: 35854636. PMC9296869. DOI: [10.14814/phy2.15216](https://doi.org/10.14814/phy2.15216)
 
 Randomised study in 10 healthy males (median age 39, height 177 cm, weight 80 kg). The primary validation dataset for resting and tilt haemodynamics:
 
@@ -353,8 +349,8 @@ Ten-scenario validation against published human physiological data (10/10 passin
 
 | # | Scenario | Reference | Literature target | Model result | |
 |---|---|---|---|---|---|
-| 1 | Supine resting haemodynamics | [Sørensen 2022](https://doi.org/10.14814/phy2.15216) — 10 healthy males, 177 cm, 80 kg | MAP 83±8 mmHg, HR 62±8 bpm, SV 110±16 mL, CO 7±2 L/min | MAP 84, HR 65, CO 4.5, SV 69 | ✓ |
-| 2 | 20° HDT in normovolemic subjects — MAP↑, CO maintained | [Sørensen 2022](https://doi.org/10.14814/phy2.15216) | ΔSV ≈ 0 (n.s.), ΔCO ≈ 0, ΔMAP +2 mmHg (n.s.) — heart on Starling plateau when supine | ΔMAP +4.4 mmHg, CO ≥ 4 L/min, direction correct | ✓ |
+| 1 | Supine resting haemodynamics | [Sejersen 2022](https://doi.org/10.14814/phy2.15216) — 10 healthy males, 177 cm, 80 kg | MAP 83±8 mmHg, HR 62±8 bpm, SV 110±16 mL, CO 7±2 L/min | MAP 84, HR 65, CO 4.5, SV 69 | ✓ |
+| 2 | 20° HDT in normovolemic subjects — MAP↑, CO maintained | [Sejersen 2022](https://doi.org/10.14814/phy2.15216) | ΔSV ≈ 0 (n.s.), ΔCO ≈ 0, ΔMAP +2 mmHg (n.s.) — heart on Starling plateau when supine | ΔMAP +4.4 mmHg, CO ≥ 4 L/min, direction correct | ✓ |
 | 3 | 6° HDT vs 20° upright: HR lower during HDT | [Verdini 2019](https://doi.org/10.1038/s41598-019-39360-6) — 17 males, 179 cm, 79 kg | HR_HDT < HR_upright (p < 0.001), MAP_HDT < MAP_upright | HR_HDT 63 vs HR_upright 88 bpm | ✓ |
 | 4 | −15° Trendelenburg vs supine | [Likhvantsev 2025](https://doi.org/10.1053/j.jvca.2024.10.001) — meta-analysis, n=333, 16 studies | ΔCVP +4.13 mmHg (CI 2.42–5.84), ΔCO +0.33 L/min, ΔSV +8.27 mL, ΔHR −1.65 bpm | ΔCVP +0.4, ΔCO +0.5, **ΔSV +8.1 mL** ✓, ΔHR −1.2 bpm | ✓ |
 | 5 | −30° Trendelenburg: CVP↑, MAP maintained | [Sibbald 1979](https://pubmed.ncbi.nlm.nih.gov/467083/) — n=61 normotensive patients | Preload↑, CO slightly↑, SVR↓ ~5%, MAP unchanged | CVP +1.4 mmHg, MAP +4.2 mmHg | ✓ |
@@ -363,6 +359,23 @@ Ten-scenario validation against published human physiological data (10/10 passin
 | 8 | Microgravity: CVP higher than upright Earth | [Buckey 1996](https://pubmed.ncbi.nlm.nih.gov/8853498/) | CVP supine 5–8 mmHg, drops to 2.5 mmHg in orbit; higher than upright standing | CVP µg 3.2 vs upright 2.1 mmHg | ✓ |
 | 9 | Cerebral perfusion pressure (CPP) decreases with upright posture | [Pohl & Cullen 2005](https://pubmed.ncbi.nlm.nih.gov/15983529/) | Beach-chair position: MAP drops 30–35 mmHg at brain level under GA; CPP risk < 50 mmHg | CPP supine 79 mmHg → 60 mmHg at 45° upright | ✓ |
 | 10 | Buckberg index falls with tachycardia (coronary ischaemia risk) | [Buckberg 1972/1978](https://pubmed.ncbi.nlm.nih.gov/4667030/) | DPTI/SPTI > 0.8 at rest; falls as diastolic time shortens with HR↑ | Buckberg 1.13 at rest → 0.45 at HR=160 bpm | ✓ |
+
+### Known literature disagreements
+
+Two scenarios pass on direction/ordering but show quantitative gaps against one of their validation sources. These reflect either population differences between studies or structural model limitations, not implementation errors.
+
+**Scenario 1 — Baseline CO and SV (Sejersen 2022 vs Lie 2023)**
+
+The model produces CO 4.5 L/min and SV 69 mL for a default supine 175 cm / 75 kg patient. Sejersen 2022 reports baseline values of CO 7 ± 2 L/min and SV 110 ± 16 mL in their cohort. Two explanations:
+
+- *Population difference.* Sejersen recruited 10 young healthy males (177 cm, 80 kg); their baseline SV (110 mL) implies a resting HR ≈ 63 bpm and high cardiac output typical of a fit young cohort. Lie et al. (2023, PMID 37947905) — also in the test suite — reports baseline CO 4.85 ± 1.08 L/min in a comparable LBNP study. The model is consistent with Lie but below Sejersen.
+- *Structural ceiling.* The Frank-Starling implementation plateaus at EDV<sub>ref</sub> = 130 mL. With an effective resting EF ≈ 0.50, SV is bounded near 65 mL unless EDV<sub>ref</sub> is recalibrated to a higher, more athletic baseline.
+
+The test (`test_supine_baseline_sejersen2022`) validates MAP (84 vs 83 ± 8 ✓) and HR (65 vs 62 ± 8 ✓) but applies wide CO/SV bounds (4–10 L/min, 60–150 mL) that admit both anchors. The CO/SV gap is a known calibration limitation, not a direction error.
+
+**Scenario 4 — Trendelenburg ΔCVP (Likhvantsev 2025 meta-analysis)**
+
+The model produces ΔCVP +0.39 mmHg against a meta-analytic target of +4.13 mmHg (95% CI 2.42–5.84). ΔSV (+9.1 vs +8.27 mL) and ΔCO (+0.54 vs +0.33 L/min) match well. The CVP gap is structural: the algebraic Frank-Starling response immediately pumps any extra preload from head-down tilt forward as higher stroke volume, preventing CVP from accumulating. Real patients show transient CVP buildup because cardiac adaptation is slower. The test therefore asserts ΔCVP direction only (`> 0`), not magnitude.
 
 ---
 
@@ -400,7 +413,7 @@ Development was openly iterative. Each correction was driven by comparison with 
 | Iteration | Problem identified | Fix | Reference driving the fix |
 |---|---|---|---|
 | 1 | Hydrostatic signs inverted — Trendelenburg decreased CVP | Corrected sign convention in all flow equations | Sibbald 1979 (CVP should increase with HDT) |
-| 2 | 20° HDT increased SV 34% in normovolemic patient | Added Frank-Starling plateau (E_max cap at EDV = 130 mL) | Sørensen 2022 (SV unchanged with 20° HDT) |
+| 2 | 20° HDT increased SV 34% in normovolemic patient | Added Frank-Starling plateau (E_max cap at EDV = 130 mL) | Sejersen 2022 (SV unchanged with 20° HDT) |
 | 3 | Single lb_vein pooled only 73 mL at 90° | Split into foot/calf/thigh (3 compartments, correct heights) | Sjöstrand 1953 (640 mL target) |
 | 4 | Init volumes set at P = 8–10 mmHg causing large transients | Recalculated Vinit at analytical steady-state (P ≈ 12–14 mmHg) | Analytical flow balance (no external reference) |
 | 5 | CO monitoring used aorta outflow R instead of valve R | Fixed — CO reported from LV valve resistance | Detected during validation sweep |
@@ -452,7 +465,7 @@ Primary model basis:
   Mohammadyari P et al. (2022) Sci Rep — PMC9363491
 
 Validation references:
-  Sørensen C et al. (2022) Physiol Rep — DOI:10.14814/phy2.15216
+  Sejersen C et al. (2022) Physiol Rep — DOI:10.14814/phy2.15216
   Verdini D et al.  (2019) Sci Rep    — DOI:10.1038/s41598-019-39360-6
   Sibbald WJ et al. (1979) Crit Care Med — PMID:467083
   Sjöstrand T      (1953) Physiol Rev — DOI:10.1152/physrev.1953.33.2.202
