@@ -352,7 +352,7 @@ Ten-scenario validation against published human physiological data (10/10 passin
 | 1 | Supine resting haemodynamics | [Sejersen 2022](https://doi.org/10.14814/phy2.15216) — 10 healthy males, 177 cm, 80 kg | MAP 83±8 mmHg, HR 62±8 bpm, SV 110±16 mL, CO 7±2 L/min | MAP 84, HR 65, CO 4.5, SV 69 | ✓ |
 | 2 | 20° HDT in normovolemic subjects — MAP↑, CO maintained | [Sejersen 2022](https://doi.org/10.14814/phy2.15216) | ΔSV ≈ 0 (n.s.), ΔCO ≈ 0, ΔMAP +2 mmHg (n.s.) — heart on Starling plateau when supine | ΔMAP +4.4 mmHg, CO ≥ 4 L/min, direction correct | ✓ |
 | 3 | 6° HDT vs 20° upright: HR lower during HDT | [Verdini 2019](https://doi.org/10.1038/s41598-019-39360-6) — 17 males, 179 cm, 79 kg | HR_HDT < HR_upright (p < 0.001), MAP_HDT < MAP_upright | HR_HDT 63 vs HR_upright 88 bpm | ✓ |
-| 4 | −15° Trendelenburg vs supine | [Likhvantsev 2025](https://doi.org/10.1053/j.jvca.2024.10.001) — meta-analysis, n=333, 16 studies | ΔCVP +4.13 mmHg (CI 2.42–5.84), ΔCO +0.33 L/min, ΔSV +8.27 mL, ΔHR −1.65 bpm | ΔCVP +0.4, ΔCO +0.5, **ΔSV +8.1 mL** ✓, ΔHR −1.2 bpm | ✓ |
+| 4 | −15° Trendelenburg vs supine | [Likhvantsev 2025](https://doi.org/10.1053/j.jvca.2024.10.001) — meta-analysis, n=333, 16 studies | ΔCVP +4.13 mmHg (CI 2.42–5.84), ΔCO +0.33 L/min, ΔSV +8.27 mL, ΔHR −1.65 bpm | **ΔCVP +2.4 mmHg** ✓, ΔCO +0.33 ✓, ΔSV +5.9 mL, ΔHR −1.1 bpm | ✓ |
 | 5 | −30° Trendelenburg: CVP↑, MAP maintained | [Sibbald 1979](https://pubmed.ncbi.nlm.nih.gov/467083/) — n=61 normotensive patients | Preload↑, CO slightly↑, SVR↓ ~5%, MAP unchanged | CVP +1.4 mmHg, MAP +4.2 mmHg | ✓ |
 | 6 | 30° HUT dynamics: SV↓, CO↓, HR↑, MAP partially maintained | [Wieling 1998](https://doi.org/10.1042/cs0940347) — 6 healthy subjects | At 90° HUT: SV −39±9%, CO −26±10%, MAP +1±7 mmHg (maintained by baroreflex) | SV −26%, CO −23%, HR↑, MAP −7.6 mmHg (30°, no muscle pump) | ✓ |
 | 7 | Graded HUT 0→20→30°: HR↑ and CO↓ monotonically | [Sarafian 2017](https://doi.org/10.3389/fphys.2016.00656) — 23 adults, graded tilt 0→60° | HR +41%, BP +10%, TPR +16% at 60°; monotonic increase with angle | HR 71→74 bpm, CO 4.25→3.29 L/min, monotonic | ✓ |
@@ -362,7 +362,7 @@ Ten-scenario validation against published human physiological data (10/10 passin
 
 ### Known literature disagreements
 
-Two scenarios pass on direction/ordering but show quantitative gaps against one of their validation sources. These reflect either population differences between studies or structural model limitations, not implementation errors.
+One scenario passes on direction but shows a quantitative gap against one of its validation sources, reflecting a population difference between studies rather than an implementation error.
 
 **Scenario 1 — Baseline CO and SV (Sejersen 2022 vs Lie 2023)**
 
@@ -373,9 +373,9 @@ The model produces CO 4.5 L/min and SV 69 mL for a default supine 175 cm / 75 kg
 
 The test (`test_supine_baseline_sejersen2022`) validates MAP (84 vs 83 ± 8 ✓) and HR (65 vs 62 ± 8 ✓) but applies wide CO/SV bounds (4–10 L/min, 60–150 mL) that admit both anchors. The CO/SV gap is a known calibration limitation, not a direction error.
 
-**Scenario 4 — Trendelenburg ΔCVP (Likhvantsev 2025 meta-analysis)**
+**Previously listed: Scenario 4 — Trendelenburg ΔCVP** *(resolved 2026-06-17)*
 
-The model produces ΔCVP +0.39 mmHg against a meta-analytic target of +4.13 mmHg (95% CI 2.42–5.84). ΔSV (+9.1 vs +8.27 mL) and ΔCO (+0.54 vs +0.33 L/min) match well. The CVP gap is structural: the algebraic Frank-Starling response immediately pumps any extra preload from head-down tilt forward as higher stroke volume, preventing CVP from accumulating. Real patients show transient CVP buildup because cardiac adaptation is slower. The test therefore asserts ΔCVP direction only (`> 0`), not magnitude.
+The previous ΔCVP gap (+0.39 vs +4.13 mmHg) was a measurement-mode mismatch: the model tracked transmural CVP while clinical CVP includes the intrathoracic pressure (ITP) rise from abdominal viscera compressing the diaphragm in Trendelenburg. Positional ITP coupling is now implemented (`positional_itp_mmhg()` in `model/gravity.py`), applied to all thoracic compartments in `_odes()` and added to reported CVP. Model now produces ΔCVP +2.44 mmHg (lit CI 2.42–5.84 ✓), ΔCO +0.33 L/min (lit +0.33 ✓).
 
 ---
 

@@ -38,7 +38,7 @@ from .heart import (
     RA_EMAX, RA_EMIN, LA_EMAX, LA_EMIN,
     ATRIAL_PHASE_OFFSET,
 )
-from .gravity import hydrostatic_delta_mmhg, GravityEnvironment, smooth_tilt_profile
+from .gravity import hydrostatic_delta_mmhg, GravityEnvironment, smooth_tilt_profile, positional_itp_mmhg
 from .baroreflex import BaroreflexController
 from .pharmacology import combined_drug_factors, NEUTRAL_FACTORS
 from .respiration import intrathoracic_pressure, respiratory_sinus_arrhythmia
@@ -252,41 +252,7 @@ def _odes(t: float, V: np.ndarray, params: SimParams, baro: BaroreflexController
     P[i["right_atrium"]]    = _cardiac_pressure(V[i["right_atrium"]],    comp[i["right_atrium"]].unstressed_volume,    E_ra)
 
     # -----------------------------------------------------------------------
-    # Intrathoracic pressure (ITP) — respiratory-cardiovascular coupling
-    #
-    # Add ITP to all thoracic compartments (including aorta so that ITP cancels
-    # for the LV→aorta aortic-valve flow and is correctly transmitted to the
-    # peripheral arterial tree).
-    #
-    # Effect on cross-boundary flows:
-    #   Venous return:  Q_SVC/IVC_→_RA = (P_SVC/IVC − (P_RA_transmural + ITP)) / R
-    #     → ITP negative (spontaneous insp.) → venous return ↑ ✓
-    #     → ITP positive (PPV insp.)          → venous return ↓ ✓
-    #   Aorta→peripheral: Q = ((P_ao_transmural + ITP) − P_brachio) / R
-    #     → transmits ITP pulse to systemic arteries (basis of PPV/SVV marker) ✓
-    #   Intra-thoracic flows: ITP cancels between both thoracic compartments ✓
-    # -----------------------------------------------------------------------
-    if params.ventilation_mode != 'none':
-        itp = intrathoracic_pressure(
-            t, params.ventilation_mode, params.resp_rate_bpm,
-            params.peep_cmh2o, params.pip_cmh2o, params.ie_ratio,
-        )
-        # Aorta deliberately excluded: including it creates an unphysical
-        # retrograde peripheral arterial flow when ITP is negative (spontaneous
-        # breathing) because the arterial connections have no one-way valve and
-        # ITP large enough to invert P_ao − P_brachio drives blood backward,
-        # accumulating volume in the aorta and raising diastolic pressure.
-        # Without aorta in this set, the LV→aorta valve flow retains ITP
-        # (LV thoracic, aorta not) giving a correct pulsus inspiratorius during
-        # spontaneous breathing and the correct ITP-assisted ejection during PPV
-        # (the mechanism behind PPV/SVV as a fluid-responsiveness marker).
-        for _ti in (i["right_atrium"], i["right_ventricle"],
-                    i["pulmonary_art"], i["pulmonary_cap"], i["pulmonary_vein"],
-                    i["left_atrium"], i["left_ventricle"]):
-            P[_ti] += itp
-
-    # -----------------------------------------------------------------------
-    # Tilt angle at current time
+    # Tilt angle at current time  (computed first — needed for positional ITP)
     # -----------------------------------------------------------------------
     tilt = smooth_tilt_profile(
         t,
@@ -294,6 +260,49 @@ def _odes(t: float, V: np.ndarray, params: SimParams, baro: BaroreflexController
         params.tilt_onset_s, params.tilt_duration_s,
     )
     g = params.gravity
+
+    # -----------------------------------------------------------------------
+    # Intrathoracic pressure (ITP) — two additive components:
+    #
+    # 1. Respiratory ITP (oscillatory): cyclic pleural pressure from breathing.
+    #    Applied only when ventilation_mode != 'none'.
+    #
+    # 2. Positional ITP (DC): abdominal viscera shift cranially in head-down
+    #    tilt and compress the diaphragm, raising the pleural pressure baseline.
+    #    This is the mechanism behind the ~+4 mmHg clinical CVP rise in
+    #    Trendelenburg (Likhvantsev 2025) that transmural CVP alone cannot
+    #    reproduce. Implemented via positional_itp_mmhg() in gravity.py.
+    #
+    # Combined effect on cross-boundary flows:
+    #   Venous return:  Q_SVC/IVC → RA = (P_SVC/IVC − (P_RA_tm + ITP)) / R
+    #     → ITP_resp negative (spontaneous insp.) → venous return ↑ ✓
+    #     → ITP_resp positive (PPV insp.)          → venous return ↓ ✓
+    #     → ITP_pos positive (Trendelenburg)       → slightly offsets
+    #       hydrostatic venous-return benefit, matching clinical observation
+    #       that Trendelenburg ΔCO/ΔSV is modest (+0.33 L/min, +8 mL) ✓
+    #   Intra-thoracic flows: ITP cancels between both thoracic sides ✓
+    #
+    # Aorta is deliberately excluded from the ITP set — see note in the
+    # spontaneous-breathing code path: including aorta causes unphysical
+    # retrograde peripheral arterial flow when ITP is negative. Without
+    # aorta, LV→aorta retains the ITP offset (LV thoracic, aorta not),
+    # giving correct pulsus inspiratorius / PPV/SVV mechanics ✓
+    # -----------------------------------------------------------------------
+    itp_resp = (
+        intrathoracic_pressure(
+            t, params.ventilation_mode, params.resp_rate_bpm,
+            params.peep_cmh2o, params.pip_cmh2o, params.ie_ratio,
+        )
+        if params.ventilation_mode != 'none' else 0.0
+    )
+    itp_pos   = positional_itp_mmhg(tilt)
+    itp_total = itp_resp + itp_pos
+
+    if itp_total != 0.0:
+        for _ti in (i["right_atrium"], i["right_ventricle"],
+                    i["pulmonary_art"], i["pulmonary_cap"], i["pulmonary_vein"],
+                    i["left_atrium"], i["left_ventricle"]):
+            P[_ti] += itp_total
 
     def hdp(idx_name: str) -> float:
         """Hydrostatic delta (mmHg) for this compartment at current tilt."""
@@ -629,9 +638,18 @@ def run_simulation(
         ankle_p_ts[step]    = p_lba - hydrostatic_delta_mmhg(c_lba.height_m, tilt_now, params.gravity)
         brachial_p_ts[step] = p_bc  - hydrostatic_delta_mmhg(c_bc.height_m,  tilt_now, params.gravity)
 
+        # Positional ITP offset for CVP and LA-pressure reporting.
+        # The baroreflex uses transmural CVP (p_cvp_edi) — wall-stretch drives
+        # the reflex, not the absolute lumen pressure. Reported CVP is absolute
+        # (transmural + positional ITP), matching what a CVC catheter reads.
+        # Respiratory ITP is NOT added here: clinical CVP is read at end-
+        # expiration when respiratory ITP ≈ 0 (spontaneous) or PEEP baseline
+        # (mechanical); the current transmural CVP already approximates this.
+        itp_pos_now = positional_itp_mmhg(tilt_now)
+
         aortic_p[step]    = p_ao
-        cvp_ts[step]      = p_cvp_edi
-        la_p_ts[step]     = p_la
+        cvp_ts[step]      = p_cvp_edi + itp_pos_now
+        la_p_ts[step]     = p_la + itp_pos_now
         hr_ts[step]       = hr_eff
         dbp_ts[step]      = p_dbp
         sbp_ts[step]      = p_sbp

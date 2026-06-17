@@ -391,7 +391,9 @@ def test_trendelenburg_minus15_likhvantsev2025(supine_175_75, hdt15_175_75):
     dsv  = s_trend15["sv"]  - s_base["sv"]
     dmap = s_trend15["map"] - s_base["map"]
 
-    assert dcvp > 0, f"CVP must increase at -15 deg: d={dcvp:+.2f} (lit CI 2.42-5.84)"
+    # With ITP positional coupling: transmural ΔCVP + positional ITP (~+2.2 mmHg
+    # at -15°) should place reported ΔCVP within the Likhvantsev CI [2.42-5.84].
+    assert 1.5 <= dcvp <= 7.0, f"ΔCVP {dcvp:+.2f} mmHg outside [1.5, 7.0] (lit CI 2.42-5.84)"
     assert dco  > 0, f"CO must increase at -15 deg: d={dco:+.3f} (lit +0.33)"
     assert dsv  > 0, f"SV must increase at -15 deg: d={dsv:+.1f} mL (lit +8.27)"
     assert dmap > -5, f"MAP dropped substantially at -15 deg: d={dmap:+.1f} mmHg"
