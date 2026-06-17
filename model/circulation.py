@@ -454,6 +454,78 @@ def _odes(t: float, V: np.ndarray, params: SimParams, baro: BaroreflexController
 
 
 # ---------------------------------------------------------------------------
+# PPV helper
+# ---------------------------------------------------------------------------
+
+def _compute_ppv(aortic_p: np.ndarray, dt: float, hr_bpm: float,
+                 resp_rate_bpm: float) -> np.ndarray:
+    """
+    Compute pulse pressure variation (PPV, %) time series from the aortic
+    pressure waveform.
+
+        PPV = (PP_max − PP_min) / PP_mean × 100
+
+    where PP_max and PP_min are the largest and smallest per-beat pulse
+    pressures (SBP_i − DBP_i) within one respiratory cycle.
+
+    Only meaningful under mechanical ventilation, but the function returns
+    an array of the same length as aortic_p regardless of mode. Values near
+    simulation start are unreliable (< 1 full resp cycle of data).
+    """
+    from scipy.signal import find_peaks as _fp
+
+    n      = len(aortic_p)
+    n_card = max(1, int(60.0 / hr_bpm / dt))
+    n_resp = max(1, int(60.0 / resp_rate_bpm / dt))
+
+    if n < 2 * n_resp:
+        return np.zeros(n)
+
+    # Detect systolic peaks: above median, separated by ≥ half cardiac cycle.
+    peaks, _   = _fp(aortic_p, distance=n_card // 2,
+                     height=float(np.median(aortic_p)))
+    # Detect diastolic troughs (local minima in the waveform).
+    troughs, _ = _fp(-aortic_p, distance=n_card // 2)
+
+    if len(peaks) < 3 or len(troughs) < 3:
+        return np.zeros(n)
+
+    # Per-beat PP = SBP_i − DBP_i (the diastolic trough immediately preceding
+    # each systolic peak).
+    pp_idx, pp_vals = [], []
+    for p in peaks:
+        pre = troughs[troughs < p]
+        if len(pre) == 0:
+            continue
+        pp_idx.append(int(p))
+        pp_vals.append(float(aortic_p[p] - aortic_p[pre[-1]]))
+
+    if len(pp_idx) < 3:
+        return np.zeros(n)
+
+    pp_idx  = np.asarray(pp_idx,  dtype=np.intp)
+    pp_vals = np.asarray(pp_vals, dtype=float)
+
+    # For each beat, scan the surrounding ±half-respiratory-cycle beats and
+    # compute PPV = (PP_max − PP_min) / PP_mean.
+    half = n_resp // 2
+    ppv_beats = np.zeros(len(pp_idx))
+    for j, pidx in enumerate(pp_idx):
+        mask   = (pp_idx >= pidx - half) & (pp_idx <= pidx + half)
+        pp_win = pp_vals[mask]
+        if len(pp_win) < 2:
+            continue
+        pp_mean = float(pp_win.mean())
+        if pp_mean <= 0:
+            continue
+        ppv_beats[j] = (pp_win.max() - pp_win.min()) / pp_mean * 100.0
+
+    # Interpolate per-beat PPV to every time step; clamp to [0, 100].
+    ppv_ts = np.interp(np.arange(n, dtype=float), pp_idx.astype(float), ppv_beats)
+    return np.clip(ppv_ts, 0.0, 100.0)
+
+
+# ---------------------------------------------------------------------------
 # Public simulation runner
 # ---------------------------------------------------------------------------
 
@@ -483,6 +555,7 @@ def run_simulation(
         cpp         : np.ndarray (mmHg) — cerebral perfusion pressure
         cop         : np.ndarray (mmHg) — coronary perfusion pressure (DBP − LVEDP)
         buckberg    : np.ndarray        — Buckberg subendocardial viability ratio
+        ppv         : np.ndarray (%)   — pulse pressure variation (mechanical vent only; zeros otherwise)
         volumes     : np.ndarray (mL, shape [n_steps, n_compartments])
     """
     from .perfusion import (cerebral_perfusion_pressure,
@@ -678,6 +751,14 @@ def run_simulation(
     map_ts = np.convolve(aortic_p, kernel, mode="same")
     co_ts  = np.convolve(co_ts,    kernel, mode="same")
 
+    # PPV: only computed for mechanical ventilation (requires positive-pressure
+    # ITP cycles to modulate venous return). Returns a time-series in percent.
+    ppv_ts = (
+        _compute_ppv(aortic_p, dt, params.hr_bpm, params.resp_rate_bpm)
+        if params.ventilation_mode == 'mechanical'
+        else np.zeros(n)
+    )
+
     return {
         "t":           t_eval,
         "aortic_p":    aortic_p,
@@ -695,5 +776,6 @@ def run_simulation(
         "buckberg":    np.convolve(buckberg_ts, kernel, mode="same"),
         "ankle_p":     ankle_p_ts,
         "brachial_p":  brachial_p_ts,
+        "ppv":         ppv_ts,
         "volumes":     volumes_ts,
     }

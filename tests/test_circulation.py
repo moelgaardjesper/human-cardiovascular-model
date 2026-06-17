@@ -725,3 +725,80 @@ def test_hemorrhage_resuscitation_restores_map_and_co(hem200):
     assert resus['co'] > hem200['co'], (
         f"Resuscitation did not raise CO: {hem200['co']:.2f} -> {resus['co']:.2f}"
     )
+
+
+# ===========================================================================
+# 8. PPV — pulse pressure variation / fluid responsiveness
+# ===========================================================================
+
+def test_ppv_fluid_responsiveness_michard2000():
+    """[DOI 10.1164/ajrccm.162.1.9905119 — Michard & Teboul 2000]
+    PPV > 13% predicts fluid responsiveness under mechanical ventilation.
+
+    Michard 2000 (n=40 septic-shock patients, PEEP 5, VT 8 mL/kg):
+    PPV > 13% predicted ≥15% CO rise with a 500 mL fluid challenge
+    (sensitivity 94%, specificity 96%).
+
+    Three scenarios — all at PEEP 5 cmH₂O / PIP 20 cmH₂O / RR 14 bpm:
+
+    1. Normovolemic (default patient): LV EDV ~139 mL > EDV_ref=130 → Starling
+       plateau → beat-to-beat SV barely changes with cyclic ITP → PPV < 13%.
+
+    2. Hypovolemic (400 mL hemorrhage → LV EDV ~89 mL < EDV_ref=130 → ascending
+       Starling limb): each ITP-driven venous-return drop reduces LV SV
+       appreciably → PPV > 13%, correctly flagging the patient as fluid responsive.
+       Model scale note: the model's compressed stressed volume (667 mL) means
+       400 mL loss is proportionally more severe than in a physiological patient
+       (1000-1500 mL stressed), so this threshold occurs at a lighter absolute
+       hemorrhage than clinical expectation.
+
+    3. Partial resuscitation (hemorrhage + 400 mL crystalloid): CO increases
+       ≥15% (Michard criterion) AND PPV decreases — confirms fluid responsiveness
+       was correctly identified by the elevated PPV.
+    """
+    def _ppv_run(hemorrhage_ml=0.0, fluid_ml=0.0):
+        p = SimParams()
+        p.ventilation_mode   = 'mechanical'
+        p.peep_cmh2o         = 5.0
+        p.pip_cmh2o          = 20.0
+        p.ie_ratio           = 0.33
+        p.resp_rate_bpm      = 14.0
+        p.baroreflex_enabled = True
+        if hemorrhage_ml > 0:
+            p.hemorrhage_rate_mlmin = hemorrhage_ml / (20.0 / 60.0)
+            p.hemorrhage_start_s    = 2.0
+            p.hemorrhage_duration_s = 20.0
+        if fluid_ml > 0:
+            p.fluid_bolus_ml         = fluid_ml
+            p.fluid_bolus_start_s    = 30.0
+            p.fluid_bolus_duration_s = 20.0
+        r = run_simulation(p, duration_s=60.0, dt=DT)
+        h = len(r["ppv"]) // 2
+        return {
+            "ppv": float(np.mean(r["ppv"][h:])),
+            "co":  float(np.mean(r["co"][h:])),
+        }
+
+    s_normo = _ppv_run()
+    s_hypo  = _ppv_run(hemorrhage_ml=400.0)
+    s_resus = _ppv_run(hemorrhage_ml=400.0, fluid_ml=400.0)
+
+    # Normovolemic: on Starling plateau → not flagged as fluid responsive
+    assert s_normo["ppv"] < 13, (
+        f"Normovolemic PPV too high: {s_normo['ppv']:.1f}% (expected < 13% on plateau)"
+    )
+
+    # Hypovolemic: on ascending limb → fluid responsive (Michard threshold)
+    assert s_hypo["ppv"] > 13, (
+        f"Hypovolemic PPV too low: {s_hypo['ppv']:.1f}% (expected > 13% per Michard 2000)"
+    )
+
+    # Resuscitation reduces PPV (patient moves toward plateau)
+    assert s_resus["ppv"] < s_hypo["ppv"], (
+        f"PPV did not decrease with resuscitation: {s_hypo['ppv']:.1f}% → {s_resus['ppv']:.1f}%"
+    )
+
+    # CO increased ≥ 15% with fluid (Michard criterion validated)
+    assert s_resus["co"] >= s_hypo["co"] * 1.15, (
+        f"CO increase < 15% with fluid: {s_hypo['co']:.2f} → {s_resus['co']:.2f} L/min"
+    )
