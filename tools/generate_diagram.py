@@ -177,11 +177,16 @@ ax.text((HRX+RX)/2+0.1, 8.78, 'aortic valve', fontsize=6.0,
 ax.text(HLX - 0.05, 10.90, 'pulmonic\nvalve', fontsize=5.8,
         color=LUNG, ha='center', va='center', fontstyle='italic', zorder=5)
 
-# ── Arterial right column (top→bottom) ───────────────────────────────────────
-# AO up to BC / down to AAO
-vline(RX, 8.64, 13.42, ART)            # main arterial trunk
-arrow_on_line(RX, 11.5, 0, 0.18, ART) # upward direction marker (upper body)
-arrow_on_line(RX,  7.6, 0, -0.18, ART) # downward to abdomen
+# ── Arterial right column ────────────────────────────────────────────────────
+# Upward trunk: AO → BC (brachiocephalic goes up from aortic arch)
+vline(RX, 8.64, 13.42, ART)
+arrow_on_line(RX, 10.85, 0, 0.18, ART)   # AO → UBA upward
+arrow_on_line(RX, 12.65, 0, 0.18, ART)   # UBA → BC upward
+
+# Downward trunk: AO → AAO → RAR → SPL → LBA
+vline(RX, 3.86, 8.64, ART)
+arrow_on_line(RX,  7.6,  0, -0.18, ART)  # AO → AAO downward
+arrow_on_line(RX,  5.4,  0, -0.18, ART)  # AAO → RAR/SPL downward
 
 # AO → Coronary (branch)
 arr(RX - 0.83, 8.90, PCX + 0.75, 8.65, COR, lw=1.4, rad=0.2)
@@ -191,31 +196,23 @@ arr(PCX - 0.75, 8.65, HLX + 0.9, 10.2, COR, lw=1.4, rad=0.25)
 ax.text(4.15, 9.15, 'coronary\nsinus→RA', fontsize=5.8,
         color=COR, ha='center', va='center', fontstyle='italic', zorder=5)
 
-# ── Upper body right-side branches ───────────────────────────────────────────
-# AO → BC (horizontal from RX at y=13.15)
-arr(RX - 0.83, 13.15, RX - 0.83, 13.15, ART)   # just a marker (already linked by vline)
-# BC → UBA already connected by vline; add arrow marker
-arrow_on_line(RX, 12.65, 0, -0.18, ART)
-
 # ── Upper body cap bed: UBA → UBV ────────────────────────────────────────────
 arr(RX - 0.83, 12.15, LX + 0.83, 12.15, VEIN, lw=1.4)    # UBA → UBV (capillary)
 ax.text(5.5, 12.38, 'cap bed', fontsize=6.0,
         color=VEIN, ha='center', va='bottom', fontstyle='italic', zorder=5)
 
 # ── Venous left column ────────────────────────────────────────────────────────
-# SVC ← UBV
+# UBV → SVC (upper body veins drain upward into SVC junction)
 vline(LX, 8.20, 13.42, VEIN)
-arrow_on_line(LX, 12.65, 0, 0.18, VEIN)   # UBV→SVC upward
-arrow_on_line(LX, 10.9, 0, -0.18, VEIN)   # SVC→RA downward
-arrow_on_line(LX,  8.65, 0, -0.18, VEIN)  # IVC downward to RA
+arrow_on_line(LX, 12.65, 0, 0.18, VEIN)   # UBV → SVC upward
 arrow_on_line(LX,  6.65, 0, -0.18, VEIN)  # abdominal veins to IVC
 
-# ── SVC → RA ─────────────────────────────────────────────────────────────────
-arr(LX + 0.65, 10.45, HLX - 0.90, 10.45, VEIN, lw=1.6)
+# ── SVC → RA (explicit arrow from SVC box downward to RA) ────────────────────
+arr(LX + 0.65, 12.89, HLX - 0.90, 10.71, VEIN, lw=1.6, rad=0.15)
+ax.text(2.82, 11.95, 'SVC → RA', fontsize=6.2,
+        color=VEIN, ha='left', va='center', fontstyle='italic', zorder=5)
 
 # ── Abdominal arteries: AAO branches ─────────────────────────────────────────
-# RAR
-arr(RX - 0.83, 5.90, RX - 0.83, 5.90, ART)   # (already on trunk)
 arr(RX - 0.83, 5.90, LX + 0.83, 5.90, VEIN, lw=1.3)  # RAR cap → RVN
 ax.text(5.5, 6.12, 'renal\ncap', fontsize=5.8,
         color=VEIN, ha='center', va='bottom', fontstyle='italic', zorder=5)
@@ -235,9 +232,6 @@ ax.text(3.05, 9.05, 'IVC → RA', fontsize=6.2,
         color=VEIN, ha='left', va='center', fontstyle='italic', zorder=5)
 
 # ── Lower extremity arteries ──────────────────────────────────────────────────
-# AAO → LBA (continue down right trunk)
-arrow_on_line(RX, 4.25, 0, -0.18, ART)
-
 # LBA → venous cap beds
 arr(RX - 0.83, 3.60, LX + 0.70, 3.30, VEIN, lw=1.3, rad=0.15)
 ax.text(5.4, 3.75, 'cap bed', fontsize=5.8,
@@ -256,10 +250,6 @@ arr(LX, 3.56, LX, 4.69, VEIN, lw=1.6)      # TV → IVC
 ax.text(LX - 0.18, 4.05, '▶', fontsize=7, color=VEIN, ha='right',
         va='center', rotation=90, zorder=5)
 
-# ── Truncate vline: RX stops at LBA; add label ────────────────────────────────
-ax.annotate('', xy=(RX, 3.34), xytext=(RX, 4.69),
-            arrowprops=dict(arrowstyle='-|>', color=ART, lw=2.2,
-                           mutation_scale=14), zorder=2)
 
 # ─────────────────────────────────────────────────────────────────────────────
 # ANNOTATIONS & TITLE
