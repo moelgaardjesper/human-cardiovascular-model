@@ -39,8 +39,7 @@ python3 -m api.app
 ```
 
 ```bash
-pytest tests/                          # smoke tests
-python3 tests/stress_test_literature.py  # literature validation
+pytest tests/                          # all tests, including literature validation
 ```
 
 ---
@@ -64,7 +63,7 @@ model/
   heart.py          Time-varying elastance (Suga-Sagawa); Frank-Starling plateau
   gravity.py        ΔP = ρgh·sin(α) per compartment; smooth tilt transitions
   baroreflex.py     4-step arterial + cardiopulmonary reflex (Heldt 2002)
-  pharmacology.py   Hill-equation PD: NE, phenylephrine, vasopressin, epi
+  pharmacology.py   Hill-equation PD: NE, phenylephrine, vasopressin, epi, spinal anaesthesia
   patient.py        3-tier parameter scaling from sparse clinical inputs
   circulation.py    ODE system (Euler, dt = 1 ms); run_simulation() entry point
 
@@ -345,7 +344,7 @@ This educational resource synthesises the primary literature and provided the fr
 
 ## Validation Summary
 
-Ten-scenario validation against published human physiological data (10/10 passing). Run `python3 tests/stress_test_literature.py` to reproduce.
+Sixteen-scenario validation against published human physiological data (16/16 passing). Run `pytest tests/` to reproduce.
 
 | # | Scenario | Reference | Literature target | Model result | |
 |---|---|---|---|---|---|
@@ -353,12 +352,18 @@ Ten-scenario validation against published human physiological data (10/10 passin
 | 2 | 20° HDT in normovolemic subjects — MAP↑, CO maintained | [Sejersen 2022](https://doi.org/10.14814/phy2.15216) | ΔSV ≈ 0 (n.s.), ΔCO ≈ 0, ΔMAP +2 mmHg (n.s.) — heart on Starling plateau when supine | ΔMAP +4.4 mmHg, CO ≥ 4 L/min, direction correct | ✓ |
 | 3 | 6° HDT vs 20° upright: HR lower during HDT | [Verdini 2019](https://doi.org/10.1038/s41598-019-39360-6) — 17 males, 179 cm, 79 kg | HR_HDT < HR_upright (p < 0.001), MAP_HDT < MAP_upright | HR_HDT 63 vs HR_upright 88 bpm | ✓ |
 | 4 | −15° Trendelenburg vs supine | [Likhvantsev 2025](https://doi.org/10.1053/j.jvca.2024.10.001) — meta-analysis, n=333, 16 studies | ΔCVP +4.13 mmHg (CI 2.42–5.84), ΔCO +0.33 L/min, ΔSV +8.27 mL, ΔHR −1.65 bpm | **ΔCVP +2.4 mmHg** ✓, ΔCO +0.33 ✓, ΔSV +5.9 mL, ΔHR −1.1 bpm | ✓ |
-| 5 | −30° Trendelenburg: CVP↑, MAP maintained | [Sibbald 1979](https://pubmed.ncbi.nlm.nih.gov/467083/) — n=61 normotensive patients | Preload↑, CO slightly↑, SVR↓ ~5%, MAP unchanged | CVP +1.4 mmHg, MAP +4.2 mmHg | ✓ |
+| 5 | −30° Trendelenburg: CVP↑, MAP maintained | [Sibbald 1979](https://pubmed.ncbi.nlm.nih.gov/467083/) — n=61 normotensive patients | Preload↑, CO slightly↑, SVR↓ ~5%, MAP unchanged | CVP +4.7 mmHg, MAP +4.2 mmHg | ✓ |
 | 6 | 30° HUT dynamics: SV↓, CO↓, HR↑, MAP partially maintained | [Wieling 1998](https://doi.org/10.1042/cs0940347) — 6 healthy subjects | At 90° HUT: SV −39±9%, CO −26±10%, MAP +1±7 mmHg (maintained by baroreflex) | SV −26%, CO −23%, HR↑, MAP −7.6 mmHg (30°, no muscle pump) | ✓ |
 | 7 | Graded HUT 0→20→30°: HR↑ and CO↓ monotonically | [Sarafian 2017](https://doi.org/10.3389/fphys.2016.00656) — 23 adults, graded tilt 0→60° | HR +41%, BP +10%, TPR +16% at 60°; monotonic increase with angle | HR 71→74 bpm, CO 4.25→3.29 L/min, monotonic | ✓ |
 | 8 | Microgravity: CVP higher than upright Earth | [Buckey 1996](https://pubmed.ncbi.nlm.nih.gov/8853498/) | CVP supine 5–8 mmHg, drops to 2.5 mmHg in orbit; higher than upright standing | CVP µg 3.2 vs upright 2.1 mmHg | ✓ |
 | 9 | Cerebral perfusion pressure (CPP) decreases with upright posture | [Pohl & Cullen 2005](https://pubmed.ncbi.nlm.nih.gov/15983529/) | Beach-chair position: MAP drops 30–35 mmHg at brain level under GA; CPP risk < 50 mmHg | CPP supine 79 mmHg → 60 mmHg at 45° upright | ✓ |
 | 10 | Buckberg index falls with tachycardia (coronary ischaemia risk) | [Buckberg 1972/1978](https://pubmed.ncbi.nlm.nih.gov/4667030/) | DPTI/SPTI > 0.8 at rest; falls as diastolic time shortens with HR↑ | Buckberg 1.13 at rest → 0.45 at HR=160 bpm | ✓ |
+| 11 | PPV > 13% identifies fluid-responsive patient under mechanical ventilation | [Michard & Teboul 2000](https://doi.org/10.1164/ajrccm.162.1.9905119) — n=40 septic shock patients | PPV > 13% predicts ≥15% CO rise with fluid challenge (sens. 94%, spec. 96%) | Hypovolemic (400 mL hem): PPV 14% > 13% ✓; CO +109% with resuscitation ✓; normovolemic: PPV 5% (plateau, not flagged) ✓ | ✓ |
+| 12 | High spinal anaesthesia (≈T4): MAP↓, CO maintained, HR near-unchanged | [Malmqvist 1987](https://doi.org/10.1111/j.1399-6576.1987.tb02605.x) — n=30, average block T4–5 | MAP ↓≥30% at complete block; CO preserved; minor HR changes (baroreflex compensates) | MAP ↓>5%, CO maintained ±20%, MAP >45 mmHg | ✓ |
+| 13 | Vasopressin dose-response: MAP monotonically↑, CO maintained | [Patel 2002](https://doi.org/10.1097/00000542-200203000-00011) — n=13 septic shock | MAP rises with dose (0→2→4 U/hr); CO maintained; NE requirement ↓79% | MAP monotonically↑; CO maintained ±20% at 2 U/hr | ✓ |
+| 14 | NE vs phenylephrine on spinal baseline: NE preserves CO better | [Ngan Kee 2015](https://doi.org/10.1097/ALN.0000000000000601) — n=104, C-section spinal | NE CO 102.7% vs phenyl 93.8% (p=0.004); NE HR > phenyl HR (reflex bradycardia) | NE CO > phenyl CO; NE HR > phenyl HR ✓ | ✓ |
+| 15 | Epinephrine: CO monotonically↑ with dose; MAP_high > MAP_low (α dominance) | [Freyschuss 1986](https://doi.org/10.1042/cs0700199) — n=11 healthy, stepwise IV ADR | Concentration-dependent ↑SV and ↑CO; marked ↓vascular resistance at low dose | CO monotonically↑; MAP_high > MAP_low | ✓ |
+| 16 | PLR: CO ≥+10% identifies fluid-responsive patient (preload-dependent) | [Monnet, Marik & Teboul 2016](https://doi.org/10.1007/s00134-015-4134-1) — meta-analysis 21 studies, 991 patients | PLR-induced CO ≥+10% threshold: sens 0.85, spec 0.91, AUC 0.95 | Normovolemic: ΔCO +8.6% (<10%, non-responder) ✓; hypovolemic 200 mL: ΔCO +13.9% (≥10%, responder) ✓ | ✓ |
 
 ### Known literature disagreements
 
@@ -398,11 +403,8 @@ Implemented as a hard cap on E_max above EDV = 130 mL. Correctly prevents SV inc
 ### Single-compartment splanchnic and upper-body veins
 These benefit from distributed height modelling at large tilt angles — currently single lumped compartments.
 
-### No respiratory-cardiovascular coupling
-Intrathoracic pressure swings are not modelled; stroke volume variation (SVV) as a fluid responsiveness marker cannot be computed.
-
-### CVP paradox in microgravity not reproduced
-Measured CVP decreases in orbit despite a cephalad fluid shift (Buckey 1996). This paradox arises from reduced intrathoracic pressure in weightlessness — which requires respiratory coupling to model correctly.
+### CVP paradox in microgravity not fully reproduced
+Measured CVP decreases in orbit despite a cephalad fluid shift (Buckey 1996). Positional ITP coupling is now implemented (`positional_itp_mmhg()` in `gravity.py`), which partially explains the effect, but the full paradox requires changes in lung/chest-wall compliance under weightlessness that are not yet modelled.
 
 ---
 
@@ -418,6 +420,9 @@ Development was openly iterative. Each correction was driven by comparison with 
 | 4 | Init volumes set at P = 8–10 mmHg causing large transients | Recalculated Vinit at analytical steady-state (P ≈ 12–14 mmHg) | Analytical flow balance (no external reference) |
 | 5 | CO monitoring used aorta outflow R instead of valve R | Fixed — CO reported from LV valve resistance | Detected during validation sweep |
 | 6 | Compliance scale for split lb veins: too high → 45° MAP 22 mmHg | Systematic scale sweep (1.0–3.0×); chose 1.5× | Deranged Physiology validated range |
+| 7 | ΔCVP in Trendelenburg +0.4 vs literature +4.1 mmHg | Added positional ITP (`positional_itp_mmhg()`) — abdominal viscera compress diaphragm in HDT; applied to thoracic compartments and CVP reporting | Likhvantsev 2025 (CI 2.42–5.84 mmHg) |
+| 8 | No fluid-responsiveness metric available | Added `_compute_ppv()` — per-beat pulse pressure variation from aortic waveform; PPV > 13% identifies fluid-responsive patient | Michard & Teboul 2000 (sens. 94%, spec. 96%) |
+| 9 | BP display showed only central aortic pressure with no peripheral reference | Added `brachial_sbp`/`brachial_dbp` (rolling 2-beat SBP/DBP on brachiocephalic compartment); UI dropdown switches between Aortic / Art. line / Brachial cuff; enables clinicians to compare simulated reading against their actual monitoring modality | Clinical convention: A-line and cuff readings differ from central aortic due to pulse pressure amplification |
 
 Each iteration is documented in the git history (`git log --oneline`).
 
@@ -430,7 +435,6 @@ Contributions are welcome — particularly:
 - **Venous muscle pump** (calf compression, venous valves, respiratory modulation)
 - **Additional vasopressors** (dobutamine, milrinone, metaraminol)
 - **Prone positioning** (prone ventilation haemodynamics)
-- **Respiratory coupling** (intrathoracic pressure, SVV computation)
 - **Better patient calibration** (`patient.py` Tier 3 fitting from monitor data)
 
 Please open an issue before starting a large change.

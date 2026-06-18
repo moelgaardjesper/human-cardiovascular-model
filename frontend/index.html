@@ -92,6 +92,7 @@
     .vital .v   { font-size: 1.6rem; font-weight: 700; line-height: 1; color: #c7d2fe; font-variant-numeric: tabular-nums; }
     .vital .u   { font-size: 0.6rem; color: var(--muted); margin-top: 1px; }
     .vital .lbl { font-size: 0.58rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); margin-top: 2px; }
+    .vital select.lbl { background: transparent; border: none; cursor: pointer; padding: 0; outline: none; -webkit-appearance: none; appearance: none; }
     .vital.green .v { color: var(--green); }
     .vital.amber .v { color: var(--amber); }
     .vital.red   .v { color: var(--red); }
@@ -313,7 +314,11 @@
   <div class="vital" id="v_bp">
     <span class="v" id="s_bp">—/—</span>
     <span class="u">mmHg</span>
-    <span class="lbl">SBP / DBP</span>
+    <select class="lbl" id="bp_source" onchange="onBpSourceChange()">
+      <option value="aortic">Aortic</option>
+      <option value="aline">Art. line</option>
+      <option value="brachial">Brachial</option>
+    </select>
   </div>
   <div class="vital-sep"></div>
   <div class="vital" id="v_co">
@@ -400,12 +405,13 @@
       </div>
 
       <div class="field">
-        <label>Patient / muscle pump</label>
+        <label>Venous muscle pump</label>
         <select id="pump_preset" onchange="applyPumpPreset(this.value)">
-          <option value="0">Sedated / anaesthetised</option>
-          <option value="35">Conscious, minimal activity</option>
-          <option value="45">Ambulatory (walking)</option>
+          <option value="0">Sedated / anaesthetised (pump off)</option>
+          <option value="35">Conscious, at rest</option>
+          <option value="45">Ambulatory — calf pump active</option>
         </select>
+        <small style="color:var(--muted);font-size:0.6rem;margin-top:2px;display:block;">Calf pump only effective in upright positions</small>
       </div>
 
       <details style="margin-top:4px;">
@@ -502,6 +508,15 @@
                onchange="liveUpdate()" onkeydown="if(event.key==='Enter')this.blur()" />
         <span class="drug-unit">mcg/kg/min</span>
       </div>
+      <div class="drug-field">
+        <label>Spinal block</label>
+        <select id="drug_spinal" onchange="liveUpdate()">
+          <option value="0">None</option>
+          <option value="0.5">Low (≈T10)</option>
+          <option value="1.0">High (≈T4)</option>
+        </select>
+        <span class="drug-unit">level</span>
+      </div>
     </div>
 
     <div class="divider"></div>
@@ -526,8 +541,9 @@
 
         <!-- Body group — rotates around hip (100, 45) -->
         <g id="av-body" transform="rotate(0, 100, 45)">
-          <!-- Head (CPP zone) -->
+          <!-- Head (CPP zone + fluid-distribution overlay) -->
           <circle id="av-head" cx="20" cy="45" r="16" fill="#10b981" opacity="0.85"/>
+          <circle id="av-head-fluid" cx="20" cy="45" r="16" fill="#374151" opacity="0"/>
 
           <!-- Neck -->
           <rect x="36" y="41" width="8" height="8" fill="#1f2937"/>

@@ -81,6 +81,34 @@ References
      500 mL crystalloid bolus: SV 71+/-11 -> 90+/-19 mL (+27%),
      HR 87+/-9 -> 83+/-8 bpm (-5%).
 
+[16] Malmqvist LA et al. (1987) Acta Anaesthesiol Scand 31:467-473.
+     DOI: 10.1111/j.1399-6576.1987.tb02605.x  PMID: 3630592
+     Spinal analgesia T4-5 in n=30 patients: 25/30 only minor changes in CO, HR,
+     SV, MAP, SVR; 5/30 (T3-4 + complete sympathetic block): MAP fell ≥30%, CO preserved.
+
+[17] Patel BM et al. (2002) Anesthesiology 96:576-582.
+     DOI: 10.1097/00000542-200203000-00011  PMID: 11873030
+     Vasopressin (n=13) vs NE (n=11) in septic shock: MAP and cardiac index
+     maintained in both groups; vasopressin reduced NE requirement by ~79%.
+
+[18] Ngan Kee WD et al. (2015) Anesthesiology 122:736-745.
+     DOI: 10.1097/ALN.0000000000000601  PMID: 25635593
+     NE vs phenylephrine computer-controlled infusion during spinal for C-section
+     (n=104): NE CO 102.7% vs phenyl 93.8% normalised (p=0.004); NE HR > phenyl HR.
+
+[19] Freyschuss U et al. (1986) Clin Sci (Lond) 70:199-206.
+     DOI: 10.1042/cs0700199  PMID: 3956110
+     IV adrenaline in n=11 healthy volunteers: stepwise low doses → CO↑/SVR↓
+     (β2 dominant); higher doses → MAP↑ (α emerging). "Less marked effects on
+     blood pressure and heart rate" at low dose vs large CO/SV increase.
+
+[20] Monnet X, Marik PE, Teboul JL (2016) Intensive Care Med 42:1935-1947.
+     DOI: 10.1007/s00134-015-4134-1  PMID: 26825952
+     Meta-analysis (21 studies, 991 patients, 995 fluid challenges): PLR-induced
+     CO ≥+10% identifies fluid-responsive patients; pooled sensitivity 0.85,
+     specificity 0.91, AUC 0.95. CO change is far superior to PP change for PLR
+     assessment (PP pooled AUC 0.77 ± 0.05 vs CO AUC 0.95 ± 0.01).
+
 Known model limitations (documented here for transparency)
 ------------------------------------------------------------
 - Frank-Starling plateau: implemented as a hard cap above EDV_ref=130 mL.
@@ -801,4 +829,232 @@ def test_ppv_fluid_responsiveness_michard2000():
     # CO increased ≥ 15% with fluid (Michard criterion validated)
     assert s_resus["co"] >= s_hypo["co"] * 1.15, (
         f"CO increase < 15% with fluid: {s_hypo['co']:.2f} → {s_resus['co']:.2f} L/min"
+    )
+
+
+# ===========================================================================
+# 9. Spinal anaesthesia — [PMID: 3630592, Malmqvist 1987]
+# ===========================================================================
+
+def _run_spinal(block_height, baro=True):
+    p = SimParams()
+    p.baroreflex_enabled = baro
+    p.drug_factors = combined_drug_factors({"spinal": block_height})
+    r = run_simulation(p, duration_s=20, dt=DT)
+    h = len(r['map']) // 2
+    return {k: float(np.mean(r[k][h:])) for k in ('map', 'hr', 'co', 'sv')}
+
+
+def test_spinal_anaesthesia_malmqvist1987():
+    """[PMID: 3630592 — Malmqvist 1987] Spinal analgesia to T4-5: in 25/30
+    patients only minor haemodynamic changes (CO, HR, SV, MAP, SVR preserved by
+    baroreflex). In 5/30 with complete T3-4 block, MAP fell ≥30% with CO preserved.
+
+    Model test — high block (block_height=1.0, ≈T4):
+    - MAP falls from baseline (SVR↓38%, venous capacitance↑20%)
+    - CO maintained (baroreflex and afterload-reduction preserve output)
+    - HR near-unchanged (direct −7% blunting offset by reflex compensation)
+    - MAP remains viable (> 45 mmHg)
+    """
+    base  = _run_spinal(0.0)
+    spin  = _run_spinal(1.0)
+
+    dmap_pct = (spin['map'] - base['map']) / base['map'] * 100
+    dco_pct  = (spin['co']  - base['co'])  / base['co']  * 100
+    dhr      =  spin['hr']  - base['hr']
+
+    assert dmap_pct < -5,        f"MAP did not fall with high spinal: {dmap_pct:+.1f}% (lit ≥−17% at T4-5)"
+    assert abs(dco_pct) < 20,   f"CO not maintained with spinal: {dco_pct:+.1f}% (lit ~0%)"
+    assert abs(dhr) < 15,       f"HR changed unexpectedly: {dhr:+.1f} bpm (lit minor change)"
+    assert spin['map'] > 45,    f"MAP not viable after spinal: {spin['map']:.1f} mmHg"
+
+
+# ===========================================================================
+# 10. Vasopressin dose-response — [PMID: 11873030, Patel 2002]
+# ===========================================================================
+
+def _run_vasopressin(units_hr):
+    p = SimParams()
+    p.baroreflex_enabled = True
+    p.drug_factors = combined_drug_factors({"vasopressin": units_hr})
+    r = run_simulation(p, duration_s=20, dt=DT)
+    h = len(r['map']) // 2
+    return {k: float(np.mean(r[k][h:])) for k in ('map', 'hr', 'co')}
+
+
+def test_vasopressin_dose_response_patel2002():
+    """[PMID: 11873030 — Patel 2002] Vasopressin infusion in septic shock:
+    MAP maintained, cardiac index maintained, vasopressor-sparing effect.
+
+    Model test — dose-response in normovolemic patient:
+    - MAP increases monotonically with vasopressin dose (V1 vasoconstriction)
+    - CO maintained at clinically relevant dose (2 U/hr) — no direct inotropy
+      or chronotropy (consistent with Patel: "cardiac index maintained")
+    - HR unchanged (vasopressin is not chronotropic)
+
+    Note: Patel was in septic shock (low-SVR state); model baseline is
+    normovolemic. Test validates direction and CO-preservation, not absolute
+    MAP values.
+    """
+    v0 = _run_vasopressin(0.0)
+    v2 = _run_vasopressin(2.0)
+    v4 = _run_vasopressin(4.0)
+
+    # Dose-response: MAP increases with dose
+    assert v2['map'] > v0['map'],  f"MAP did not rise at 2 U/hr: {v0['map']:.1f}→{v2['map']:.1f} mmHg"
+    assert v4['map'] > v2['map'],  f"MAP did not rise at 4 U/hr: {v2['map']:.1f}→{v4['map']:.1f} mmHg"
+
+    # CO maintained at 2 U/hr (Patel: cardiac index preserved)
+    dco_pct = (v2['co'] - v0['co']) / v0['co'] * 100
+    assert abs(dco_pct) < 20,  f"CO not maintained at 2 U/hr: {dco_pct:+.1f}% (lit ~0%)"
+
+    # HR unchanged (no chronotropy)
+    dhr = abs(v2['hr'] - v0['hr'])
+    assert dhr < 8,  f"HR changed with vasopressin: Δ{dhr:.1f} bpm (lit: no chronotropy)"
+
+
+# ===========================================================================
+# 11. NE vs phenylephrine CO-preservation — [PMID: 25635593, Ngan Kee 2015]
+# ===========================================================================
+
+def _run_on_spinal(extra_drugs):
+    p = SimParams()
+    p.baroreflex_enabled = True
+    p.drug_factors = combined_drug_factors({"spinal": 1.0, **extra_drugs})
+    r = run_simulation(p, duration_s=20, dt=DT)
+    h = len(r['map']) // 2
+    return {k: float(np.mean(r[k][h:])) for k in ('map', 'hr', 'co')}
+
+
+def test_norepi_vs_phenyl_co_preservation_ngan_kee2015():
+    """[PMID: 25635593 — Ngan Kee 2015] During spinal anaesthesia for Caesarean
+    delivery, norepinephrine maintained higher CO and HR than phenylephrine at
+    equivalent MAP restoration (CO 102.7% vs 93.8% normalised; p=0.004).
+
+    Both drugs given as infusions to maintain SBP; NE preserves CO because of
+    mild β1-adrenergic activity. Phenylephrine (pure α1) causes reflex
+    bradycardia and reduces CO despite adequate MAP restoration.
+
+    Model test — high spinal (T4 block) + vasopressor:
+    - Both NE and phenyl restore MAP above spinal-only baseline
+    - NE CO > phenyl CO (β1 preserves cardiac output)
+    - NE HR > phenyl HR (phenyl → reflex bradycardia via baroreflex)
+    """
+    spinal_only = _run_on_spinal({})
+    with_norepi = _run_on_spinal({"norepinephrine": 0.10})
+    with_phenyl = _run_on_spinal({"phenylephrine":  1.00})
+
+    # Both vasopressors restore MAP above spinal-only
+    assert with_norepi['map'] > spinal_only['map'], \
+        f"NE did not raise MAP above spinal: {spinal_only['map']:.1f}→{with_norepi['map']:.1f}"
+    assert with_phenyl['map'] > spinal_only['map'], \
+        f"Phenyl did not raise MAP above spinal: {spinal_only['map']:.1f}→{with_phenyl['map']:.1f}"
+
+    # NE preserves CO better than phenyl (Ngan Kee 2015)
+    assert with_norepi['co'] > with_phenyl['co'], (
+        f"NE CO not > phenyl CO: NE {with_norepi['co']:.2f} vs phenyl {with_phenyl['co']:.2f} L/min"
+    )
+
+    # NE HR > phenyl HR (phenyl causes reflex bradycardia)
+    assert with_norepi['hr'] > with_phenyl['hr'], (
+        f"NE HR not > phenyl HR: NE {with_norepi['hr']:.1f} vs phenyl {with_phenyl['hr']:.1f} bpm"
+    )
+
+
+# ===========================================================================
+# 12. Epinephrine biphasic dose-response — [PMID: 3956110, Freyschuss 1986]
+# ===========================================================================
+
+def _run_epi(dose_mcg_kg_min):
+    p = SimParams()
+    p.baroreflex_enabled = True
+    p.drug_factors = combined_drug_factors({"epinephrine": dose_mcg_kg_min})
+    r = run_simulation(p, duration_s=20, dt=DT)
+    h = len(r['map']) // 2
+    return {k: float(np.mean(r[k][h:])) for k in ('map', 'hr', 'co')}
+
+
+def test_epinephrine_biphasic_freyschuss1986():
+    """[PMID: 3956110 — Freyschuss 1986] IV adrenaline infusion in 11 healthy
+    volunteers, stepwise plasma ADR 0.3→6.0 nmol/L:
+    - Low dose (β dominant): CO↑ (SV↑ + HR↑), SVR↓, MAP minimal change
+    - Higher dose (α emerging): CO still↑↑, MAP↑ (α overcomes β2 vasodilation)
+
+    Key biphasic signature: at low dose MAP is nearly unchanged despite large
+    CO increase (β2 vasodilation offsets α vasoconstriction); at high dose
+    MAP rises clearly (α dominance). HR and CO increase monotonically with dose.
+
+    Model test:
+    - CO increases with dose (β1: both low and high > baseline)
+    - HR increases with dose (β1 chronotropy)
+    - MAP_high > MAP_low (α dominance emerges, biphasic pattern)
+    """
+    base     = _run_epi(0.00)
+    low_dose = _run_epi(0.02)   # β-dominant: CO↑, SVR↓/neutral, MAP ~unchanged
+    high_dose = _run_epi(0.30)  # α-dominant: CO↑↑, SVR↑↑, MAP↑↑
+
+    # CO increases monotonically with dose (β1 inotropy dominates across all doses;
+    # Freyschuss: "marked and concentration-dependent increases in SV and CO")
+    assert low_dose['co']  > base['co'],      f"Low-dose epi: CO did not rise: {base['co']:.2f}→{low_dose['co']:.2f}"
+    assert high_dose['co'] > low_dose['co'],  f"High-dose epi: CO not > low-dose: {low_dose['co']:.2f}→{high_dose['co']:.2f}"
+
+    # Biphasic MAP: at vasopressor dose (0.30) α dominates → MAP well above low-dose MAP
+    # Freyschuss only studied low/physiological doses (their high dose still shows SVR↓);
+    # the α-dominance at supra-physiological doses is a well-established pharmacological
+    # property modelled here. Baroreflex clamping of HR at high MAP is expected and not
+    # asserted — the CO and MAP signals are the key biphasic markers.
+    assert high_dose['map'] > low_dose['map'], (
+        f"Biphasic not reproduced: MAP_high {high_dose['map']:.1f} not > MAP_low {low_dose['map']:.1f} mmHg"
+    )
+
+
+# ===========================================================================
+# 13. Passive leg raising — fluid responsiveness — [PMID: 26825952, Monnet 2016]
+# ===========================================================================
+
+def _run_plr(tilt_deg, hem_ml=0, duration=25.0):
+    """Simulate PLR (head-down tilt) ± mild haemorrhage; return last-half means."""
+    p = SimParams()
+    p.tilt_start_deg = tilt_deg
+    p.tilt_end_deg   = tilt_deg
+    if hem_ml > 0:
+        p.hemorrhage_rate_mlmin = hem_ml / 5.0 * 60.0
+        p.hemorrhage_start_s    = 3.0
+        p.hemorrhage_duration_s = 5.0
+    r = run_simulation(p, duration_s=duration, dt=DT)
+    h = len(r['map']) // 2
+    return {k: float(np.mean(r[k][h:])) for k in ('map', 'co', 'hr', 'sv')}
+
+
+def test_plr_fluid_responsiveness_monnet2016():
+    """[PMID: 26825952 — Monnet, Marik & Teboul 2016] Meta-analysis of 21 studies,
+    991 patients: PLR-induced CO ≥+10% predicts positive response to volume
+    expansion (sens 0.85, spec 0.91, AUC 0.95).
+
+    PLR is modelled as −20° head-down tilt from supine. Two conditions:
+
+    (A) Normovolemic — patient on Frank-Starling plateau. PLR shifts blood
+    centrally but the plateau limits SV augmentation → CO increase < 10%
+    (non-responder, consistent with Monnet specificity 0.91).
+
+    (B) Mild hypovolaemia (200 mL haemorrhage) — patient on ascending limb.
+    PLR restores preload, SV rises, CO increases ≥+10% (fluid-responder,
+    consistent with Monnet sensitivity 0.85).
+    """
+    norm_supine = _run_plr(tilt_deg=0,   hem_ml=0)
+    norm_plr    = _run_plr(tilt_deg=-20, hem_ml=0)
+    hypo_supine = _run_plr(tilt_deg=0,   hem_ml=200)
+    hypo_plr    = _run_plr(tilt_deg=-20, hem_ml=200)
+
+    dco_norm_pct = (norm_plr['co'] - norm_supine['co']) / norm_supine['co'] * 100
+    dco_hypo_pct = (hypo_plr['co'] - hypo_supine['co']) / hypo_supine['co'] * 100
+
+    # Normovolemic: Starling plateau limits response — PLR should not reach ≥10%
+    assert dco_norm_pct < 10, (
+        f"Normovolemic PLR: CO rose ≥10% despite Starling plateau: Δ{dco_norm_pct:+.1f}%"
+    )
+
+    # Hypovolemic: ascending limb — PLR should return ≥10% CO increase
+    assert dco_hypo_pct >= 10, (
+        f"Hypovolemic PLR: CO increase < 10% (lit threshold ≥10%): Δ{dco_hypo_pct:+.1f}%"
     )

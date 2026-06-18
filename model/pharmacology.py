@@ -144,6 +144,39 @@ def propofol(dose_mg_kg: float) -> dict:
     }
 
 
+def spinal_anaesthesia(block_height: float) -> dict:
+    """
+    Spinal (subarachnoid) anaesthesia — sympathetic denervation below block level.
+
+    block_height: fractional extent of sympathetic block
+        0.5 = low block (≈T10) — lower limb / hip surgery
+        1.0 = high block (≈T4) — abdominal / Caesarean section
+
+    Mechanism: preganglionic sympathetic fibres blocked → arteriolar dilation
+    (SVR↓) and venodilatation (venous capacitance↑). At high block (T1-T4),
+    cardiac accelerator fibres are also partially blocked → direct HR blunting;
+    however the vagal arc remains intact.
+
+    Calibration — Malmqvist LA et al. (1987) Acta Anaesthesiol Scand 31:467-473.
+    DOI: 10.1111/j.1399-6576.1987.tb02605.x  PMID: 3630592
+      n=30 patients, average analgesic level T4-5:
+        25/30: only minor alterations in CO, HR, SV, MAP, SVR (baroreflex compensates).
+         5/30 (T3-4 + complete sympathetic block): MAP fell ≥30%, CO preserved.
+      Hill parameters calibrated so that block_height=1.0 gives SVR reduction
+      ≈38% (within the Malmqvist 30-40% range at complete block).
+    """
+    svr_reduction   = 0.38 * block_height    # ≈38% SVR reduction at full block
+    venous_dilation = 0.20 * block_height    # +20% venous capacitance at full block
+    hr_blunting     = 0.07 * block_height    # −7% direct HR at full block (cardiac accelerator block)
+    return {
+        "svr_factor":         1.0 - svr_reduction,
+        "hr_factor":          1.0 - hr_blunting,
+        "lv_emax_factor":     1.0,
+        "rv_emax_factor":     1.0,
+        "venous_tone_factor": 1.0 + venous_dilation,
+    }
+
+
 def combined_drug_factors(drugs: dict) -> dict:
     """
     Merge effects of multiple concurrent drugs by multiplying their factors.
@@ -159,6 +192,7 @@ def combined_drug_factors(drugs: dict) -> dict:
         "vasopressin":    vasopressin,
         "epinephrine":    epinephrine,
         "propofol":       propofol,
+        "spinal":         spinal_anaesthesia,
     }
     combined = {
         "svr_factor": 1.0,

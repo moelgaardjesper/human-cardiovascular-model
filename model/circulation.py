@@ -578,8 +578,10 @@ def run_simulation(
     la_p_ts     = np.zeros(n)
     co_ts       = np.zeros(n)
     hr_ts       = np.zeros(n)
-    dbp_ts      = np.zeros(n)
-    sbp_ts      = np.zeros(n)
+    dbp_ts          = np.zeros(n)
+    sbp_ts          = np.zeros(n)
+    brachial_sbp_ts = np.zeros(n)
+    brachial_dbp_ts = np.zeros(n)
     lvedp_ts    = np.zeros(n)
     cpp_ts      = np.zeros(n)
     cop_ts      = np.zeros(n)
@@ -597,10 +599,12 @@ def run_simulation(
     _cvp_win_len = max(100, int(2 * 60.0 / params.hr_bpm / dt))
     _cvp_win     = _deque([10.0] * _cvp_win_len, maxlen=_cvp_win_len)
 
-    # DBP / SBP: rolling min / max of aortic pressure over 2 beats.
-    _bp_win_len  = _cvp_win_len
-    _dbp_win     = _deque([80.0]  * _bp_win_len, maxlen=_bp_win_len)
-    _sbp_win     = _deque([120.0] * _bp_win_len, maxlen=_bp_win_len)
+    # DBP / SBP: rolling min / max of aortic and brachial pressure over 2 beats.
+    _bp_win_len      = _cvp_win_len
+    _dbp_win         = _deque([80.0]  * _bp_win_len, maxlen=_bp_win_len)
+    _sbp_win         = _deque([120.0] * _bp_win_len, maxlen=_bp_win_len)
+    _brachial_dbp_win = _deque([80.0]  * _bp_win_len, maxlen=_bp_win_len)
+    _brachial_sbp_win = _deque([120.0] * _bp_win_len, maxlen=_bp_win_len)
 
     # CO / SV: LV volume decrease per step (avoids HR phase-mismatch bug).
     _prev_V_lv   = V[i["left_ventricle"]]
@@ -710,6 +714,10 @@ def run_simulation(
         p_bc  = _vascular_pressure(V[i["brachiocephalic"]], c_bc.unstressed_volume, c_bc.compliance)
         ankle_p_ts[step]    = p_lba - hydrostatic_delta_mmhg(c_lba.height_m, tilt_now, params.gravity)
         brachial_p_ts[step] = p_bc  - hydrostatic_delta_mmhg(c_bc.height_m,  tilt_now, params.gravity)
+        _brachial_dbp_win.append(brachial_p_ts[step])
+        _brachial_sbp_win.append(brachial_p_ts[step])
+        brachial_sbp_ts[step] = max(_brachial_sbp_win)
+        brachial_dbp_ts[step] = min(_brachial_dbp_win)
 
         # Positional ITP offset for CVP and LA-pressure reporting.
         # The baroreflex uses transmural CVP (p_cvp_edi) — wall-stretch drives
@@ -774,8 +782,10 @@ def run_simulation(
         "cpp":         np.convolve(cpp_ts,      kernel, mode="same"),
         "cop":         np.convolve(cop_ts,      kernel, mode="same"),
         "buckberg":    np.convolve(buckberg_ts, kernel, mode="same"),
-        "ankle_p":     ankle_p_ts,
-        "brachial_p":  brachial_p_ts,
+        "ankle_p":      ankle_p_ts,
+        "brachial_p":   brachial_p_ts,
+        "brachial_sbp": brachial_sbp_ts,
+        "brachial_dbp": brachial_dbp_ts,
         "ppv":         ppv_ts,
         "volumes":     volumes_ts,
     }

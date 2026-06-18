@@ -1,6 +1,21 @@
 /* main.js — Human Cardiovascular Model */
 
 // ═══════════════════════════════════════════════════
+// BP source selector (aortic / arterial line / brachial cuff)
+// ═══════════════════════════════════════════════════
+
+let _lastData = null;   // most recent analysis result, for re-render on source switch
+
+function getBpSource() {
+  const el = document.getElementById('bp_source');
+  return el ? el.value : 'aortic';
+}
+
+function onBpSourceChange() {
+  if (_lastData) renderStaticCharts(_lastData);
+}
+
+// ═══════════════════════════════════════════════════
 // Tilt control
 // ═══════════════════════════════════════════════════
 
@@ -36,7 +51,7 @@ function updateVentUI() {
 updateVentUI();
 
 function clearDrugs() {
-  ['drug_propofol','drug_norepi','drug_phenyl','drug_vaso','drug_epi'].forEach(id => {
+  ['drug_propofol','drug_norepi','drug_phenyl','drug_vaso','drug_epi','drug_spinal'].forEach(id => {
     document.getElementById(id).value = 0;
   });
   liveUpdate();
@@ -75,6 +90,7 @@ function buildScenario() {
   const phenyl = optFloat('drug_phenyl');   if (phenyl) drugs.phenylephrine  = phenyl;
   const vaso   = optFloat('drug_vaso');     if (vaso)   drugs.vasopressin    = vaso;
   const epi    = optFloat('drug_epi');      if (epi)    drugs.epinephrine    = epi;
+  const spinal = optFloat('drug_spinal');   if (spinal) drugs.spinal         = spinal;
 
   const ventMode = document.getElementById('vent_mode').value;
   return {
@@ -117,6 +133,7 @@ async function runSim() {
     });
     if (!res.ok) throw new Error(await res.text());
     const data = await res.json();
+    _lastData = data;
     renderStaticCharts(data);
     updateVitals(data.summary);
     const s = data.summary;
@@ -151,11 +168,19 @@ const C = {
 };
 
 function renderStaticCharts(d) {
+  const src    = getBpSource();
+  const isAo   = src === 'aortic';
+  const pWave  = isAo ? d.aortic_p    : d.brachial_p;
+  const dbpTs  = isAo ? d.dbp         : d.brachial_dbp;
+  const pName  = isAo ? 'Aortic P'    : (src === 'aline' ? 'Art. line' : 'Brachial');
+  const apTitle = isAo ? 'Arterial Pressure'
+                       : (src === 'aline' ? 'Arterial Pressure — Art. line'
+                                          : 'Arterial Pressure — Brachial cuff');
   Plotly.newPlot('chart_ap', [
-    { x: d.t, y: d.aortic_p, name: 'Aortic P', line: { color: C.ap, width: 1.5 } },
-    { x: d.t, y: d.map,      name: 'MAP',       line: { color: C.map, width: 2, dash: 'dot' } },
-    { x: d.t, y: d.dbp,      name: 'DBP',       line: { color: C.dbp, width: 1, dash: 'dot' } },
-  ], { ...BASE, title: { text: 'Arterial Pressure', font: { color: '#c7d2fe', size: 11 } },
+    { x: d.t, y: pWave, name: pName,  line: { color: C.ap,  width: 1.5 } },
+    { x: d.t, y: d.map, name: 'MAP',  line: { color: C.map, width: 2, dash: 'dot' } },
+    { x: d.t, y: dbpTs, name: 'DBP',  line: { color: C.dbp, width: 1, dash: 'dot' } },
+  ], { ...BASE, title: { text: apTitle, font: { color: '#c7d2fe', size: 11 } },
        yaxis: { ...BASE.yaxis, title: 'mmHg' } }, CFG);
 
   Plotly.newPlot('chart_co', [
@@ -233,7 +258,7 @@ function updateAvatar(s) {
   const body = document.getElementById('av-body');
   if (body) body.setAttribute('transform', `rotate(${tilt}, 100, 45)`);
 
-  // Head: CPP traffic-light
+  // Head: CPP traffic-light base
   const cpp  = s.cpp ?? null;
   const head = document.getElementById('av-head');
   if (head && cpp != null) {
@@ -249,13 +274,19 @@ function updateAvatar(s) {
       bk < 0.5 ? '#3b0f0f' : bk < 0.8 ? '#291a06' : '#1f2937');
   }
 
-  // Fluid-distribution overlay (thorax/abdomen/legs) — % change from sim-start volume
+  // Fluid-distribution overlay (head/thorax/abdomen/legs) — % change from sim-start volume
   const regions = s.regions ?? null;
+  const headFluid  = document.getElementById('av-head-fluid');
   const thoraxFluid = document.getElementById('av-thorax-fluid');
   const abdomen     = document.getElementById('av-abdomen');
   const legs        = document.getElementById('av-legs');
 
   if (regions) {
+    if (headFluid) {
+      const pct = regions.thorax ?? 0;
+      headFluid.setAttribute('fill', fluidColor(pct));
+      headFluid.setAttribute('opacity', Math.min(0.5, Math.abs(pct) / FLUID_SCALE_PCT * 0.5).toFixed(2));
+    }
     if (thoraxFluid) {
       const pct = regions.thorax ?? 0;
       thoraxFluid.setAttribute('fill', fluidColor(pct));
@@ -292,9 +323,13 @@ function updateVitals(s) {
     const el = document.getElementById(id);
     if (el) el.textContent = val ?? '—';
   };
+  const bpSrc = getBpSource();
+  const bpAo  = bpSrc === 'aortic';
+  const sbpV  = bpAo ? (s.sbp_mean ?? s.sbp) : (s.brachial_sbp_mean ?? s.brachial_sbp);
+  const dbpV  = bpAo ? (s.dbp_mean ?? s.dbp) : (s.brachial_dbp_mean ?? s.brachial_dbp);
   set('s_hr',       s.hr_mean  ?? s.hr);
   set('s_map',      s.map_mean ?? s.map);
-  set('s_bp',       `${s.sbp_mean ?? s.sbp ?? '—'}/${s.dbp_mean ?? s.dbp ?? '—'}`);
+  set('s_bp',       `${sbpV ?? '—'}/${dbpV ?? '—'}`);
   set('s_co',       s.co_mean  ?? s.co);
   set('s_sv',       s.sv_mean  ?? s.sv);
   set('s_cvp',      s.cvp_mean ?? s.cvp);
@@ -340,7 +375,7 @@ let _titleTick   = 0;    // counter for throttled title/axis updates (~1 Hz)
 function _initLiveCharts() {
   const cfg = { responsive: true, displayModeBar: false };
   Plotly.newPlot('chart_ap', [
-    { x:[], y:[], name:'Aortic P', line:{ color:C.ap,      width:1.5 } },
+    { x:[], y:[], name:'Pressure', line:{ color:C.ap,      width:1.5 } },
     { x:[], y:[], name:'SBP',      line:{ color:'#f472b6', width:1, dash:'dot' } },
     { x:[], y:[], name:'DBP',      line:{ color:C.dbp,     width:1, dash:'dot' } },
   ], { ...BASE, title:{ text:'Arterial Pressure', font:{color:'#c7d2fe',size:11} },
@@ -379,18 +414,22 @@ function _ext(id, update, indices) {
 
 function _onLivePoint(s) {
   // 1. Vitals bar + avatar — lightweight, always runs
+  // s_tilt (vitals bar) reflects server-reported current tilt via updateVitals.
+  // tilt_val_lbl (slider label) is written only by onTiltMove() so users can
+  // see their target tilt while the position is still ramping.
   updateVitals(s);
   updateAvatar(s);
-  const tl = s.tilt ?? 0;
-  document.getElementById('tilt_val_lbl').textContent =
-    tl === 0 ? '0° — Supine' : tl < 0 ? `${tl}° — Head-down` : `+${tl}° — Head-up`;
-  document.getElementById('s_tilt').textContent = tl + '°';
 
   // 2. Append one data point to each chart — O(1), no accumulation.
   // Poll interval (100ms) is the natural rate limiter; no separate throttle needed.
   // t must be [s.t] (not [[s.t]]) — extendTraces wraps it into [[s.t]] per trace.
-  const t  = [s.t];
-  _ext('chart_ap',        { x:[t,t,t], y:[[s.aortic_p??s.map],[s.sbp??s.map],[s.dbp??s.map]] }, [0,1,2]);
+  const t     = [s.t];
+  const bpSrc = getBpSource();
+  const isAo  = bpSrc === 'aortic';
+  const liveP   = isAo ? (s.aortic_p   ?? s.map) : (s.brachial_p   ?? s.map);
+  const liveSbp = isAo ? (s.sbp        ?? s.map) : (s.brachial_sbp ?? s.map);
+  const liveDbp = isAo ? (s.dbp        ?? s.map) : (s.brachial_dbp ?? s.map);
+  _ext('chart_ap',        { x:[t,t,t], y:[[liveP],[liveSbp],[liveDbp]] }, [0,1,2]);
   _ext('chart_co',        { x:[t],     y:[[s.co]]                                             }, [0]    );
   _ext('chart_cvp',       { x:[t],     y:[[s.cvp]]                                            }, [0]    );
   _ext('chart_cpp',       { x:[t],     y:[[s.cpp]]                                            }, [0]    );
@@ -404,8 +443,9 @@ function _onLivePoint(s) {
   const xr = [s.t - LIVE_WIN, s.t + 0.5];
   const cppCol = (s.cpp||70)<50 ? C.cpp_bad : (s.cpp||70)<60 ? C.cpp_warn : C.cpp_ok;
   const bkCol  = (s.buckberg||1)<0.5 ? C.cpp_bad : C.cpp_warn;
+  const apLabel = isAo ? 'Aortic' : (bpSrc === 'aline' ? 'Art. line' : 'Brachial');
   try { Plotly.relayout('chart_ap', showTitle
-    ? { 'xaxis.range': xr, 'title.text': `BP  ${s.sbp}/${s.dbp} mmHg` }
+    ? { 'xaxis.range': xr, 'title.text': `${apLabel}  ${liveSbp}/${liveDbp} mmHg` }
     : { 'xaxis.range': xr }); } catch {}
   try { Plotly.relayout('chart_co', showTitle
     ? { 'xaxis.range': xr, 'title.text': `CO  ${s.co} L/min` }
@@ -483,6 +523,7 @@ function liveUpdate() {
   const phenyl = optFloat('drug_phenyl');   if (phenyl) drugs.phenylephrine  = phenyl;
   const vaso   = optFloat('drug_vaso');     if (vaso)   drugs.vasopressin    = vaso;
   const epi    = optFloat('drug_epi');      if (epi)    drugs.epinephrine    = epi;
+  const spinal = optFloat('drug_spinal');   if (spinal) drugs.spinal         = spinal;
 
   const ventMode = document.getElementById('vent_mode').value;
   fetch('/api/live/params', {

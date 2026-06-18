@@ -99,11 +99,15 @@ class LiveSimulator:
         self._sv_current   = 70.0
         self._hr_monitor   = 70.0
 
-        # Within-beat min/max for clean SBP/DBP per beat
-        self._beat_p_max   = 90.0
-        self._beat_p_min   = 70.0
-        self._sbp_last     = 120.0
-        self._dbp_last     = 75.0
+        # Within-beat min/max for clean SBP/DBP per beat (aortic + brachial)
+        self._beat_p_max        = 90.0
+        self._beat_p_min        = 70.0
+        self._sbp_last          = 120.0
+        self._dbp_last          = 75.0
+        self._brachial_beat_max = 90.0
+        self._brachial_beat_min = 70.0
+        self._brachial_sbp_last = 120.0
+        self._brachial_dbp_last = 75.0
 
         # Latest instantaneous aortic pressure (for cardiac waveform display)
         self._p_ao_last    = 90.0
@@ -274,7 +278,10 @@ class LiveSimulator:
         ra_v0 = self.comps[i["right_atrium"]].unstressed_volume
         ao_c  = self.comps[i["aorta"]].compliance
         ao_v0 = self.comps[i["aorta"]].unstressed_volume
-        p_ao  = self._p_ao_last   # initialise before first step
+        bc_c  = self.comps[i["brachiocephalic"]].compliance
+        bc_v0 = self.comps[i["brachiocephalic"]].unstressed_volume
+        p_ao     = self._p_ao_last      # initialise before first step
+        p_bc_raw = self._brachial_sbp_last
 
         while not self._stop_event.is_set():
             t0 = time.monotonic()
@@ -304,11 +311,16 @@ class LiveSimulator:
                 self._map_win.append(p_ao)
                 self._p_ao_last = p_ao
 
-                # Track per-beat SBP/DBP
+                # Track per-beat SBP/DBP (aortic + brachial transmural)
                 if p_ao > self._beat_p_max:
                     self._beat_p_max = p_ao
                 if p_ao < self._beat_p_min:
                     self._beat_p_min = p_ao
+                p_bc_raw = _vascular_pressure(self.V[i["brachiocephalic"]], bc_v0, bc_c)
+                if p_bc_raw > self._brachial_beat_max:
+                    self._brachial_beat_max = p_bc_raw
+                if p_bc_raw < self._brachial_beat_min:
+                    self._brachial_beat_min = p_bc_raw
 
                 # CO from LV volume decrease
                 curr_V_lv = self.V[i["left_ventricle"]]
@@ -319,13 +331,17 @@ class LiveSimulator:
                 T_beat = 60.0 / self._hr_monitor
                 if self.t - self._last_t_beat >= T_beat:
                     self._sv_history.append(self._beat_ejected)
-                    self._sv_current   = float(np.mean(self._sv_history))
-                    self._sbp_last     = self._beat_p_max
-                    self._dbp_last     = self._beat_p_min
-                    self._beat_ejected = 0.0
-                    self._beat_p_max   = p_ao
-                    self._beat_p_min   = p_ao
-                    self._last_t_beat  = self.t
+                    self._sv_current        = float(np.mean(self._sv_history))
+                    self._sbp_last          = self._beat_p_max
+                    self._dbp_last          = self._beat_p_min
+                    self._brachial_sbp_last = self._brachial_beat_max
+                    self._brachial_dbp_last = self._brachial_beat_min
+                    self._beat_ejected      = 0.0
+                    self._beat_p_max        = p_ao
+                    self._beat_p_min        = p_ao
+                    self._brachial_beat_max = p_bc_raw
+                    self._brachial_beat_min = p_bc_raw
+                    self._last_t_beat       = self.t
 
                 # Baroreflex update (uses end-diastolic CVP, same as run_simulation)
                 p_cvp_edi = min(self._cvp_win)
@@ -368,6 +384,9 @@ class LiveSimulator:
             p_bc  = _vascular_pressure(self.V[IDX["brachiocephalic"]], c_bc.unstressed_volume, c_bc.compliance)
             ankle_p    = p_lba - hydrostatic_delta_mmhg(c_lba.height_m, tilt, params.gravity)
             brachial_p = p_bc  - hydrostatic_delta_mmhg(c_bc.height_m,  tilt, params.gravity)
+            hdp_bc     = hydrostatic_delta_mmhg(c_bc.height_m, tilt, params.gravity)
+            brachial_sbp_val = self._brachial_sbp_last - hdp_bc
+            brachial_dbp_val = self._brachial_dbp_last - hdp_bc
 
             # Body-region fluid distribution — % change from baseline volume
             regions_now = region_volumes(self.V)
@@ -390,8 +409,10 @@ class LiveSimulator:
                 "cpp":      round(cerebral_perfusion_pressure(map_val, tilt, params.gravity), 1),
                 "cop":      round(coronary_perfusion_pressure(dbp_val, float(p_lvedp)), 1),
                 "buckberg": round(buckberg_index(dbp_val, float(p_lvedp), hr, sbp_val), 3),
-                "ankle_p":    round(float(ankle_p), 1),
-                "brachial_p": round(float(brachial_p), 1),
+                "ankle_p":      round(float(ankle_p), 1),
+                "brachial_p":   round(float(brachial_p), 1),
+                "brachial_sbp": round(float(brachial_sbp_val), 1),
+                "brachial_dbp": round(float(brachial_dbp_val), 1),
                 "regions":  regions_pct,
             }
             hist_row = {k: v for k, v in self._state.items() if k != "regions"}
