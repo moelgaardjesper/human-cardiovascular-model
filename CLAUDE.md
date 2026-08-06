@@ -32,21 +32,34 @@ python -m api.app
 
 ```
 model/
-  compartments.py   23 compartments (index 0-22), Compartment dataclass, IDX dict
+  compartments.py   23 compartments (index 0-22), Compartment dataclass, IDX dict.
+                    Limb veins use a nonlinear collapsible-tube law (p_stiffen)
   heart.py          Time-varying elastance (Suga-Sagawa), Frank-Starling scaling
-  gravity.py        Hydrostatic pressure correction: ρgh·sin(α); smooth tilt profile
+  gravity.py        Hydrostatic pressure correction: ρgh·sin(α); smooth tilt profile;
+                    positional_itp_mmhg() — Trendelenburg intrathoracic pressure
   baroreflex.py     BaroreflexController — 4-step ABR+CPR, impulse response convolution
-  pharmacology.py   Hill-equation PD for NE, phenylephrine, vasopressin, epinephrine
+  respiration.py    Intrathoracic pressure (spontaneous / mechanical), RSA
+  perfusion.py      Derived-output sub-models: cerebral (CPP/ICP), coronary (Buckberg).
+                    Pure outputs — no coupling back into the ODE
+  pharmacology.py   Hill-equation PD for NE, phenylephrine, vasopressin, epinephrine,
+                    propofol, spinal anaesthesia
   patient.py        Allometric parameter scaling (BSA/Mosteller), 3-tier calibration
   circulation.py    ODE system (_odes), SimParams, run_simulation() — main entry point
 
 api/
   app.py            Flask factory, serves frontend/
   routes.py         POST /api/simulate, GET /api/defaults, POST /api/estimate
+  live.py           Real-time mode: threaded sim + SSE stream, mid-run parameter
+                    updates, session trend / measured-value drift view
 
 frontend/
-  index.html        Single-page UI (Plotly.js, no build step)
+  index.html        Single-page UI (no build step)
   js/main.js        Form collection, fetch, chart rendering
+  vendor/           Vendored Plotly — the UI must run fully offline, so no CDN
+                    assets. Removing this leaves the UI with no plots
+
+tools/
+  generate_diagram.py  Regenerates the README compartment diagram (PNG + SVG)
 ```
 
 ### Key data flow
@@ -66,6 +79,18 @@ State vector `V[0..22]` stores volumes in mL. Pressures are derived at every ste
 1. Add a PD function to `pharmacology.py` returning the standard `{svr_factor, hr_factor, ...}` dict.
 2. Register it in `combined_drug_factors()`.
 3. Add a UI input in `frontend/index.html` and wire it in `buildPayload()` in `js/main.js`.
+
+**Watch the `venous_tone_factor` sign.** It multiplies venous *unstressed* volume
+(V0), so the convention is inverted relative to the other factors: **< 1 is
+venoconstriction** (lowers V0, recruits blood centrally, raises preload/CO) and
+**> 1 is venodilation**. α1 pressors venoconstrict (`1 − hill`); propofol and
+spinal block venodilate (`1 + hill`). It is applied only to the mobilizable
+reservoir (`MOBILIZABLE_VENOUS_RESERVOIR` in `circulation.py` — splanchnic +
+upper-body veins), which is the physiology and keeps drug magnitudes at
+literature values. This pathway was once assembled but never applied — a dead
+variable that silently zeroed all venoconstriction — so two calibration-independent
+regression guards in `tests/test_circulation.py` §14 assert the mechanism is live
+and correctly signed. Do not weaken them to make a calibration fit.
 
 ## References
 
