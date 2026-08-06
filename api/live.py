@@ -3,18 +3,27 @@ Live mode — continuous cardiovascular simulation with real-time parameter upda
 
 Architecture
 ------------
-- GET  /api/live/stream  → Server-Sent Events (SSE); pushes haemodynamic state at 10 Hz
-- POST /api/live/start   → (re)initialise the session and start the simulation thread
-- PATCH /api/live/params → update tilt, drugs, pump, gravity mid-run (thread-safe)
-- POST /api/live/stop    → gracefully stop the simulation thread
+- GET   /api/live/stream      → Server-Sent Events (SSE); haemodynamic state at 10 Hz
+- GET   /api/live/state       → most recent state dict (one-shot poll)
+- POST  /api/live/start       → (re)initialise the session and start the sim thread
+- PATCH /api/live/params      → update tilt, drugs, pump, gravity mid-run (thread-safe)
+- POST  /api/live/stop        → gracefully stop the simulation thread
+- GET   /api/live/trend       → downsampled whole-session trend + measured values
+- POST  /api/live/measurement → record an operator-entered measured value
 
-The LiveSimulator runs the 23-compartment ODE in a background thread at DT=0.002 s
-(Euler, stable for all compartments at this step size).  Each 50-step batch (0.1 s
-simulated) takes ~0.03 s of wall time, leaving margin to sleep the remaining ~0.07 s
-so the simulation paces at approximately 1:1 real-time.
+The LiveSimulator runs the 23-compartment ODE in a background thread at DT=0.001 s
+(Euler; 1 ms is required for stability with the current parameter set).  Each
+PUSH_STEPS=100 batch is 0.1 s simulated and takes well under 0.1 s of wall time,
+so the loop sleeps the remainder to pace at approximately 1:1 real-time.
 
 State is extracted after each batch and stored in self._state.  The SSE generator
 reads that dict and pushes it to all connected clients.
+
+Alongside the 10 Hz history the simulator keeps a downsampled long-timeline trend
+(one sample per TREND_INTERVAL seconds, capped at ~6 h) plus any operator-entered
+measured values.  Together these back the model-vs-measured drift view: the model
+runs as a PREDICTOR and is never auto-matched to a measurement, so the divergence
+between the two stays visible as clinical information.
 """
 
 import csv
@@ -52,6 +61,11 @@ DT          = 0.001   # s — integration step
 PUSH_STEPS  = 100     # steps per push → 100 × 0.001 = 0.1 s simulated per push
 TARGET_RATE = 0.1     # target wall-clock seconds per push (≈ real-time)
 HISTORY_LEN = 600     # max points kept (60 s at 10 Hz)
+
+# Long-timeline session-trend buffer (model-vs-measured drift view).
+TREND_INTERVAL = 5.0     # s of sim time between downsampled trend samples
+TREND_MAXLEN   = 4320    # ~6 h at one sample / 5 s
+TREND_KEYS     = ("t", "map", "hr", "co", "cvp", "sbp", "dbp", "cpp", "sv")
 
 # Every live session's full state history (one row per push, ~10 Hz) is
 # written here on stop/restart so runs can be examined afterwards.
@@ -120,6 +134,13 @@ class LiveSimulator:
         self._history: list[dict] = []
         self.last_log_path: str | None = None
 
+        # Downsampled long-timeline session trend (model line) + operator-entered
+        # measured ("actual") values, for the model-vs-measured drift view.
+        # Sampled every TREND_INTERVAL s of sim time; capped to ~6 h.
+        self._trend: deque = deque(maxlen=TREND_MAXLEN)
+        self._measurements: list[dict] = []
+        self._last_trend_t = -1e9
+
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------
@@ -180,6 +201,11 @@ class LiveSimulator:
         self._hr_monitor   = 70.0
         self._current_tilt = 0.0
 
+        # New session → fresh trend and measurements.
+        self._trend.clear()
+        self._measurements = []
+        self._last_trend_t = -1e9
+
         if patient:
             self._apply_patient(patient)
         if scenario:
@@ -198,6 +224,24 @@ class LiveSimulator:
     @property
     def latest(self) -> dict | None:
         return self._state
+
+    def add_measurement(self, variable: str, value: float, t: float | None = None) -> dict:
+        """Record an operator-entered measured value at sim time t (default: now)."""
+        with self._lock:
+            tt = self.t if t is None else float(t)
+            m = {"t": round(tt, 1), "variable": str(variable), "value": float(value)}
+            self._measurements.append(m)
+        return m
+
+    def trend_snapshot(self) -> dict:
+        """Thread-safe snapshot of the session trend + measurements."""
+        with self._lock:
+            return {
+                "t_now": round(self.t, 1),
+                "running": bool(self._thread and self._thread.is_alive()),
+                "trend": list(self._trend),
+                "measurements": list(self._measurements),
+            }
 
     # ------------------------------------------------------------------
     # Internal helpers
@@ -419,6 +463,12 @@ class LiveSimulator:
             hist_row.update({f"region_{name}_pct": pct for name, pct in regions_pct.items()})
             self._history.append(hist_row)
 
+            # ---- Downsampled long-timeline trend sample ----
+            if self.t - self._last_trend_t >= TREND_INTERVAL:
+                self._last_trend_t = self.t
+                with self._lock:
+                    self._trend.append({k: self._state.get(k) for k in TREND_KEYS})
+
             # ---- Pace to real-time ----
             elapsed   = time.monotonic() - t0
             sleep_for = max(0.0, TARGET_RATE - elapsed)
@@ -457,6 +507,29 @@ def live_params():
     body = request.get_json(force=True) or {}
     _session.update_params(body.get("scenario", {}))
     return jsonify({"ok": True})
+
+
+@live_bp.route("/api/live/trend")
+def live_trend():
+    """Downsampled whole-session model trend + operator-entered measured values."""
+    return jsonify(_session.trend_snapshot())
+
+
+@live_bp.route("/api/live/measurement", methods=["POST"])
+def live_measurement():
+    """Record a measured ('actual') value for the model-vs-measured drift view.
+
+    Body: {"variable": "map", "value": 72, "t": <optional sim-time seconds>}.
+    Omitting t stamps it at the current simulation time.
+    """
+    body = request.get_json(force=True) or {}
+    val  = _opt_float(body.get("value"))
+    if val is None:
+        return jsonify({"ok": False, "error": "value required"}), 400
+    var = str(body.get("variable", "map"))
+    t   = _opt_float(body.get("t"))
+    m = _session.add_measurement(var, val, t)
+    return jsonify({"ok": True, "measurement": m})
 
 
 @live_bp.route("/api/live/state")

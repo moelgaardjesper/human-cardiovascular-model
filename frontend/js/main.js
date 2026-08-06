@@ -543,3 +543,164 @@ function liveUpdate() {
     }}),
   }).catch(console.error);
 }
+
+// ═══════════════════════════════════════════════════
+// Session trend & model-vs-measured drift
+// ═══════════════════════════════════════════════════
+
+const TREND_UNITS = {
+  map: 'mmHg', sbp: 'mmHg', dbp: 'mmHg', hr: 'bpm',
+  co: 'L/min', cvp: 'mmHg', cpp: 'mmHg', sv: 'mL',
+};
+
+let _trendData    = null;
+let _trendTimer   = null;
+let _trendPlotted = false;   // false → next render must (re)initialise the plot
+
+function trendVar() {
+  const el = document.getElementById('trend_var');
+  return el ? el.value : 'map';
+}
+
+function showTrendPanel() {
+  document.getElementById('trendOverlay').style.display = 'flex';
+  _trendPlotted = false;   // container just became visible — build fresh
+  // Wait one frame so the flex modal has laid out (non-zero height) before Plotly measures it.
+  requestAnimationFrame(fetchTrend);
+  if (_trendTimer) clearInterval(_trendTimer);
+  _trendTimer = setInterval(fetchTrend, 3000);  // trend moves slowly; 3 s poll
+}
+
+function hideTrendPanel() {
+  document.getElementById('trendOverlay').style.display = 'none';
+  if (_trendTimer) { clearInterval(_trendTimer); _trendTimer = null; }
+  try { Plotly.purge('trend_chart'); } catch (e) {}
+  _trendPlotted = false;
+}
+
+async function fetchTrend() {
+  try {
+    const res = await fetch('/api/live/trend');
+    if (!res.ok) return;
+    _trendData = await res.json();
+    renderTrend();
+  } catch (e) { /* transient */ }
+}
+
+async function addMeasurement() {
+  const inp = document.getElementById('trend_measure');
+  const val = parseFloat(inp.value);
+  if (isNaN(val)) return;
+  try {
+    await fetch('/api/live/measurement', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ variable: trendVar(), value: val }),
+    });
+    inp.value = '';
+    fetchTrend();
+  } catch (e) { console.error(e); }
+}
+
+// Linear-interpolate the model trend for `key` at sim-time `t`.
+function _modelAt(trend, key, t) {
+  if (!trend || !trend.length) return null;
+  if (t <= trend[0].t)                 return trend[0][key];
+  if (t >= trend[trend.length - 1].t)  return trend[trend.length - 1][key];
+  for (let i = 1; i < trend.length; i++) {
+    if (trend[i].t >= t) {
+      const a = trend[i - 1], b = trend[i];
+      const f = (b.t === a.t) ? 0 : (t - a.t) / (b.t - a.t);
+      return a[key] + (b[key] - a[key]) * f;
+    }
+  }
+  return trend[trend.length - 1][key];
+}
+
+function renderTrend() {
+  const d    = _trendData;
+  const key  = trendVar();
+  const unit = TREND_UNITS[key] || '';
+  const box  = document.getElementById('trend_chart');
+  if (!d || !d.trend || !d.trend.length) {
+    if (_trendPlotted) { try { Plotly.purge('trend_chart'); } catch (e) {} _trendPlotted = false; }
+    box.innerHTML = '<div class="placeholder">Start the live monitor, then record measured values to see model-vs-actual drift.</div>';
+    document.getElementById('trend_drift').textContent = 'Drift: —';
+    return;
+  }
+
+  // Model line (x in minutes for long sessions).
+  const mx = d.trend.map(p => p.t / 60);
+  const my = d.trend.map(p => p[key]);
+
+  // Measurements for this variable.
+  const meas = (d.measurements || []).filter(m => m.variable === key);
+  const px = meas.map(m => m.t / 60);
+  const py = meas.map(m => m.value);
+
+  const traces = [
+    { x: mx, y: my, name: 'Model', mode: 'lines',
+      line: { color: C.map, width: 2 } },
+  ];
+  if (meas.length) {
+    traces.push({
+      x: px, y: py, name: 'Measured', mode: 'markers',
+      marker: { color: C.cvp, size: 9, symbol: 'diamond',
+                line: { color: '#0b0e17', width: 1 } },
+    });
+  }
+
+  // Whole-session x-window: always 0 → now (a hair of pad) so the overview
+  // grows with the session. We set an explicit range (rather than autorange)
+  // because it must track the FULL history, not just where the data happens to
+  // sit. NOTE: no `uirevision` here — pinning it froze the x-axis at whatever
+  // tiny range existed when the panel first opened, so the plot appeared stuck
+  // on the opening ~15 s instead of expanding. Re-ranging every poll is the
+  // behaviour we want for a session overview.
+  const tmaxMin = mx[mx.length - 1] || 0;
+  const layout = {
+    ...BASE,
+    title: { text: '', font: { color: '#c7d2fe', size: 11 } },
+    margin: { l: 48, r: 12, t: 10, b: 36 },
+    showlegend: true,
+    legend: { font: { color: '#9ca3af', size: 10 }, orientation: 'h', y: 1.08, x: 0 },
+    xaxis: { ...BASE.xaxis, title: 'Time (min)',
+             range: [0, Math.max(tmaxMin * 1.02, 0.1)] },
+    yaxis: { ...BASE.yaxis, title: `${key.toUpperCase()} (${unit})`, autorange: true },
+  };
+  const cfg = { responsive: true, displayModeBar: false };
+
+  if (!_trendPlotted) {
+    // First draw (or after re-open): create the plot, then force a resize so the
+    // flex-sized modal container is measured correctly (avoids a 0-height render).
+    Plotly.newPlot('trend_chart', traces, layout, cfg)
+          .then(() => Plotly.Plots.resize('trend_chart'));
+    _trendPlotted = true;
+  } else {
+    // Efficient in-place update — no teardown. Layout carries an explicit,
+    // full-session x-range each call, so the view expands with the session.
+    Plotly.react('trend_chart', traces, layout, cfg);
+  }
+
+  // Drift = model − measured at the most-recent measurement's time.
+  const driftEl = document.getElementById('trend_drift');
+  if (meas.length) {
+    const last  = meas[meas.length - 1];
+    const model = _modelAt(d.trend, key, last.t);
+    if (model != null) {
+      const diff = model - last.value;
+      const sign = diff >= 0 ? '+' : '−';
+      const col  = Math.abs(diff) < 1e-9 ? 'var(--muted)'
+                 : Math.abs(diff) > (key === 'co' ? 0.8 : 12) ? 'var(--red)'
+                 : Math.abs(diff) > (key === 'co' ? 0.4 : 6)  ? 'var(--amber)'
+                 : 'var(--green)';
+      driftEl.style.color = col;
+      driftEl.textContent =
+        `Drift: model ${model.toFixed(key === 'co' ? 2 : 0)} − measured ${last.value} = `
+        + `${sign}${Math.abs(diff).toFixed(key === 'co' ? 2 : 1)} ${unit}`;
+    }
+  } else {
+    driftEl.style.color = 'var(--muted)';
+    driftEl.textContent = 'Drift: — (no measured value recorded)';
+  }
+}
