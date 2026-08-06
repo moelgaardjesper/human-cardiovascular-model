@@ -80,6 +80,21 @@ def region_volumes(V: np.ndarray) -> dict[str, float]:
             for region, names in BODY_REGIONS.items()}
 
 
+# Compartments whose unstressed volume (V0) is modulated by venous tone
+# (drug venous_tone_factor × baroreflex v0_vein_factor): venoconstriction
+# (factor < 1) lowers V0, recruiting blood centrally; venodilation (> 1) raises
+# V0, pooling blood.
+#
+# Applied to the MOBILIZABLE VENOUS RESERVOIR (splanchnic + upper-body/cutaneous
+# beds). This is the physiology: sympathetic venoconstriction recruits chiefly
+# the splanchnic capacitance bed (Rothe 1983; Gelman 2008), while the caval
+# conduits, renal, and muscle/limb veins contribute little actively mobilizable
+# volume. With physiological venous compliance (compartments.py) the recruited
+# slug lands in a ~1.6 L stressed pool, so a ±15 % tone change moves CO ~±13 %.
+MOBILIZABLE_VENOUS_RESERVOIR = ("splanchnic_vein", "upper_body_vein")
+_VENOUS_TONE_IDX = frozenset(IDX[name] for name in MOBILIZABLE_VENOUS_RESERVOIR)
+
+
 # ---------------------------------------------------------------------------
 # Simulation parameters dataclass
 # ---------------------------------------------------------------------------
@@ -163,8 +178,13 @@ class SimParams:
 # Pressure helpers
 # ---------------------------------------------------------------------------
 
-def _vascular_pressure(vol: float, v0: float, compliance: float) -> float:
-    return (vol - v0) / compliance
+def _vascular_pressure(vol: float, v0: float, compliance: float,
+                       p_stiffen: float | None = None) -> float:
+    vs = vol - v0
+    if p_stiffen is None or vs <= 0.0:
+        return vs / compliance
+    # Collapsible-vein tube law: stiffens above p_stiffen (see Compartment).
+    return p_stiffen * (np.exp(vs / (compliance * p_stiffen)) - 1.0)
 
 
 def _cardiac_pressure(vol: float, v0: float, e: float) -> float:
@@ -230,6 +250,14 @@ def _odes(t: float, V: np.ndarray, params: SimParams, baro: BaroreflexController
     # -----------------------------------------------------------------------
     # Compute pressures for every compartment
     # -----------------------------------------------------------------------
+    # Venous tone: drug venoconstriction × baroreflex venous arm, applied as a
+    # multiplier on systemic venous unstressed volume (V0). See _VENOUS_TONE_IDX.
+    #   < 1  venoconstriction → lower V0 → higher venous P → ↑ preload/CO
+    #   > 1  venodilation     → higher V0 → venous pooling → ↓ preload/CO
+    vt = drugs.get("venous_tone_factor", 1.0)
+    if baro is not None:
+        vt *= baro.v0_vein_factor
+
     i = IDX
     P = np.zeros(len(comp))
 
@@ -243,7 +271,8 @@ def _odes(t: float, V: np.ndarray, params: SimParams, baro: BaroreflexController
                 i["pulmonary_art"], i["pulmonary_cap"], i["pulmonary_vein"],
                 i["coronary"]]:
         c = comp[idx]
-        P[idx] = _vascular_pressure(V[idx], c.unstressed_volume, c.compliance)
+        v0 = c.unstressed_volume * vt if idx in _VENOUS_TONE_IDX else c.unstressed_volume
+        P[idx] = _vascular_pressure(V[idx], v0, c.compliance, c.p_stiffen)
 
     # Cardiac chambers (time-varying elastance)
     P[i["left_ventricle"]]  = _cardiac_pressure(V[i["left_ventricle"]],  comp[i["left_ventricle"]].unstressed_volume,  E_lv)
@@ -318,11 +347,6 @@ def _odes(t: float, V: np.ndarray, params: SimParams, baro: BaroreflexController
     def R(idx_name: str, systemic_arterial: bool = False) -> float:
         r = comp[IDX[idx_name]].resistance
         return r * svr_factor if systemic_arterial else r
-
-    # Venous tone (unstressed volume modulation via compliance proxy)
-    vt = drugs.get("venous_tone_factor", 1.0)
-    if baro is not None:
-        vt *= baro.v0_vein_factor
 
     # -----------------------------------------------------------------------
     # Flows (mL/s) — Q > 0 means forward flow

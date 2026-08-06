@@ -35,11 +35,19 @@ class Compartment:
     """
 
     name: str
-    compliance: float       # mL/mmHg
+    compliance: float       # mL/mmHg — low-pressure compliance C0
     resistance: float       # mmHg·s/mL  (outflow to next compartment)
     unstressed_volume: float  # mL
     height_m: float = 0.0   # metres from heart level
     init_volume: float = field(default=None)
+    # Nonlinear (collapsible-vein) pressure–volume behaviour. When set, the
+    # compartment stiffens above transmural pressure `p_stiffen` (mmHg) via an
+    # exponential tube law: P = k·(exp(Vs/(C0·k)) − 1), Vs = stressed volume.
+    # dP/dVs → 1/C0 at Vs→0 (compliant, e.g. supine/leg-raised) and rises with
+    # volume (low incremental compliance when dependent → self-limiting pooling).
+    # None → linear P = Vs/C0. Used for the limb veins so they hold recruitable
+    # volume supine yet do not pool catastrophically upright.
+    p_stiffen: float | None = None
 
     def __post_init__(self):
         if self.init_volume is None:
@@ -47,7 +55,11 @@ class Compartment:
 
     def pressure(self, volume: float) -> float:
         """Transmural pressure from stressed volume (mmHg)."""
-        return (volume - self.unstressed_volume) / self.compliance
+        vs = volume - self.unstressed_volume
+        if self.p_stiffen is None or vs <= 0.0:
+            return vs / self.compliance
+        import numpy as _np
+        return self.p_stiffen * (_np.exp(vs / (self.compliance * self.p_stiffen)) - 1.0)
 
 
 # ---------------------------------------------------------------------------
@@ -102,13 +114,17 @@ def default_compartments() -> list[Compartment]:
         Compartment("aorta",               0.50, 0.05,  100,  0.05,  145),  # 0  P0=90
         Compartment("brachiocephalic",     0.12, 0.05,   30,  0.15,   41),  # 1  P0=91
         Compartment("upper_body_art",      0.25, 3.80,   50,  0.25,   72),  # 2  P0=88 (arterioles)
-        Compartment("upper_body_vein",     1.30, 0.15,  300,  0.20,  309),  # 3  P0≈7
-        Compartment("svc",                 0.40, 0.05,   70,  0.15,   72),  # 4  P0=5
+        # Heights reference the volume-weighted thoracic venous centroid (~heart
+        # level), not the neck: with physiological compliance the hydrostatic term
+        # C·ΔP dominates tilt redistribution, so a mid-neck height (0.15-0.20) would
+        # pool ~200 mL into the upper body in head-down tilt and steal preload.
+        Compartment("upper_body_vein",    15.0, 0.10,  350,  0.05,  440),  # 3  P0≈6 (upper-body venous C < splanchnic)
+        Compartment("svc",                10.0, 0.05,   70,  0.05,  110),  # 4  P0≈4
         Compartment("abdominal_aorta",     0.25, 0.05,   60, -0.10,   82),  # 5  P0=88
         Compartment("renal_art",           0.05, 4.60,   20, -0.10,   24),  # 6  P0=80 (arterioles)
-        Compartment("renal_vein",          0.35, 0.25,   60, -0.10,   63),  # 7  P0≈9
+        Compartment("renal_vein",          9.0, 0.10,   60, -0.10,  132),  # 7  P0≈8
         Compartment("splanchnic_art",      0.12, 3.70,   50, -0.15,   60),  # 8  P0=83 (arterioles)
-        Compartment("splanchnic_vein",     3.50, 0.18,  700, -0.15,  728),  # 9  P0=8
+        Compartment("splanchnic_vein",    65.0, 0.07, 1200, -0.08, 1920),  # 9  P0≈11 (dominant mobilizable reservoir)
         Compartment("lower_body_art",      0.35, 2.80,   80, -0.50,  111),  # 10 P0=89 (arterioles)
         # ---- Lower body venous: foot→calf→thigh→ivc (outflow resistance on each segment) ----
         # Compliances reproduce the ~640 mL venous pooling on standing documented by
@@ -134,10 +150,14 @@ def default_compartments() -> list[Compartment]:
         # At 45° upright: ΔV ≈ +130 mL pooling.
         # At 90° upright: ΔV ≈ +220 mL (vs old single-vein 73 mL).
         # Full Sjöstrand 640 mL requires the active muscle pump (absent in sedated patients).
-        Compartment("thigh_vein",          1.50, 0.30,  300, -0.20,  319),  # 11 P0≈12.5 mmHg
-        Compartment("calf_vein",           2.50, 0.05,  400, -0.55,  433),  # 12 P0≈13.0 mmHg
-        Compartment("foot_vein",           2.00, 0.07,  200, -0.85,  227),  # 13 P0≈13.5 mmHg
-        Compartment("ivc",                 0.60, 0.04,  120, -0.15,  123),  # 14 P0=5
+        # Limb veins use the nonlinear tube law (p_stiffen): compliant when
+        # filling (supine/leg-raised → hold recruitable volume, restore PLR
+        # response) but self-limiting when dependent (upright → pooling capped,
+        # no MAP collapse). C0 is the low-pressure compliance.
+        Compartment("thigh_vein",          4.0, 0.30,  300, -0.20,  332, p_stiffen=12.0),  # 11
+        Compartment("calf_vein",           6.0, 0.05,  400, -0.55,  448, p_stiffen=11.0),  # 12
+        Compartment("foot_vein",           5.0, 0.07,  200, -0.85,  241, p_stiffen= 8.0),  # 13
+        Compartment("ivc",                15.0, 0.04,  120, -0.15,  195),  # 14 P0≈5
         # ---- Cardiac chambers (elastance model; R = valve resistance) ----
         # RA Vinit=155: at RA_EMIN=0.04 and P_ra_eq≈3.8 mmHg → V=60+3.8/0.04=155 mL.
         # End-diastolic (rolling-minimum) CVP ≈ 3 mmHg once RA partially empties ✓

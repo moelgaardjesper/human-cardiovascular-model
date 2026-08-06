@@ -99,12 +99,27 @@ class BaroreflexController:
         # Effector gains
         self._gain_hr_para  =  -3.0   # bpm/sigmoid (calibrated: Likhvantsev 2025 ΔHR ≈−1.65 bpm)
         self._gain_hr_symp  =   2.0
-        # SVR gain reduced 0.65→0.45: at the previous gain the baroreflex could swing SVR
-        # by ±65% in one slow-filter step, creating large underdamped oscillations at steep
-        # tilt angles (observed ~90 mmHg pulse pressure at −26°). At 0.45 the maximum SVR
-        # swing is ±45%, producing physiological Mayer-wave amplitude (~10–20 mmHg).
-        self._gain_svr      =   0.45
+        # SVR gain 0.65. It had been reduced to 0.45 on the pre-rebuild model,
+        # where the compressed venous compliance left the baroreflex-SVR loop
+        # underdamped — a strong gain produced ~90 mmHg pulse-pressure oscillation
+        # at steep tilt. The venous-system rebuild (physiological venous
+        # compliance ~130 mL/mmHg) damps that loop, so the gain can be restored
+        # to a physiological orthostatic level (max SVR ~1.65×) — needed to
+        # defend MAP/cerebral perfusion at 45° upright — while MAP stays stable
+        # (pulse-pressure oscillation < 8 mmHg at −26°). A nice consequence of
+        # fixing the volume scale: stronger, more physiological reflex control.
+        self._gain_svr      =   0.65
         self._gain_emax     =   0.20
+        # Baroreflex venous-tone (venoconstriction) arm — wired through to venous
+        # unstressed volume in circulation.py `_odes` (via `vt *= v0_vein_factor`).
+        # Re-enabled at physiological gain after the venous-system rebuild
+        # (compartments.py) gave the model physiological venous compliance and a
+        # ~1.6 L stressed pool. Previously this arm had to be held at 0: with the
+        # old compressed 0.7 L pool it over-recruited during hypovolaemia
+        # (flattening PPV below the Michard threshold, blunting PLR) and
+        # over-venodilated at high MAP (inverting the epinephrine dose-CO curve).
+        # With leverage now ~±13 % (was ±48 %) the arm defends venous return in
+        # the correct direction without those artefacts.
         self._gain_v0_vein  =   0.10
 
     def update(
@@ -150,7 +165,14 @@ class BaroreflexController:
         self.hr_delta       = np.clip(self.hr_delta,       -25.0, 40.0)
         self.svr_factor     = np.clip(self.svr_factor,       0.5,  1.8)
         self.emax_factor    = np.clip(self.emax_factor,      0.5,  2.0)
-        self.v0_vein_factor = np.clip(self.v0_vein_factor,   0.75, 1.25)
+        # Asymmetric: the baroreflex venous effector is active venoCONSTRICTION
+        # reserve (v0_vein_factor < 1, recruits the reservoir to defend venous
+        # return in hypotension/orthostatic stress). At high MAP the reflex only
+        # WITHDRAWS this tone — passive venodilation is limited — so the factor is
+        # capped at 1.0 rather than allowed to actively venodilate. Without this
+        # cap, high-MAP venodilation drops preload enough to invert the
+        # epinephrine dose–CO curve (a non-physiological artefact).
+        self.v0_vein_factor = np.clip(self.v0_vein_factor,   0.75, 1.0)
 
 
 def _sigmoid(x: float, scale: float = 10.0) -> float:

@@ -6,6 +6,17 @@ baseline haemodynamic parameters in circulation.py.
 
 Dose-response curves use Hill equations calibrated to published clinical
 pharmacology data (see individual function docstrings for references).
+
+Factor sign conventions (all multiplicative, 1.0 = no effect):
+    svr_factor          >1 raises systemic arterial resistance
+    hr_factor           >1 raises heart rate
+    lv/rv_emax_factor   >1 raises ventricular contractility
+    venous_tone_factor  multiplies systemic venous UNSTRESSED volume (V0):
+                          <1 = venoconstriction (recruits blood centrally,
+                               raises venous pressure → augments preload/CO)
+                          >1 = venodilation (pools blood → reduces preload/CO)
+                        This matches the baroreflex `v0_vein_factor` arm and
+                        is applied in circulation.py `_odes`.
 """
 
 import numpy as np
@@ -33,7 +44,8 @@ def norepinephrine(dose_mcg_kg_min: float) -> dict:
         "hr_factor": hr_factor,
         "lv_emax_factor": emax_factor,
         "rv_emax_factor": emax_factor * 0.7,
-        "venous_tone_factor": 1.0 + _hill(dose_mcg_kg_min, ec50=0.20, e_max=0.15),
+        # α1 venoconstriction reduces venous V0 (recruits splanchnic reservoir) → <1.0
+        "venous_tone_factor": 1.0 - _hill(dose_mcg_kg_min, ec50=0.20, e_max=0.15),
     }
 
 
@@ -50,7 +62,8 @@ def phenylephrine(dose_mcg_kg_min: float) -> dict:
         "hr_factor": 1.0,          # baroreflex will decrease HR
         "lv_emax_factor": 1.0,
         "rv_emax_factor": 1.0,
-        "venous_tone_factor": 1.0 + _hill(dose_mcg_kg_min, ec50=0.80, e_max=0.10),
+        # Pure α1 venoconstriction reduces venous V0 → <1.0
+        "venous_tone_factor": 1.0 - _hill(dose_mcg_kg_min, ec50=0.80, e_max=0.10),
     }
 
 
@@ -62,7 +75,11 @@ def vasopressin(units_per_hr: float) -> dict:
     Reference range: 0.01–0.04 units/min clinical (= 0.6–2.4 units/hr).
     """
     svr_factor          = 1.0 + _hill(units_per_hr, ec50=1.5, e_max=1.20, n=1.0)
-    venous_tone_factor  = 1.0 + _hill(units_per_hr, ec50=2.0, e_max=0.20, n=1.0)
+    # V1 smooth-muscle venoconstriction reduces venous V0 → <1.0.
+    # e_max 0.15 → ~7% reservoir V0 recruitment at 2 U/hr; keeps cardiac index
+    # ≈ maintained (Patel 2002: CI preserved). Applied to the mobilizable
+    # reservoir set (splanchnic + upper-body) — see circulation._VENOUS_TONE_IDX.
+    venous_tone_factor  = 1.0 - _hill(units_per_hr, ec50=2.0, e_max=0.15, n=1.0)
     return {
         "svr_factor": svr_factor,
         "hr_factor": 1.0,
@@ -116,7 +133,11 @@ def propofol(dose_mg_kg: float) -> dict:
     Hill parameters calibrated so that dose=2.0 gives SVR reduction ~22%
     (midpoint of reported 21–30% range):
       ec50_svr = 1.5 mg/kg, emax_svr = 0.40  →  effect(2) = 0.229 ≈ 23% ✓
-      ec50_vein = 2.0 mg/kg, emax_vein = 0.18 →  10% venous capacitance ↑ at 2 mg/kg
+      ec50_vein = 2.0 mg/kg, emax_vein = 0.12 →  ~6% reservoir V0 ↑ at 2 mg/kg.
+        Gives MAP −23 %, CO −6 % (baroreflex off) — matches Claeys (MAP −25 %,
+        CO unchanged). Venous tone acts on the mobilizable reservoir set
+        (splanchnic + upper-body), see circulation._VENOUS_TONE_IDX; propofol's
+        dominant haemodynamic effect is arteriolar/SVR, venodilation secondary.
 
     Parameters
     ----------
@@ -131,7 +152,7 @@ def propofol(dose_mg_kg: float) -> dict:
     # Arteriolar vasodilation (primary effect — reduces afterload)
     svr_reduction      = _hill(dose_mg_kg, ec50=1.5, e_max=0.40, n=1.0)
     # Venous dilation (increases unstressed venous volume → reduces preload)
-    venous_dilation    = _hill(dose_mg_kg, ec50=2.0, e_max=0.18, n=1.0)
+    venous_dilation    = _hill(dose_mg_kg, ec50=2.0, e_max=0.12, n=1.0)
     # Mild negative inotropy (only relevant at high doses; CO unchanged at 2 mg/kg)
     inotropy_reduction = _hill(dose_mg_kg, ec50=3.0, e_max=0.12, n=1.5)
 
@@ -140,7 +161,7 @@ def propofol(dose_mg_kg: float) -> dict:
         "hr_factor":        1.0,                         # no direct chronotropy
         "lv_emax_factor":   1.0 - inotropy_reduction,   # e.g. 0.95 at 2 mg/kg
         "rv_emax_factor":   1.0 - inotropy_reduction,
-        "venous_tone_factor": 1.0 + venous_dilation,    # e.g. 1.10 at 2 mg/kg
+        "venous_tone_factor": 1.0 + venous_dilation,    # e.g. 1.06 at 2 mg/kg
     }
 
 
@@ -166,7 +187,10 @@ def spinal_anaesthesia(block_height: float) -> dict:
       ≈38% (within the Malmqvist 30-40% range at complete block).
     """
     svr_reduction   = 0.38 * block_height    # ≈38% SVR reduction at full block
-    venous_dilation = 0.20 * block_height    # +20% venous capacitance at full block
+    # Sympathetic venodilation below the block ↑ reservoir V0. e_max 0.12 gives
+    # CO −11 % at full block (baroreflex on) — CO preserved per Malmqvist.
+    # Acts on the mobilizable reservoir set (see circulation._VENOUS_TONE_IDX).
+    venous_dilation = 0.12 * block_height    # +12% reservoir V0 at full block
     hr_blunting     = 0.07 * block_height    # −7% direct HR at full block (cardiac accelerator block)
     return {
         "svr_factor":         1.0 - svr_reduction,

@@ -124,11 +124,12 @@ Known model limitations (documented here for transparency)
   -30° to +45° range.
 - CVP baseline: model reports end-diastolic RA pressure trough (2-4 mmHg),
   matching [11] (normal supine awake CVP = 2-3 mmHg).
-- Hemorrhage sensitivity: total model blood volume (~3.8 L) and stressed
-  volume (~0.7 L) are smaller than typical adult values (~5 L / ~1-1.5 L),
-  so MAP/CO fall more steeply per mL removed than in vivo. Hemorrhage tests
-  therefore validate DIRECTION and dose-response shape (matching [12], [13])
-  on the model's own volume scale, not mL-for-mL clinical magnitudes.
+- Hemorrhage sensitivity: RESOLVED by the venous-system rebuild. The model
+  now carries a physiological blood volume (~5.36 L) and stressed volume
+  (~1.66 L, 31% of BV; MSFP ~9.7 mmHg, venous compliance ~129 mL/mmHg), so
+  hemorrhage tests run at clinically realistic class I-III volumes
+  (300/600/1000 mL) rather than the 100-300 mL the previously compressed
+  ~0.7 L stressed pool required. See docs/known_model_limitations.md §5.
 """
 
 import numpy as np
@@ -375,7 +376,7 @@ def test_hdt6_vs_upright20_verdini2019(upright20_179_79, hdt6_179_79):
 
     Literature: MAP_HDT < MAP_upright, HR_HDT < HR_upright (p<0.001) at 90°
     upright. 90° upright is outside the model's validated range (no muscle
-    pump; validated -30° to +30°), so 20° upright is used as a fair
+    pump; validated -30° to +45°), so 20° upright is used as a fair
     comparison — the HR direction (HDT < upright) should still hold.
     """
     s_ort, s_hdt = upright20_179_79, hdt6_179_79
@@ -654,19 +655,23 @@ def baseline_hem():
     return _run_hem_bolus()
 
 
+# Clinically-scaled hemorrhage volumes. With the physiological ~5.3 L blood
+# volume and ~1.6 L stressed volume (venous-system rebuild, see compartments.py),
+# haemodynamically meaningful hemorrhage sits at class-I→III magnitudes (~300 /
+# 600 / 1000 mL), not the 100–300 mL the old compressed 0.7 L pool required.
 @pytest.fixture(scope="module")
-def hem100():
-    return _run_hem_bolus(hem_ml=100)
-
-
-@pytest.fixture(scope="module")
-def hem200():
-    return _run_hem_bolus(hem_ml=200)
-
-
-@pytest.fixture(scope="module")
-def hem300():
+def hem_mild():
     return _run_hem_bolus(hem_ml=300)
+
+
+@pytest.fixture(scope="module")
+def hem_mod():
+    return _run_hem_bolus(hem_ml=600)
+
+
+@pytest.fixture(scope="module")
+def hem_severe():
+    return _run_hem_bolus(hem_ml=1000)
 
 
 def test_hemorrhage_volume_conserved():
@@ -681,14 +686,14 @@ def test_hemorrhage_volume_conserved():
     assert abs(removed - 100.0) < 0.5, f"Expected ~100 mL removed, got {removed:.2f} mL"
 
 
-def test_graded_hemorrhage_monotonic_lie2023(baseline_hem, hem100, hem200, hem300):
+def test_graded_hemorrhage_monotonic_lie2023(baseline_hem, hem_mild, hem_mod, hem_severe):
     """[12] Lie 2023 — CO falls approximately linearly with central
     hypovolemia severity; [13] Vettorello 2016 — HR rises with severity.
-    Graded hemorrhage (100/200/300 mL) should reproduce this monotonic
+    Graded hemorrhage (300/600/1000 mL) should reproduce this monotonic
     dose-response."""
-    map_vals = [baseline_hem['map'], hem100['map'], hem200['map'], hem300['map']]
-    co_vals  = [baseline_hem['co'],  hem100['co'],  hem200['co'],  hem300['co']]
-    hr_vals  = [baseline_hem['hr'],  hem100['hr'],  hem200['hr'],  hem300['hr']]
+    map_vals = [baseline_hem['map'], hem_mild['map'], hem_mod['map'], hem_severe['map']]
+    co_vals  = [baseline_hem['co'],  hem_mild['co'],  hem_mod['co'],  hem_severe['co']]
+    hr_vals  = [baseline_hem['hr'],  hem_mild['hr'],  hem_mod['hr'],  hem_severe['hr']]
 
     assert all(map_vals[i] > map_vals[i + 1] for i in range(3)), (
         f"MAP not monotonically falling with hemorrhage severity: {map_vals}"
@@ -699,15 +704,15 @@ def test_graded_hemorrhage_monotonic_lie2023(baseline_hem, hem100, hem200, hem30
     assert all(hr_vals[i] < hr_vals[i + 1] for i in range(3)), (
         f"HR not monotonically rising with hemorrhage severity: {hr_vals}"
     )
-    assert hem300['map'] > 40, f"MAP collapsed at 300 mL hemorrhage: {hem300['map']:.1f} mmHg"
+    assert hem_severe['map'] > 40, f"MAP collapsed at 1000 mL hemorrhage: {hem_severe['map']:.1f} mmHg"
 
 
-def test_mild_hemorrhage_preload_sensitivity_hamilton2021(baseline_hem, hem100):
+def test_mild_hemorrhage_preload_sensitivity_hamilton2021(baseline_hem, hem_mild):
     """[14] Hamilton 2021 — at mild hypovolemia, preload (CVP) falls
     proportionally more than systemic MAP (RV/pulmonary preload is affected
     before the systemic circulation decompensates)."""
-    dcvp_pct = pct(hem100['cvp'], baseline_hem['cvp'])
-    dmap_pct = pct(hem100['map'], baseline_hem['map'])
+    dcvp_pct = pct(hem_mild['cvp'], baseline_hem['cvp'])
+    dmap_pct = pct(hem_mild['map'], baseline_hem['map'])
 
     assert dcvp_pct < 0, f"CVP did not fall with mild hemorrhage: {dcvp_pct:+.1f}%"
     assert dmap_pct < 0, f"MAP did not fall with mild hemorrhage: {dmap_pct:+.1f}%"
@@ -717,20 +722,20 @@ def test_mild_hemorrhage_preload_sensitivity_hamilton2021(baseline_hem, hem100):
     )
 
 
-def test_severe_hemorrhage_decompensation(baseline_hem, hem300):
-    """300 mL hemorrhage (the most severe graded step) produces a
+def test_severe_hemorrhage_decompensation(baseline_hem, hem_severe):
+    """1000 mL hemorrhage (the most severe graded step, ~class III) produces a
     clinically significant MAP drop — decompensation, unlike the mild
-    (100 mL) case."""
-    dmap = hem300['map'] - baseline_hem['map']
-    assert dmap < -15, f"MAP did not drop substantially at 300 mL hemorrhage: d={dmap:+.1f} mmHg"
-    assert hem300['map'] > 40, f"MAP non-viable at 300 mL hemorrhage: {hem300['map']:.1f} mmHg"
+    (300 mL) case."""
+    dmap = hem_severe['map'] - baseline_hem['map']
+    assert dmap < -15, f"MAP did not drop substantially at 1000 mL hemorrhage: d={dmap:+.1f} mmHg"
+    assert hem_severe['map'] > 40, f"MAP non-viable at 1000 mL hemorrhage: {hem_severe['map']:.1f} mmHg"
 
 
 def test_fluid_bolus_increases_sv_co_herrera2017(baseline_hem):
     """[15] Herrera 2017 — crystalloid bolus increases SV and CO, with HR
     unchanged or slightly reduced (improved filling reduces compensatory
     tachycardia)."""
-    bolus = _run_hem_bolus(bolus_ml=300)
+    bolus = _run_hem_bolus(bolus_ml=600)
     dsv = pct(bolus['sv'], baseline_hem['sv'])
     dco = pct(bolus['co'], baseline_hem['co'])
     dhr = bolus['hr'] - baseline_hem['hr']
@@ -741,17 +746,17 @@ def test_fluid_bolus_increases_sv_co_herrera2017(baseline_hem):
     assert bolus['map'] < 160, f"MAP excessively high after bolus: {bolus['map']:.1f} mmHg"
 
 
-def test_hemorrhage_resuscitation_restores_map_and_co(hem200):
-    """Resuscitation scenario: a 300 mL crystalloid bolus following a
-    200 mL hemorrhage partially restores MAP and CO toward (or above)
+def test_hemorrhage_resuscitation_restores_map_and_co(hem_mod):
+    """Resuscitation scenario: a 600 mL crystalloid bolus following a
+    600 mL hemorrhage partially restores MAP and CO toward (or above)
     baseline, compared to hemorrhage alone."""
-    resus = _run_hem_bolus(hem_ml=200, bolus_ml=300)
+    resus = _run_hem_bolus(hem_ml=600, bolus_ml=600)
 
-    assert resus['map'] > hem200['map'], (
-        f"Resuscitation did not raise MAP: {hem200['map']:.1f} -> {resus['map']:.1f}"
+    assert resus['map'] > hem_mod['map'], (
+        f"Resuscitation did not raise MAP: {hem_mod['map']:.1f} -> {resus['map']:.1f}"
     )
-    assert resus['co'] > hem200['co'], (
-        f"Resuscitation did not raise CO: {hem200['co']:.2f} -> {resus['co']:.2f}"
+    assert resus['co'] > hem_mod['co'], (
+        f"Resuscitation did not raise CO: {hem_mod['co']:.2f} -> {resus['co']:.2f}"
     )
 
 
@@ -772,15 +777,15 @@ def test_ppv_fluid_responsiveness_michard2000():
     1. Normovolemic (default patient): LV EDV ~139 mL > EDV_ref=130 → Starling
        plateau → beat-to-beat SV barely changes with cyclic ITP → PPV < 13%.
 
-    2. Hypovolemic (400 mL hemorrhage → LV EDV ~89 mL < EDV_ref=130 → ascending
-       Starling limb): each ITP-driven venous-return drop reduces LV SV
-       appreciably → PPV > 13%, correctly flagging the patient as fluid responsive.
-       Model scale note: the model's compressed stressed volume (667 mL) means
-       400 mL loss is proportionally more severe than in a physiological patient
-       (1000-1500 mL stressed), so this threshold occurs at a lighter absolute
-       hemorrhage than clinical expectation.
+    2. Hypovolemic (1000 mL hemorrhage → ascending Starling limb): each
+       ITP-driven venous-return drop reduces LV SV appreciably → PPV > 13%,
+       correctly flagging the patient as fluid responsive. Since the
+       venous-system rebuild gave the model a physiological stressed volume
+       (~1.66 L, was 667 mL), this threshold now occurs at a clinically
+       realistic class-II hemorrhage rather than the ~400 mL the old
+       compressed scale required.
 
-    3. Partial resuscitation (hemorrhage + 400 mL crystalloid): CO increases
+    3. Partial resuscitation (hemorrhage + 1000 mL crystalloid): CO increases
        ≥15% (Michard criterion) AND PPV decreases — confirms fluid responsiveness
        was correctly identified by the elevated PPV.
     """
@@ -808,8 +813,8 @@ def test_ppv_fluid_responsiveness_michard2000():
         }
 
     s_normo = _ppv_run()
-    s_hypo  = _ppv_run(hemorrhage_ml=400.0)
-    s_resus = _ppv_run(hemorrhage_ml=400.0, fluid_ml=400.0)
+    s_hypo  = _ppv_run(hemorrhage_ml=1000.0)
+    s_resus = _ppv_run(hemorrhage_ml=1000.0, fluid_ml=1000.0)
 
     # Normovolemic: on Starling plateau → not flagged as fluid responsive
     assert s_normo["ppv"] < 13, (
@@ -1012,8 +1017,8 @@ def test_epinephrine_biphasic_freyschuss1986():
 # 13. Passive leg raising — fluid responsiveness — [PMID: 26825952, Monnet 2016]
 # ===========================================================================
 
-def _run_plr(tilt_deg, hem_ml=0, duration=25.0):
-    """Simulate PLR (head-down tilt) ± mild haemorrhage; return last-half means."""
+def _run_plr(tilt_deg, hem_ml=0, duration=30.0):
+    """Simulate PLR (head-down tilt) ± haemorrhage; return last-half means."""
     p = SimParams()
     p.tilt_start_deg = tilt_deg
     p.tilt_end_deg   = tilt_deg
@@ -1037,14 +1042,15 @@ def test_plr_fluid_responsiveness_monnet2016():
     centrally but the plateau limits SV augmentation → CO increase < 10%
     (non-responder, consistent with Monnet specificity 0.91).
 
-    (B) Mild hypovolaemia (200 mL haemorrhage) — patient on ascending limb.
-    PLR restores preload, SV rises, CO increases ≥+10% (fluid-responder,
-    consistent with Monnet sensitivity 0.85).
+    (B) Hypovolaemia (1200 mL haemorrhage, ~class III) — patient on the
+    ascending Starling limb. PLR recruits the (now physiologically compliant,
+    nonlinear) limb + splanchnic venous reservoir, SV rises, CO increases ≥+10%
+    (fluid-responder, consistent with Monnet sensitivity 0.85).
     """
     norm_supine = _run_plr(tilt_deg=0,   hem_ml=0)
     norm_plr    = _run_plr(tilt_deg=-20, hem_ml=0)
-    hypo_supine = _run_plr(tilt_deg=0,   hem_ml=200)
-    hypo_plr    = _run_plr(tilt_deg=-20, hem_ml=200)
+    hypo_supine = _run_plr(tilt_deg=0,   hem_ml=1200)
+    hypo_plr    = _run_plr(tilt_deg=-20, hem_ml=1200)
 
     dco_norm_pct = (norm_plr['co'] - norm_supine['co']) / norm_supine['co'] * 100
     dco_hypo_pct = (hypo_plr['co'] - hypo_supine['co']) / hypo_supine['co'] * 100
@@ -1058,3 +1064,75 @@ def test_plr_fluid_responsiveness_monnet2016():
     assert dco_hypo_pct >= 10, (
         f"Hypovolemic PLR: CO increase < 10% (lit threshold ≥10%): Δ{dco_hypo_pct:+.1f}%"
     )
+
+
+# ===========================================================================
+# 14. Venous tone — mechanism regression guard
+#
+# Venous tone (drug venous_tone_factor × baroreflex v0_vein_factor) multiplies
+# the systemic venous UNSTRESSED volume in circulation.py `_odes`:
+#     < 1  venoconstriction → recruits blood centrally → CVP / preload / CO ↑
+#     > 1  venodilation      → venous pooling            → CVP / preload / CO ↓
+# A prior version assembled this factor but never applied it (dead variable),
+# so venoconstriction — the primary defence of venous return under orthostatic
+# stress and the mechanism of α1 vasopressors — had ZERO effect. These guards
+# are calibration-independent: they assert the mechanism is live and correctly
+# signed, so tuning drug magnitudes can never silently neuter the fix.
+# ===========================================================================
+
+def _run_venous_tone(vt_factor, baro=False):
+    """Run with an isolated venous_tone_factor (all other factors neutral)."""
+    from model.pharmacology import NEUTRAL_FACTORS
+    p = SimParams()
+    p.baroreflex_enabled = baro
+    p.drug_factors = dict(NEUTRAL_FACTORS)
+    p.drug_factors["venous_tone_factor"] = vt_factor
+    r = run_simulation(p, duration_s=30.0, dt=DT, use_baroreflex=baro)
+    h = len(r["map"]) // 2
+    return {k: float(np.mean(r[k][h:])) for k in ("map", "cvp", "co", "sv")}
+
+
+def test_venous_tone_modulates_preload_regression():
+    """Venous tone must produce a clear, correctly-signed haemodynamic effect.
+
+    Fails bit-for-bit on the pre-fix code where the factor was never applied.
+    Baroreflex OFF isolates the mechanical (preload-recruitment) effect.
+    """
+    neutral   = _run_venous_tone(1.00)
+    constrict = _run_venous_tone(0.90)   # +10% venous tone (venoconstriction)
+    dilate    = _run_venous_tone(1.10)   # 10% venodilation
+
+    # Venoconstriction recruits blood centrally: CVP, SV and CO all rise —
+    # by a clear margin, not marginally (guards against re-neutering).
+    assert constrict["co"]  > neutral["co"]  * 1.05, (
+        f"Venoconstriction did not raise CO: {neutral['co']:.2f}→{constrict['co']:.2f} L/min")
+    assert constrict["sv"]  > neutral["sv"], (
+        f"Venoconstriction did not raise SV: {neutral['sv']:.1f}→{constrict['sv']:.1f} mL")
+    # CVP margin 0.2 mmHg: with physiological venous compliance (venous-system
+    # rebuild) the same fractional venoconstriction shifts CVP more gently than
+    # on the old compressed pool — the effect is real, just correctly smaller.
+    assert constrict["cvp"] > neutral["cvp"] + 0.2, (
+        f"Venoconstriction did not raise CVP: {neutral['cvp']:.2f}→{constrict['cvp']:.2f} mmHg")
+
+    # Venodilation pools blood peripherally: CVP and CO fall.
+    assert dilate["co"]  < neutral["co"]  * 0.95, (
+        f"Venodilation did not lower CO: {neutral['co']:.2f}→{dilate['co']:.2f} L/min")
+    assert dilate["cvp"] < neutral["cvp"] - 0.2, (
+        f"Venodilation did not lower CVP: {neutral['cvp']:.2f}→{dilate['cvp']:.2f} mmHg")
+
+    # Monotonic ordering across the range.
+    assert constrict["co"] > neutral["co"] > dilate["co"], (
+        f"CO not monotonic in venous tone: "
+        f"{constrict['co']:.2f} / {neutral['co']:.2f} / {dilate['co']:.2f}")
+
+
+def test_venous_tone_factor_signs_by_drug_class():
+    """Vasopressors venoconstrict (factor < 1); IV anaesthetics venodilate
+    (factor > 1). Guards the sign convention, which a prior version had
+    contradictory between the pressor and anaesthetic drug classes."""
+    vt = lambda d: combined_drug_factors(d)["venous_tone_factor"]
+    assert vt({"norepinephrine": 0.1}) < 1.0, "norepinephrine should venoconstrict"
+    assert vt({"phenylephrine":  1.0}) < 1.0, "phenylephrine should venoconstrict"
+    assert vt({"vasopressin":    2.0}) < 1.0, "vasopressin should venoconstrict"
+    assert vt({"propofol":       2.0}) > 1.0, "propofol should venodilate"
+    assert vt({"spinal":         1.0}) > 1.0, "spinal should venodilate"
