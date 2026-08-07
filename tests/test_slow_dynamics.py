@@ -125,5 +125,192 @@ def test_odes_pressure_passthrough_matches_recompute():
 
 
 # ===========================================================================
-# Phase 1-4 validation tests land below, each marked @pytest.mark.slow.
+# Phase 1 — venous stress relaxation
+#
+# Under sustained distension the vein wall creeps: tension falls and volume is
+# accommodated at lower pressure.
+#
+# [S1] Guyton AC et al., via "Venous Return — Control of Cardiac Output",
+#      NCBI Bookshelf NBK54476.
+#      In anaesthetised, reflex-blocked dogs, rapidly infusing 35% of blood
+#      volume drove mean systemic filling pressure to ~24 mmHg, which then
+#      decayed asymptotically back toward somewhat above the pre-infusion
+#      level, with a HALF-TIME OF 2-4 MINUTES. Attributed to stress relaxation
+#      of the large capacitance vessels, with fluid movement into the
+#      interstitium contributing gradually.
+#
+# [S2] Rothe CF (1983). Venous system: physiology of the capacitance vessels.
+#      Physiol Rev 63:1281-1342. DOI: 10.1152/physrev.1983.63.4.1281
+#      Viscoelastic properties of the capacitance vessels; venous unstressed
+#      volume as the variable that accommodates sustained distension.
+#
+# NOTE ON CALIBRATION: RELAX_FRACTION is deliberately set to take only the fast
+# ~third of the observed decay. [S1] explicitly attributes part of it to
+# interstitial fluid movement, which is transcapillary filtration (Phase 2) and
+# not viscoelastic creep; taking the whole decay here would double-count once
+# Phase 2 lands. The COMBINED behaviour is what should be validated against the
+# full decay curve.
+# ===========================================================================
+
+def test_stress_relaxation_time_constant_matches_guyton():
+    """[S1] Creep half-time must sit in the literature's 2-4 min band.
+
+    Unit-level: drives one compartment's transmural pressure above its resting
+    reference and integrates the mechanism directly, so this asserts the
+    calibration rather than any emergent circulatory behaviour.
+    """
+    from model.slow_dynamics import (
+        _update_stress_relaxation, TAU_STRESS_RELAX, K_RELAX,
+    )
+    from model.compartments import default_compartments, IDX
+
+    comps = default_compartments()
+    state = init_slow_state(comps)
+    idx = IDX["splanchnic_vein"]
+    c = comps[idx]
+
+    # Establish a resting reference, then step pressure 5 mmHg above it.
+    state.p_ref = np.array([cc.pressure(cc.init_volume) for cc in comps], dtype=float)
+    P = state.p_ref.copy()
+    P[idx] += 5.0
+
+    target = K_RELAX * c.compliance * 5.0
+    half_t = None
+    for step in range(3600):
+        _update_stress_relaxation(state, 1.0, P, comps)
+        if half_t is None and state.v0_relax_ml[idx] >= 0.5 * target:
+            half_t = step + 1
+
+    assert half_t is not None, "creep never reached half of its steady-state target"
+    assert 120 <= half_t <= 240, (
+        f"creep half-time {half_t} s is outside the 2-4 min band reported by [S1]"
+    )
+    assert abs(state.v0_relax_ml[idx] - target) < 0.01 * target, (
+        "creep did not converge to its steady-state target within 1 h"
+    )
+    # Sanity: the half-time should be tau*ln2 for a first-order law.
+    assert abs(half_t - TAU_STRESS_RELAX * np.log(2)) < 2.0
+
+
+def test_stress_relaxation_is_reversible():
+    """Creep must relax back when the distension is removed.
+
+    A one-way mechanism would act as a ratchet, permanently inflating venous
+    capacity after any transient load — which would silently corrupt every
+    subsequent measurement in a long run.
+    """
+    from model.slow_dynamics import _update_stress_relaxation
+    from model.compartments import default_compartments, IDX
+
+    comps = default_compartments()
+    state = init_slow_state(comps)
+    idx = IDX["splanchnic_vein"]
+
+    state.p_ref = np.array([cc.pressure(cc.init_volume) for cc in comps], dtype=float)
+    P = state.p_ref.copy()
+
+    P[idx] += 5.0
+    for _ in range(3600):
+        _update_stress_relaxation(state, 1.0, P, comps)
+    assert state.v0_relax_ml[idx] > 1.0, "creep did not develop"
+
+    P[idx] -= 5.0
+    for _ in range(3600):
+        _update_stress_relaxation(state, 1.0, P, comps)
+    assert abs(state.v0_relax_ml[idx]) < 0.01, (
+        f"creep did not reverse: {state.v0_relax_ml[idx]:.4f} mL residual"
+    )
+
+
+def test_stress_relaxation_neutral_at_rest():
+    """Enabling slow dynamics must not move resting haemodynamics.
+
+    The mechanism is driven by a deviation from a resting reference captured
+    from the model's OWN settled state (see SETTLE_S). Referencing `init_volume`
+    instead — which is not the true equilibrium — made the mechanism creep
+    permanently and dropped resting MAP by ~1.4 mmHg. This guards that.
+    """
+    def run(enabled):
+        p = SimParams()
+        p.slow_dynamics_enabled = enabled
+        p.baroreflex_enabled = False
+        p.ventilation_mode = "none"
+        r = run_simulation(p, duration_s=300.0, dt=DT)
+        h = len(r["map"]) // 2
+        return {k: float(np.mean(r[k][h:])) for k in ("map", "co", "cvp")}
+
+    off, on = run(False), run(True)
+    assert abs(on["map"] - off["map"]) < 0.20, (
+        f"resting MAP moved with slow dynamics enabled: "
+        f"{off['map']:.3f} -> {on['map']:.3f}"
+    )
+    assert abs(on["cvp"] - off["cvp"]) < 0.05, (
+        f"resting CVP moved: {off['cvp']:.3f} -> {on['cvp']:.3f}"
+    )
+    assert abs(on["co"] - off["co"]) < 0.05, (
+        f"resting CO moved: {off['co']:.3f} -> {on['co']:.3f}"
+    )
+
+
+@pytest.mark.slow
+def test_stress_relaxation_decays_cvp_after_volume_load():
+    """[S1] After a volume load, CVP must fall at constant blood volume.
+
+    This is the whole point of the mechanism, and it is the behaviour the model
+    could not previously produce: without stress relaxation CVP steps up on
+    infusion and then sits flat forever, because nothing in the model operates
+    on the minutes timescale.
+
+    Baroreflex is disabled so this isolates the viscoelastic effect from reflex
+    compensation. The bolus starts after SETTLE_S so the resting reference is
+    captured from a genuinely quiescent state.
+
+    ~15 min of simulated time (about 5 min wall) — hence `slow`.
+    """
+    def run(enabled):
+        p = SimParams()
+        p.slow_dynamics_enabled = enabled
+        p.baroreflex_enabled = False
+        p.ventilation_mode = "none"
+        p.fluid_bolus_ml = 1000.0
+        p.fluid_bolus_start_s = 120.0
+        p.fluid_bolus_duration_s = 30.0
+        return run_simulation(p, duration_s=900.0, dt=DT)
+
+    def cvp_at(r, t, total=900.0, w=5.0):
+        n = len(r["cvp"])
+        return float(np.mean(r["cvp"][int(n * (t - w / 2) / total):
+                                      int(n * (t + w / 2) / total)]))
+
+    off, on = run(False), run(True)
+
+    base = cvp_at(on, 100)
+    peak = cvp_at(on, 160)
+    late = cvp_at(on, 880)
+    rise = peak - base
+    assert rise > 0.5, f"bolus did not raise CVP meaningfully: +{rise:.2f} mmHg"
+
+    # Without the mechanism, CVP must NOT decay — this is the control, and it
+    # confirms the decay below is the mechanism rather than some other drift.
+    off_peak, off_late = cvp_at(off, 160), cvp_at(off, 880)
+    assert abs(off_late - off_peak) < 0.15, (
+        f"CVP drifted without stress relaxation ({off_peak:.3f} -> {off_late:.3f}); "
+        f"the decay below cannot be attributed to the mechanism"
+    )
+
+    # With it, CVP decays toward the calibrated fraction of the rise.
+    dissipated = (peak - late) / rise
+    assert dissipated > 0.15, (
+        f"stress relaxation dissipated only {dissipated * 100:.1f}% of the CVP rise"
+    )
+    assert dissipated < 0.50, (
+        f"stress relaxation dissipated {dissipated * 100:.1f}% — more than the "
+        f"calibration allows for. RELAX_FRACTION deliberately takes only the fast "
+        f"portion; the rest of the decay observed in [S1] is interstitial fluid "
+        f"movement, which is Phase 2 (transcapillary refill), not creep."
+    )
+
+
+# ===========================================================================
+# Phase 2-4 validation tests land below, each marked @pytest.mark.slow.
 # ===========================================================================

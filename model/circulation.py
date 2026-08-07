@@ -239,7 +239,7 @@ def _cardiac_pressure(vol: float, v0: float, e: float) -> float:
 # ---------------------------------------------------------------------------
 
 def _odes(t: float, V: np.ndarray, params: SimParams, baro: BaroreflexController | None,
-          cardiac_phase: float, p_out: np.ndarray | None = None):
+          cardiac_phase: float, p_out: np.ndarray | None = None, slow=None):
     """
     Compute dV/dt for the 23-compartment system.
 
@@ -315,6 +315,12 @@ def _odes(t: float, V: np.ndarray, params: SimParams, baro: BaroreflexController
                 i["coronary"]]:
         c = comp[idx]
         v0 = c.unstressed_volume * vt if idx in _VENOUS_TONE_IDX else c.unstressed_volume
+        # Venous stress relaxation (slow_dynamics.py) adds a slowly-varying
+        # offset to unstressed volume: sustained distension lets the wall creep,
+        # accommodating volume at lower pressure. Zero at rest and when slow
+        # dynamics are disabled.
+        if slow is not None:
+            v0 += slow.v0_relax_ml[idx]
         P[idx] = _vascular_pressure(V[idx], v0, c.compliance, c.p_stiffen)
 
     # Cardiac chambers (time-varying elastance)
@@ -826,7 +832,7 @@ def run_simulation(
         # compartment pressures it already computed (no recomputation), then
         # advance the slow state on its own coarse clock — update_slow_state()
         # returns immediately unless SLOW_DT of simulated time has elapsed.
-        dV = _odes(t, V, params, baro, _cardiac_phase, _p_scratch)
+        dV = _odes(t, V, params, baro, _cardiac_phase, _p_scratch, slow_state)
         V  = V + dV * dt
 
         if slow_enabled:
