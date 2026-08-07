@@ -80,7 +80,8 @@ api/               Flask REST API (synchronous; < 1 s per 60 s simulation)
                    plus live mode: threaded real-time sim over SSE
 frontend/          Plain HTML + Plotly.js; no build step. Plotly is vendored
                    (frontend/vendor/) so the UI runs fully offline
-tests/             32-test suite: smoke tests + literature validation
+tests/             36-test fast suite (smoke + literature validation) plus a
+                   separate slow-dynamics suite, deselected by default
 tools/             Utility scripts (generate_diagram.py — regenerates compartment PNG)
 ```
 
@@ -301,26 +302,26 @@ This educational resource synthesises the primary literature and provided the fr
 
 ## Validation Summary
 
-Validated against published human physiological data — **32 tests, all passing**. Run `pytest tests/` to reproduce. The table below summarises the principal literature scenarios; the suite additionally covers propofol, RSA, PEEP, graded hemorrhage/resuscitation, the ankle-brachial postural gradient, and venous-tone mechanism guards.
+Validated against published human physiological data — **36 tests, all passing**. Run `pytest tests/` to reproduce. The table below summarises the principal literature scenarios; the suite additionally covers propofol, RSA, PEEP, graded hemorrhage/resuscitation, the ankle-brachial postural gradient, and venous-tone mechanism guards.
 
 | # | Scenario | Reference | Literature target | Model result | |
 |---|---|---|---|---|---|
-| 1 | Supine resting haemodynamics | [Sejersen 2022](https://doi.org/10.14814/phy2.15216) — 10 healthy males, 177 cm, 80 kg | MAP 83±8 mmHg, HR 62±8 bpm, SV 110±16 mL, CO 7±2 L/min | MAP 81, HR 66, CO 4.38, SV 68 | ✓ |
-| 2 | 20° HDT in normovolemic subjects — MAP↑, CO maintained | [Sejersen 2022](https://doi.org/10.14814/phy2.15216) | ΔSV ≈ 0 (n.s.), ΔCO ≈ 0, ΔMAP +2 mmHg (n.s.) — heart on Starling plateau when supine | ΔMAP +3.7 mmHg, CO 4.76 L/min, ΔSV +6.3 mL, direction correct | ✓ |
-| 3 | 6° HDT vs 20° upright: HR lower during HDT | [Verdini 2019](https://doi.org/10.1038/s41598-019-39360-6) — 17 males, 179 cm, 79 kg | HR_HDT < HR_upright (p < 0.001), MAP_HDT < MAP_upright | HR_HDT 72 vs HR_upright 74 bpm; MAP_HDT 88 vs MAP_upright 78 | ✓ |
+| 1 | Supine resting haemodynamics | [Sejersen 2022](https://doi.org/10.14814/phy2.15216) — 10 healthy males, 177 cm, 80 kg | MAP 83±8 mmHg, HR 62±8 bpm, SV 110±16 mL, CO 7±2 L/min | MAP 82.5, HR 66, CO 4.45, SV 68 | ✓ |
+| 2 | 20° HDT in normovolemic subjects — MAP↑, CO maintained | [Sejersen 2022](https://doi.org/10.14814/phy2.15216) | ΔSV ≈ 0 (n.s.), ΔCO ≈ 0, ΔMAP +2 mmHg (n.s.) — heart on Starling plateau when supine | ΔMAP +3.8 mmHg, CO 4.86 L/min, ΔSV +6.3 mL, direction correct | ✓ |
+| 3 | 6° HDT vs 20° upright: HR lower during HDT | [Verdini 2019](https://doi.org/10.1038/s41598-019-39360-6) — 17 males, 179 cm, 79 kg | HR_HDT < HR_upright (p < 0.001), MAP_HDT < MAP_upright | HR_HDT 72 vs HR_upright 74 bpm; MAP_HDT 90 vs MAP_upright 80 | ✓ |
 | 4 | −15° Trendelenburg vs supine | [Likhvantsev 2025](https://doi.org/10.1053/j.jvca.2024.10.001) — meta-analysis, n=333, 16 studies | ΔCVP +4.13 mmHg (CI 2.42–5.84), ΔCO +0.33 L/min, ΔSV +8.27 mL, ΔHR −1.65 bpm | **ΔCVP +2.4 mmHg** ✓, ΔCO +0.24 L/min, ΔSV +4.6 mL, ΔHR −1.0 bpm | ✓ |
-| 5 | −30° Trendelenburg: CVP↑, MAP maintained | [Sibbald 1979](https://pubmed.ncbi.nlm.nih.gov/467083/) — n=61 normotensive patients | Preload↑, CO slightly↑, SVR↓ ~5%, MAP unchanged | ΔCVP +4.6 mmHg, ΔMAP +3.7 mmHg | ✓ |
-| 6 | 30° HUT dynamics: SV↓, CO↓, HR↑, MAP partially maintained | [Wieling 1998](https://doi.org/10.1042/cs0940347) — 6 healthy subjects | At 90° HUT: SV −39±9%, CO −26±10%, MAP +1±7 mmHg (maintained by baroreflex) | SV −36%, CO −34%, HR +2.9 bpm, MAP −16.1 mmHg (30°, no muscle pump — see note below) | ✓ |
-| 7 | Graded HUT 0→20→30°: HR↑ and CO↓ monotonically | [Sarafian 2017](https://doi.org/10.3389/fphys.2016.00656) — 23 adults, graded tilt 0→60° | HR +41%, BP +10%, TPR +16% at 60°; monotonic increase with angle | HR 72→74→75 bpm, CO 4.33→3.26→2.84 L/min, monotonic | ✓ |
+| 5 | −30° Trendelenburg: CVP↑, MAP maintained | [Sibbald 1979](https://pubmed.ncbi.nlm.nih.gov/467083/) — n=61 normotensive patients | Preload↑, CO slightly↑, SVR↓ ~5%, MAP unchanged | ΔCVP +4.6 mmHg, ΔMAP +3.8 mmHg | ✓ |
+| 6 | 30° HUT dynamics: SV↓, CO↓, HR↑, MAP partially maintained | [Wieling 1998](https://doi.org/10.1042/cs0940347) — 6 healthy subjects | At 90° HUT: SV −39±9%, CO −26±10%, MAP +1±7 mmHg (maintained by baroreflex) | SV −36%, CO −34%, HR +2.9 bpm, MAP −16.4 mmHg (30°, no muscle pump — see note below) | ✓ |
+| 7 | Graded HUT 0→20→30°: HR↑ and CO↓ monotonically | [Sarafian 2017](https://doi.org/10.3389/fphys.2016.00656) — 23 adults, graded tilt 0→60° | HR +41%, BP +10%, TPR +16% at 60°; monotonic increase with angle | HR 72→74→75 bpm, CO 4.42→3.33→2.90 L/min, monotonic | ✓ |
 | 8 | Microgravity: CVP higher than upright Earth | [Buckey 1996](https://pubmed.ncbi.nlm.nih.gov/8853498/) | CVP supine 5–8 mmHg, drops to 2.5 mmHg in orbit; higher than upright standing | CVP µg 3.0 vs upright 45° 1.6 mmHg | ✓ |
-| 9 | Cerebral perfusion pressure (CPP) decreases with upright posture | [Pohl & Cullen 2005](https://pubmed.ncbi.nlm.nih.gov/15983529/) | Beach-chair position: MAP drops 30–35 mmHg at brain level under GA; CPP risk < 50 mmHg | CPP supine 77 mmHg → 41 mmHg at 45° upright (below the <50 risk threshold — see note below) | ✓ |
-| 10 | Buckberg index falls with tachycardia (coronary ischaemia risk) | [Buckberg 1972/1978](https://pubmed.ncbi.nlm.nih.gov/4667030/) | DPTI/SPTI > 0.8 at rest; falls as diastolic time shortens with HR↑ | Buckberg 1.10 at rest → 0.43 at HR=160 bpm | ✓ |
-| 11 | PPV > 13% identifies fluid-responsive patient under mechanical ventilation | [Michard & Teboul 2000](https://doi.org/10.1164/ajrccm.162.1.9905119) — n=40 septic shock patients | PPV > 13% predicts ≥15% CO rise with fluid challenge (sens. 94%, spec. 96%) | Normovolemic: PPV 9.1% (<13, plateau, not flagged) ✓; hypovolemic (1000 mL): PPV 17.9% > 13% ✓; resuscitation: CO +158% ✓ (see note below) | ✓ |
+| 9 | Cerebral perfusion pressure (CPP) decreases with upright posture | [Pohl & Cullen 2005](https://pubmed.ncbi.nlm.nih.gov/15983529/) | Beach-chair position: MAP drops 30–35 mmHg at brain level under GA; CPP risk < 50 mmHg | CPP supine 79 mmHg → 42 mmHg at 45° upright (below the <50 risk threshold — see note below) | ✓ |
+| 10 | Buckberg index falls with tachycardia (coronary ischaemia risk) | [Buckberg 1972/1978](https://pubmed.ncbi.nlm.nih.gov/4667030/) | DPTI/SPTI > 0.8 at rest; falls as diastolic time shortens with HR↑ | Buckberg 1.12 at rest → 0.44 at HR=160 bpm | ✓ |
+| 11 | PPV > 13% identifies fluid-responsive patient under mechanical ventilation | [Michard & Teboul 2000](https://doi.org/10.1164/ajrccm.162.1.9905119) — n=40 septic shock patients | PPV > 13% predicts ≥15% CO rise with fluid challenge (sens. 94%, spec. 96%) | Normovolemic: PPV 9.1% (<13, plateau, not flagged) ✓; hypovolemic (1000 mL): PPV 17.9% > 13% ✓; resuscitation: CO +159% ✓ (see note below) | ✓ |
 | 12 | High spinal anaesthesia (≈T4): MAP↓, CO maintained, HR near-unchanged | [Malmqvist 1987](https://doi.org/10.1111/j.1399-6576.1987.tb02605.x) — n=30, average block T4–5 | MAP ↓≥30% at complete block; CO preserved; minor HR changes (baroreflex compensates) | MAP ↓>5%, CO maintained ±20%, MAP >45 mmHg | ✓ |
 | 13 | Vasopressin dose-response: MAP monotonically↑, CO maintained | [Patel 2002](https://doi.org/10.1097/00000542-200203000-00011) — n=13 septic shock | MAP rises with dose (0→2→4 U/hr); CO maintained; NE requirement ↓79% | MAP monotonically↑; CO maintained ±20% at 2 U/hr | ✓ |
 | 14 | NE vs phenylephrine on spinal baseline: NE preserves CO better | [Ngan Kee 2015](https://doi.org/10.1097/ALN.0000000000000601) — n=104, C-section spinal | NE CO 102.7% vs phenyl 93.8% (p=0.004); NE HR > phenyl HR (reflex bradycardia) | NE CO > phenyl CO; NE HR > phenyl HR ✓ | ✓ |
 | 15 | Epinephrine: CO monotonically↑ with dose; MAP_high > MAP_low (α dominance) | [Freyschuss 1986](https://doi.org/10.1042/cs0700199) — n=11 healthy, stepwise IV ADR | Concentration-dependent ↑SV and ↑CO; marked ↓vascular resistance at low dose | CO monotonically↑; MAP_high > MAP_low | ✓ |
-| 16 | PLR: CO ≥+10% identifies fluid-responsive patient (preload-dependent) | [Monnet, Marik & Teboul 2016](https://doi.org/10.1007/s00134-015-4134-1) — meta-analysis 21 studies, 991 patients | PLR-induced CO ≥+10% threshold: sens 0.85, spec 0.91, AUC 0.95 | Normovolemic: ΔCO +4.9% (<10%, non-responder) ✓; hypovolemic 1200 mL: ΔCO +12.5% (≥10%, responder) ✓ | ✓ |
+| 16 | PLR: CO ≥+10% identifies fluid-responsive patient (preload-dependent) | [Monnet, Marik & Teboul 2016](https://doi.org/10.1007/s00134-015-4134-1) — meta-analysis 21 studies, 991 patients | PLR-induced CO ≥+10% threshold: sens 0.85, spec 0.91, AUC 0.95 | Normovolemic: ΔCO +5.2% (<10%, non-responder) ✓; hypovolemic 1200 mL: ΔCO +12.6% (≥10%, responder) ✓ | ✓ |
 
 ### Known literature disagreements
 
@@ -328,22 +329,26 @@ Every scenario passes on direction. Three show quantitative gaps or thin margins
 
 **Scenario 1 — Baseline CO and SV (Sejersen 2022 vs Lie 2023)**
 
-The model produces CO 4.38 L/min and SV 68 mL for the Sejersen cohort (177 cm / 80 kg). Sejersen 2022 reports baseline values of CO 7 ± 2 L/min and SV 110 ± 16 mL in their cohort. Two explanations:
+The model produces CO 4.45 L/min and SV 68 mL for the Sejersen cohort (177 cm / 80 kg). Sejersen 2022 reports baseline values of CO 7 ± 2 L/min and SV 110 ± 16 mL in their cohort. Two explanations:
 
 - *Population difference.* Sejersen recruited 10 young healthy males (177 cm, 80 kg); their baseline SV (110 mL) implies a resting HR ≈ 63 bpm and high cardiac output typical of a fit young cohort. Lie et al. (2023, PMID 37947905) — also in the test suite — reports baseline CO 4.85 ± 1.08 L/min in a comparable LBNP study. The model is consistent with Lie but below Sejersen.
 - *Structural ceiling.* The Frank-Starling implementation plateaus at EDV<sub>ref</sub> = 130 mL. With an effective resting EF ≈ 0.50, SV is bounded near 65 mL unless EDV<sub>ref</sub> is recalibrated to a higher, more athletic baseline.
 
-The test (`test_supine_baseline_sejersen2022`) validates MAP (81 vs 83 ± 8 ✓) and HR (66 vs 62 ± 8 ✓) but applies wide CO/SV bounds (4–10 L/min, 60–150 mL) that admit both anchors. The CO/SV gap is a known calibration limitation, not a direction error.
+The test (`test_supine_baseline_sejersen2022`) validates MAP (82.5 vs 83 ± 8 ✓) and HR (66 vs 62 ± 8 ✓) but applies wide CO/SV bounds (4–10 L/min, 60–150 mL) that admit both anchors. The CO/SV gap is a known calibration limitation, not a direction error.
+
+**All scenarios — a ~2% measurement correction** *(2026-08-07)*
+
+Every absolute figure in the table above was re-derived after fixing a smoothing bug: `np.convolve(..., mode="same")` zero-padded the ends of each series, so the last ~1.5 s of `map`, `co`, `cpp`, `cop` and `buckberg` was dragged toward zero, and the test helpers average through exactly that tail. The bias was −1.5% on MAP over the 40 s test window. The old bias was roughly proportional, so it **cancelled in paired comparisons** — every Δ in the table was and remains correct — but absolute values were low by about 2%. This is a measurement correction, not a change in physiology.
 
 **Scenarios 6 & 9 — orthostatic MAP and cerebral perfusion defence** *(regression after the venous rebuild)*
 
-The venous-system rebuild substantially improved volume realism, hemorrhage scaling and fluid-responsiveness behaviour, but it made the model **worse at defending pressure in the upright direction**. At 30° head-up tilt MAP now falls 16.1 mmHg (previously 7.6), against a literature expectation that MAP is broadly *maintained* by the baroreflex; and cerebral perfusion pressure at 45° upright is 41 mmHg, below the <50 mmHg risk threshold cited by Pohl & Cullen and down from 60 mmHg before the rebuild.
+The venous-system rebuild substantially improved volume realism, hemorrhage scaling and fluid-responsiveness behaviour, but it made the model **worse at defending pressure in the upright direction**. At 30° head-up tilt MAP now falls 16.4 mmHg (previously 7.6), against a literature expectation that MAP is broadly *maintained* by the baroreflex; and cerebral perfusion pressure at 45° upright is 42 mmHg, below the <50 mmHg risk threshold cited by Pohl & Cullen and down from 60 mmHg before the rebuild.
 
 Both remain inside their test bands (which assert direction and viability, not magnitude), so the suite is green — but the direction of travel is unfavourable and should not be read as a pass. The cause is mechanistically coherent: the physiological venous compliance that fixed the volume scale also lets more blood pool on tilting, and the baroreflex SVR gain was already raised to 0.65 partly to compensate. The remaining shortfall is the absent skeletal-muscle pump (backlog item 9), which is precisely the mechanism a conscious upright patient uses to defend venous return.
 
 **Scenario 11 — PPV resuscitation margin is thin** *(fragile, not failing)*
 
-The PPV test requires that resuscitation *lowers* PPV. It currently does so by 0.3 percentage points (17.9% → 17.6%), which passes but has almost no margin; a modest recalibration could flip it. Separately, the 1000 mL hypovolaemic operating point drives MAP to 34 mmHg — profound shock, arguably beyond the range where PPV is clinically interpretable at all. Worth revisiting the chosen hemorrhage volume so the scenario sits in a régime where the metric is meaningful.
+The PPV test requires that resuscitation *lowers* PPV. It currently does so by 0.3 percentage points (17.9% → 17.6%), which passes but has almost no margin; a modest recalibration could flip it. Separately, the 1000 mL hypovolaemic operating point drives CO to 1.16 L/min — profound shock, arguably beyond the range where PPV is clinically interpretable at all. Worth revisiting the chosen hemorrhage volume so the scenario sits in a régime where the metric is meaningful.
 
 **Previously listed: Scenario 4 — Trendelenburg ΔCVP** *(resolved 2026-06-17)*
 
