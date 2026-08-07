@@ -186,6 +186,15 @@ class SimParams:
         # adding them.
         self.slow_dynamics_enabled = False
 
+        # Per-mechanism switches, gated by the master flag above. These exist so
+        # each phase can be validated IN ISOLATION as well as in combination —
+        # without them a test named after one mechanism silently measures the
+        # sum of all of them. (Exactly that happened when Phase 2 landed: the
+        # Phase 1 volume-load test jumped from 27 % to 81 % dissipation because
+        # filtration had joined in.)
+        self.slow_stress_relaxation_enabled = True
+        self.slow_fluid_exchange_enabled    = True
+
 
 # ---------------------------------------------------------------------------
 # Pressure helpers
@@ -836,7 +845,12 @@ def run_simulation(
         V  = V + dV * dt
 
         if slow_enabled:
-            update_slow_state(slow_state, t, V, _p_scratch, params, baro)
+            # Transcapillary flux is returned as a volume change rather than
+            # folded into _odes: it is a slow-clock quantity (mL moved over
+            # SLOW_DT), not a rate the 1 ms integrator should see.
+            dV_slow = update_slow_state(slow_state, t, V, _p_scratch, params, baro)
+            if dV_slow is not None:
+                V = V + dV_slow
 
         # Advance integrated cardiac phases for the next step.
         _cardiac_phase = (_cardiac_phase + hr_now / 60.0 * dt) % 1.0

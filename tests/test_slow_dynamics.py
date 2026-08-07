@@ -239,6 +239,8 @@ def test_stress_relaxation_neutral_at_rest():
         h = len(r["map"]) // 2
         return {k: float(np.mean(r[k][h:])) for k in ("map", "co", "cvp")}
 
+    # Both mechanisms active here deliberately: neutrality must hold for the
+    # module as a whole, not just one mechanism at a time.
     off, on = run(False), run(True)
     assert abs(on["map"] - off["map"]) < 0.20, (
         f"resting MAP moved with slow dynamics enabled: "
@@ -270,6 +272,11 @@ def test_stress_relaxation_decays_cvp_after_volume_load():
     def run(enabled):
         p = SimParams()
         p.slow_dynamics_enabled = enabled
+        # ISOLATE stress relaxation. With filtration also active the decay is
+        # ~81% rather than ~27%, and this test would silently be measuring the
+        # sum of both mechanisms rather than the one it is named after. The
+        # combined behaviour has its own test below.
+        p.slow_fluid_exchange_enabled = False
         p.baroreflex_enabled = False
         p.ventilation_mode = "none"
         p.fluid_bolus_ml = 1000.0
@@ -312,5 +319,157 @@ def test_stress_relaxation_decays_cvp_after_volume_load():
 
 
 # ===========================================================================
-# Phase 2-4 validation tests land below, each marked @pytest.mark.slow.
+# Phase 2 — transcapillary refill
+#
+# [S3] Drucker WR, Chadwick CD, Gann DS (1981). Transcapillary refill in
+#      hemorrhage and shock. Arch Surg 116(10):1344-53.
+#      DOI: 10.1001/archsurg.1981.01380220088014   PMID: 7283706
+#      Refill is "mediated entirely by changes in the Starling forces,
+#      dominated in the first phase by a fall in capillary hydrostatic
+#      pressure, which promotes a rapid shift of protein-free fluid from the
+#      interstitium into the capillaries. The second phase, temporally
+#      overlapping the initial phase, involves the return of protein to support
+#      plasma oncotic pressure."
+#
+# [S4] Lister J, McNeill IF, Marshall VC, Plzak LF, Dagher FJ, Moore FD (1963).
+#      Transcapillary refilling after hemorrhage in normal man: basal rates and
+#      volumes; effect of norepinephrine. Ann Surg 158(4):698-712.
+#      DOI: 10.1097/00000658-196310000-00016   PMID: 14067514
+#      Filtration coefficient 5.6 +/- 1.4 mL/(min*mmHg*50 kg lean body mass) —
+#      consistent with the whole-body ~6.7 mL/min/mmHg used here.
+#
+# Retrieved via PubMed.
+# ===========================================================================
+
+@pytest.mark.slow
+def test_transcapillary_refill_after_haemorrhage():
+    """[S3][S4] Blood volume must partially self-restore after haemorrhage.
+
+    Without this mechanism the model leaves a bled patient in fixed profound
+    shock indefinitely — blood volume is flat forever and MAP never recovers,
+    which is not what happens to a real patient.
+
+    The relaxation-OFF run is carried as an explicit control: blood volume must
+    be *exactly* flat there, so the recovery below cannot be attributed to
+    anything but transcapillary absorption.
+
+    ~20 min simulated per arm (about 13 min wall) — hence `slow`.
+    """
+    D = 1200.0
+
+    def run(enabled):
+        p = SimParams()
+        p.slow_dynamics_enabled = enabled
+        p.baroreflex_enabled = True
+        p.ventilation_mode = "none"
+        p.hemorrhage_rate_mlmin = 1000.0        # 1000 mL over 60 s
+        p.hemorrhage_start_s = 120.0            # after SETTLE_S
+        p.hemorrhage_duration_s = 60.0
+        return run_simulation(p, duration_s=D, dt=DT)
+
+    def bv(r, t, w=10.0):
+        n = len(r["volumes"])
+        seg = r["volumes"][int(n * (t - w / 2) / D):int(n * (t + w / 2) / D)]
+        return float(seg.sum(axis=1).mean())
+
+    def mean_at(r, key, t, w=10.0):
+        n = len(r[key])
+        return float(np.mean(r[key][int(n * (t - w / 2) / D):
+                                    int(n * (t + w / 2) / D)]))
+
+    off, on = run(False), run(True)
+
+    # Control: no mechanism, no volume recovery. Guards the attribution.
+    assert abs(bv(off, 1180) - bv(off, 200)) < 1.0, (
+        "blood volume changed without slow dynamics; the recovery below cannot "
+        "be attributed to transcapillary refill"
+    )
+
+    deficit = bv(on, 110) - bv(on, 200)
+    assert deficit > 800.0, f"haemorrhage did not remove the expected volume: {deficit:.0f} mL"
+
+    recovered = bv(on, 1180) - bv(on, 200)
+    frac = recovered / deficit
+    assert frac > 0.10, (
+        f"transcapillary refill recovered only {frac * 100:.1f}% of the deficit "
+        f"in 18 min; [S3] has the majority of refill inside 30-60 min"
+    )
+    # Upper bound guards the oncotic brake. Absorbed fluid is nearly
+    # protein-free, so it dilutes plasma protein, pi_p falls and absorption
+    # self-limits. Without a working brake this runs away and over-fills.
+    assert frac < 0.70, (
+        f"refill recovered {frac * 100:.1f}% of the deficit — the oncotic brake "
+        f"is not limiting absorption"
+    )
+
+    # The clinically meaningful consequence: pressure recovers.
+    map_off = mean_at(off, "map", 1180)
+    map_on = mean_at(on, "map", 1180)
+    assert map_on > map_off + 10.0, (
+        f"MAP did not recover with refill: {map_off:.1f} -> {map_on:.1f} mmHg"
+    )
+
+
+# ===========================================================================
+# Phases 1 + 2 combined
+# ===========================================================================
+
+@pytest.mark.slow
+def test_combined_slow_dynamics_reproduce_guyton_decay():
+    """[S1] Creep AND filtration together must reproduce the full decay curve.
+
+    This is the test the two-phase split was designed around, and the one that
+    justifies Phase 1 being calibrated to only part of the observed decay.
+
+    [S1]: a 35% blood-volume infusion drove mean systemic filling pressure to
+    ~24 mmHg, which then "began immediately to decline asymptotically toward a
+    steady-state value somewhat above the initial level". With a pre-infusion
+    MSFP of ~7 mmHg, settling to ~10 mmHg is about 82% of the rise dissipated.
+    The source attributes the decay to stress relaxation of the capacitance
+    vessels WITH fluid movement into the interstitium contributing gradually —
+    i.e. to exactly these two mechanisms together.
+
+    Neither mechanism reproduces this alone: stress relaxation on its own
+    dissipates ~27% (see the isolated test above), and that is deliberate.
+    Tuning Phase 1 to hit the full curve by itself would have double-counted
+    filtration and left Phase 2 nothing to contribute.
+    """
+    D = 900.0
+
+    def run(**flags):
+        p = SimParams()
+        p.baroreflex_enabled = False
+        p.ventilation_mode = "none"
+        p.fluid_bolus_ml = 1000.0
+        p.fluid_bolus_start_s = 120.0
+        p.fluid_bolus_duration_s = 30.0
+        for k, v in flags.items():
+            setattr(p, k, v)
+        return run_simulation(p, duration_s=D, dt=DT)
+
+    def cvp_at(r, t, w=5.0):
+        n = len(r["cvp"])
+        return float(np.mean(r["cvp"][int(n * (t - w / 2) / D):
+                                      int(n * (t + w / 2) / D)]))
+
+    both = run(slow_dynamics_enabled=True)
+
+    base, peak, late = cvp_at(both, 100), cvp_at(both, 160), cvp_at(both, 880)
+    rise = peak - base
+    assert rise > 0.5, f"bolus did not raise CVP meaningfully: +{rise:.2f} mmHg"
+
+    dissipated = (peak - late) / rise
+    assert dissipated > 0.60, (
+        f"combined mechanisms dissipated only {dissipated * 100:.1f}% of the CVP "
+        f"rise; [S1] has MSFP returning to near baseline (~82%)"
+    )
+    assert dissipated < 1.05, (
+        f"combined mechanisms dissipated {dissipated * 100:.1f}% — CVP has "
+        f"overshot below its pre-infusion level, which [S1] does not show "
+        f"(it settles 'somewhat above the initial level')"
+    )
+
+
+# ===========================================================================
+# Phase 3-4 validation tests land below, each marked @pytest.mark.slow.
 # ===========================================================================
