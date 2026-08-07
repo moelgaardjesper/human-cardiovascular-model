@@ -192,6 +192,58 @@ HAEMATOCRIT = 0.45
 TAU_LYMPH = 3600.0   # s
 
 
+# --- Interstitial compliance (Phase 2b) ------------------------------------
+#
+# WHY THIS EXISTS. Without it the interstitium is an infinite sink: filtered
+# fluid leaves the plasma and nothing ever pushes back, so the Starling
+# imbalance is driven all the way to zero and CVP returns exactly to baseline.
+# Measured against the Shigemi protocol that showed up as two failures at once —
+# CVP dissipating 99.8 % of a volume load over 2 h (it should settle somewhat
+# ABOVE baseline, since the infused volume is still in the body), and an
+# effective time constant of 9.3 min against a reported 39 +/- 7 min.
+#
+# Giving the interstitium a real pressure-volume relationship fixes both from
+# one structural correction: as it fills, interstitial hydrostatic pressure
+# rises, opposing further filtration — which both slows the approach and stops
+# it short of complete equilibration.
+#
+# THE CURVE IS STRONGLY ASYMMETRIC, and that asymmetry is the physiology, not a
+# refinement. Guyton's interstitial pressure-volume work (Circ Res 1965;16:452,
+# "Interstitial fluid pressure II: pressure-volume curves of interstitial
+# space") establishes:
+#   - normal interstitial fluid pressure is about -7 mmHg (sub-atmospheric)
+#   - compliance is VERY LOW while pressure is negative — interstitial volume
+#     "remains almost exactly constant", the classic safety factor against
+#     oedema
+#   - once pressure rises above atmospheric the tissue spaces "balloon outward
+#     rapidly", i.e. compliance becomes very high
+#
+# Modelled piecewise-linear about the resting point: stiff until interstitial
+# pressure reaches 0 mmHg, compliant thereafter. The stiff limb applies in BOTH
+# directions from rest, so absorption out of the interstitium (haemorrhage) is
+# opposed just as filtration into it is.
+INTERSTITIAL_P_REST_MMHG = -7.0
+INTERSTITIAL_C_STIFF = 150.0    # mL/mmHg, sub-atmospheric limb
+INTERSTITIAL_C_LOOSE = 2000.0   # mL/mmHg, above atmospheric ("ballooning")
+
+# Volume increment that carries interstitial pressure from rest up to 0 mmHg.
+_V_TO_ATMOSPHERIC = -INTERSTITIAL_P_REST_MMHG * INTERSTITIAL_C_STIFF   # 1050 mL
+
+
+def interstitial_pressure_delta(volume_excess_ml: float) -> float:
+    """Rise in interstitial hydrostatic pressure above its resting value (mmHg).
+
+    `volume_excess_ml` is interstitial volume relative to rest: positive when
+    fluid has filtered out of the plasma, negative when it has been absorbed.
+    """
+    if volume_excess_ml <= _V_TO_ATMOSPHERIC:
+        return volume_excess_ml / INTERSTITIAL_C_STIFF
+    return (
+        -INTERSTITIAL_P_REST_MMHG
+        + (volume_excess_ml - _V_TO_ATMOSPHERIC) / INTERSTITIAL_C_LOOSE
+    )
+
+
 def oncotic_pressure_mmhg(protein_g: float, plasma_volume_ml: float) -> float:
     """Landis-Pappenheimer plasma colloid osmotic pressure."""
     if plasma_volume_ml <= 1.0:
@@ -365,14 +417,21 @@ def _update_fluid_exchange(state: SlowState, dt_slow: float, V: np.ndarray,
 
     pc = _capillary_pressures(P, idx_map)
 
+    # Interstitial back-pressure. Rises as the interstitium fills, falls as it
+    # is drained — opposing filtration in both directions. Without this the
+    # interstitium is an infinite sink and the Starling imbalance is driven all
+    # the way to zero (see interstitial_pressure_delta).
+    d_p_i = interstitial_pressure_delta(state.interstitial_volume_ml)
+
     for k, (_art, ven, share) in enumerate(CAPILLARY_BEDS):
-        # Net Starling imbalance relative to rest. The oncotic term is the
-        # brake: absorbing fluid dilutes plasma protein, pi_p falls below its
-        # reference, and the (-sigma * negative) term pushes the imbalance back
-        # toward zero.
+        # Net Starling imbalance relative to rest. Two brakes act here:
+        #   - oncotic: absorbing fluid dilutes plasma protein, pi_p falls, and
+        #     the (-sigma * negative) term pushes the imbalance back toward zero
+        #   - interstitial: fluid arriving raises P_i, which subtracts directly
+        #     from the driving hydrostatic difference
         d_pc = pc[k] - state.pc_ref[k]
         d_pi = pi_p - state.pi_p_ref
-        jv = KF_TOTAL * share * (d_pc - SIGMA_PROTEIN * d_pi)   # mL/s, +ve = out
+        jv = KF_TOTAL * share * ((d_pc - d_p_i) - SIGMA_PROTEIN * d_pi)  # mL/s, +ve = out
 
         moved = jv * dt_slow
         dV[idx_map[ven]] -= moved
