@@ -42,6 +42,7 @@ from .gravity import hydrostatic_delta_mmhg, GravityEnvironment, smooth_tilt_pro
 from .baroreflex import BaroreflexController
 from .pharmacology import combined_drug_factors, NEUTRAL_FACTORS
 from .respiration import intrathoracic_pressure, respiratory_sinus_arrhythmia
+from .slow_dynamics import init_slow_state, update_slow_state
 
 
 # Systemic venous reservoir — holds the bulk of circulating blood volume.
@@ -173,6 +174,18 @@ class SimParams:
         self.fluid_bolus_start_s    = 0.0
         self.fluid_bolus_duration_s = 0.0
 
+        # Slow-timescale dynamics (minutes to hours): transcapillary refill,
+        # venous stress relaxation, RAAS/ADH, baroreflex resetting. See
+        # model/slow_dynamics.py.
+        #
+        # Default OFF. The model's fast regression suite is a ratchet, and
+        # these mechanisms are being introduced one phase at a time; keeping
+        # the flag off guarantees existing behaviour is bit-for-bit unchanged
+        # while they land. Flipping the default is a deliberate decision to be
+        # taken once all four phases are validated, not a side effect of
+        # adding them.
+        self.slow_dynamics_enabled = False
+
 
 # ---------------------------------------------------------------------------
 # Pressure helpers
@@ -226,7 +239,7 @@ def _cardiac_pressure(vol: float, v0: float, e: float) -> float:
 # ---------------------------------------------------------------------------
 
 def _odes(t: float, V: np.ndarray, params: SimParams, baro: BaroreflexController | None,
-          cardiac_phase: float):
+          cardiac_phase: float, p_out: np.ndarray | None = None):
     """
     Compute dV/dt for the 23-compartment system.
 
@@ -504,6 +517,13 @@ def _odes(t: float, V: np.ndarray, params: SimParams, baro: BaroreflexController
         if params.fluid_bolus_start_s <= t < t_end:
             dV[i["upper_body_vein"]] += params.fluid_bolus_ml / params.fluid_bolus_duration_s
 
+    # Expose the pressures already computed above to the caller, without
+    # recomputing them. Used by the slow-dynamics clock (slow_dynamics.py),
+    # whose mechanisms need compartment pressures but run on a much coarser
+    # step than this ODE. No cost when p_out is None.
+    if p_out is not None:
+        p_out[:] = P
+
     return dV
 
 
@@ -622,6 +642,14 @@ def run_simulation(
     baro: BaroreflexController | None = None
     if use_baroreflex and params.baroreflex_enabled:
         baro = BaroreflexController(dt=dt)
+
+    # Slow-timescale dynamics (minutes to hours). Inert unless explicitly
+    # enabled: when off, `slow_state` stays None, `_p_scratch` is never
+    # allocated, and the integration loop below costs one boolean test per
+    # step — behaviour is bit-for-bit identical to having no slow dynamics.
+    slow_enabled = bool(getattr(params, "slow_dynamics_enabled", False))
+    slow_state = init_slow_state(comp) if slow_enabled else None
+    _p_scratch = np.zeros(len(comp)) if slow_enabled else None
 
     t_eval = np.arange(0.0, duration_s, dt)
     n = len(t_eval)
@@ -794,9 +822,15 @@ def run_simulation(
         buckberg_ts[step] = buckberg_index(p_dbp, p_lvedp, hr_eff, p_sbp)
         volumes_ts[step]  = V.copy()
 
-        # Euler step
-        dV = _odes(t, V, params, baro, _cardiac_phase)
+        # Euler step. When slow dynamics are active, ask _odes to hand back the
+        # compartment pressures it already computed (no recomputation), then
+        # advance the slow state on its own coarse clock — update_slow_state()
+        # returns immediately unless SLOW_DT of simulated time has elapsed.
+        dV = _odes(t, V, params, baro, _cardiac_phase, _p_scratch)
         V  = V + dV * dt
+
+        if slow_enabled:
+            update_slow_state(slow_state, t, V, _p_scratch, params, baro)
 
         # Advance integrated cardiac phases for the next step.
         _cardiac_phase = (_cardiac_phase + hr_now / 60.0 * dt) % 1.0
@@ -808,9 +842,17 @@ def run_simulation(
             V = np.where(np.isfinite(V), V, np.array([c.init_volume for c in comp]))
 
     # Smooth MAP and CO over ~3 beats to remove pulsatility.
-    # Edge handling is not cosmetic: see _smooth_edges. The previous
-    # zero-padded convolution biased every tail-window mean low — about
-    # -1.5 % on MAP over the 40 s literature-test window.
+    #
+    # Edge handling matters. np.convolve(..., mode="same") ZERO-pads beyond the
+    # array ends, so the first and last ~beat_win/2 samples are dragged toward
+    # zero — the final sample is roughly halved (e.g. MAP reading 46 mmHg where
+    # aortic_p is 84). Every downstream mean that includes the tail is then
+    # biased low: `last_half()` over a 40 s run averages through ~1.5 s of
+    # corrupted signal and under-reports MAP/CO by roughly 2 %.
+    #
+    # Replicating the edge values instead keeps the smoothed series unbiased at
+    # both ends, which is also the physically sensible assumption (the signal
+    # continues at its boundary value rather than dropping to zero).
     beat_win = max(1, int(3.0 / dt))
     map_ts = _smooth_edges(aortic_p, beat_win)
     co_ts  = _smooth_edges(co_ts,    beat_win)
