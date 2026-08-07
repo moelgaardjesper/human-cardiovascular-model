@@ -178,6 +178,36 @@ class SimParams:
 # Pressure helpers
 # ---------------------------------------------------------------------------
 
+def _smooth_edges(x: np.ndarray, win: int) -> np.ndarray:
+    """
+    Moving average that does not corrupt the ends of the series.
+
+    `np.convolve(x, kernel, mode="same")` implicitly zero-pads, so the first
+    and last ~win/2 samples are pulled toward zero — the final sample of a
+    pressure trace reads about half its true value. Any mean taken over the
+    tail of the run (which is what the test helpers do) is then biased low.
+
+    Partial-window mean instead: at every sample, average over however much of
+    the window actually overlaps the data. Near the ends the window is shorter,
+    so the result is the true mean of the available samples, and the interior
+    is unchanged.
+
+    Assuming nothing about what lies beyond the boundary matters here. Edge-value
+    replication would work for a smooth trace like aortic_p but is wrong for
+    co_ts, which is a spike train (nonzero only during ejection): replicating a
+    boundary sample pads with either a mid-ejection spike or a diastolic zero
+    depending on where the run stops in the cardiac cycle, injecting a
+    phase-dependent error larger than the effects being measured.
+    """
+    x = np.asarray(x, dtype=float)
+    if win <= 1 or x.size == 0:
+        return x
+    k   = np.ones(win)
+    num = np.convolve(x, k, mode="same")
+    den = np.convolve(np.ones_like(x), k, mode="same")
+    return num / den
+
+
 def _vascular_pressure(vol: float, v0: float, compliance: float,
                        p_stiffen: float | None = None) -> float:
     vs = vol - v0
@@ -777,11 +807,13 @@ def run_simulation(
         if not np.all(np.isfinite(V)):
             V = np.where(np.isfinite(V), V, np.array([c.init_volume for c in comp]))
 
-    # Smooth MAP and CO over ~3 beats to remove pulsatility
+    # Smooth MAP and CO over ~3 beats to remove pulsatility.
+    # Edge handling is not cosmetic: see _smooth_edges. The previous
+    # zero-padded convolution biased every tail-window mean low — about
+    # -1.5 % on MAP over the 40 s literature-test window.
     beat_win = max(1, int(3.0 / dt))
-    kernel   = np.ones(beat_win) / beat_win
-    map_ts = np.convolve(aortic_p, kernel, mode="same")
-    co_ts  = np.convolve(co_ts,    kernel, mode="same")
+    map_ts = _smooth_edges(aortic_p, beat_win)
+    co_ts  = _smooth_edges(co_ts,    beat_win)
 
     # PPV: only computed for mechanical ventilation (requires positive-pressure
     # ITP cycles to modulate venous return). Returns a time-series in percent.
@@ -803,9 +835,9 @@ def run_simulation(
         "dbp":         dbp_ts,
         "sbp":         sbp_ts,
         "lvedp":       lvedp_ts,
-        "cpp":         np.convolve(cpp_ts,      kernel, mode="same"),
-        "cop":         np.convolve(cop_ts,      kernel, mode="same"),
-        "buckberg":    np.convolve(buckberg_ts, kernel, mode="same"),
+        "cpp":         _smooth_edges(cpp_ts,      beat_win),
+        "cop":         _smooth_edges(cop_ts,      beat_win),
+        "buckberg":    _smooth_edges(buckberg_ts, beat_win),
         "ankle_p":      ankle_p_ts,
         "brachial_p":   brachial_p_ts,
         "brachial_sbp": brachial_sbp_ts,
