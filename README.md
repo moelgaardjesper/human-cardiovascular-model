@@ -298,6 +298,15 @@ This educational resource synthesises the primary literature and provided the fr
 **VaMpy** — [openresearchsoftware.metajnl.com/articles/10.5334/jors.159](https://openresearchsoftware.metajnl.com/articles/10.5334/jors.159)
 1D arterial wave propagation model (Lax-Wendroff solver). A reference for future pulse wave velocity and arterial wave modelling extensions.
 
+**Marino M, Sauty B, Vairo G** (2024). Unraveling the complexity of vascular tone regulation: a multiscale computational approach to integrating chemo-mechano-biological pathways with cardiovascular biomechanics. *Biomech Model Mechanobiol* 23(4):1091–1120. PMID: 38507180. DOI: [10.1007/s10237-024-01826-6](https://doi.org/10.1007/s10237-024-01826-6)
+
+Couples a 0D lumped-parameter network (per-heartbeat haemodynamics) to a 2D finite-element arterial cross-section carrying NO/ROS molecular transport, with wall shear stress driving endothelial NO production, NO setting smooth-muscle active stretch, and the resulting vessel mechanics feeding back as altered resistance and compliance. Two elements are directly relevant here:
+
+- **Independent precedent for the two-timescale architecture.** They separate an explicit "fast time scale" (heartbeat) from a "slow time scale" (chemo-biological adaptation over minutes to an hour), solving the fast problem with parameters frozen from the current slow state before advancing it. That is the same operator-splitting design used by `model/slow_dynamics.py`, arrived at independently.
+- **"Adaptive homeostasis"** — their framing for a system that settles into a *new* equilibrium after a perturbation rather than returning to its original setpoint. This is the conceptual case for baroreflex resetting (slow-dynamics Phase 4).
+
+Their regulatory mechanism is *local and mechanically driven* (shear stress → NO → smooth muscle), whereas this model's is *neurohumoral* (baroreflex, drugs, fluid shifts) — so the two are complementary rather than competing. This model has no flow-mediated vasodilation at all; see the backlog for a lumped version of that idea.
+
 ---
 
 ## Validation Summary
