@@ -18,8 +18,15 @@ Inputs scale from minimal (MAP + BMI) to full intracardiac monitoring (CO, CVP, 
 # Install dependencies
 pip install -r requirements.txt
 
-# Run all tests
-pytest tests/
+# Fast regression suite — the ratchet. ~10 min. This is what CI runs.
+pytest
+
+# Slow-dynamics suite — multi-hour simulations, deselected by default.
+# ~20-40 min. Run on demand, not routinely.
+pytest -m slow
+
+# Everything
+pytest -m ""
 
 # Run a single test
 pytest tests/test_circulation.py::test_resting_baseline -v
@@ -27,6 +34,10 @@ pytest tests/test_circulation.py::test_resting_baseline -v
 # Start the web server (opens at http://localhost:5000)
 python -m api.app
 ```
+
+Simulation runs at roughly **3x real time**, so a 2-hour scenario costs ~38 min of wall
+clock per arm. Budget accordingly before launching long validation runs, and run them in
+the background.
 
 ## Architecture
 
@@ -39,6 +50,9 @@ model/
                     positional_itp_mmhg() — Trendelenburg intrathoracic pressure
   baroreflex.py     BaroreflexController — 4-step ABR+CPR, impulse response convolution
   respiration.py    Intrathoracic pressure (spontaneous / mechanical), RSA
+  slow_dynamics.py  Minutes-to-hours mechanisms on a separate coarse clock:
+                    venous stress relaxation, transcapillary refill, (planned)
+                    RAAS/ADH and baroreflex resetting. Default OFF
   perfusion.py      Derived-output sub-models: cerebral (CPP/ICP), coronary (Buckberg).
                     Pure outputs — no coupling back into the ODE
   pharmacology.py   Hill-equation PD for NE, phenylephrine, vasopressin, epinephrine,
@@ -91,6 +105,46 @@ literature values. This pathway was once assembled but never applied — a dead
 variable that silently zeroed all venoconstriction — so two calibration-independent
 regression guards in `tests/test_circulation.py` §14 assert the mechanism is live
 and correctly signed. Do not weaken them to make a calibration fit.
+
+## Validation discipline
+
+This project is a clinical model, so a number is only as good as the source behind it.
+Every change that touches physiology follows the same loop:
+
+1. **Scope the literature first** — find the source before writing the mechanism.
+2. **Implement the minimal version.**
+3. **Add a pytest test citing the source** (DOI/PMID in the test docstring).
+4. **Add a `docs/validation_log.md` entry** recording what was measured and why.
+5. **The full suite must still pass — without loosening any existing assertion.**
+
+The regression suite is a ratchet. If a change cannot leave it green without weakening a
+test, that is a finding to report, not a licence to retune.
+
+**Check the species before adopting a number as a calibration target.** The fast model is
+almost entirely human-validated; the slow-dynamics work drifted onto dog data without
+anyone noticing, and it cost real time. A tau of 39 min from dogs turned out to be
+untransferable because their vascular compliance is 3.3x higher per kg than the (human-
+calibrated) model's. When only animal data exists, **prefer ratios over absolute values** —
+a ratio survives a species jump far better than an absolute time constant.
+
+**Do not cite a paper whose numbers you have not read.** A source was once added to the
+validation log on the strength of its title; when finally retrieved it reported a value 9x
+different and did not support the calibration it was cited for.
+
+### Slow dynamics — three rules
+
+`model/slow_dynamics.py` is gated by `SimParams.slow_dynamics_enabled` (default `False`)
+plus per-mechanism switches.
+
+- **Everything is in deviation form** from a resting reference captured at `SETTLE_S`, taken
+  from the model's own settled state — *not* from `init_volume`, which is not the true
+  equilibrium. Consequence: **slow-dynamics scenarios must settle before being perturbed.**
+- **Every new mechanism needs its own switch.** When a second mechanism landed, the first
+  one's test silently became a combined test and failed. Validate each phase in isolation
+  *and* in combination.
+- **Some phases are deliberately under-calibrated**, because a later phase supplies the
+  rest of the observed effect. Check the validation log before "fixing" a phase to match a
+  literature figure on its own.
 
 ## References
 
