@@ -58,9 +58,17 @@ References
 [9] Hirsch & Bishop (1981) Am J Physiol 241:H620-H629.
     RSA peak-to-peak amplitude: 3-10 bpm in resting healthy adults (15 bpm RR).
 
-[10] Jardin F et al. (1981) Crit Care Med 9:19-22 (PMID: 7273804)
-     PEEP 10 cmH2O during mechanical ventilation reduces CO ~24%
-     (cardiac index 2.9->2.2 L/min/m2); RA pressure rises.
+[10] Jardin F, Farcot JC, Boisante L, Curien N, Margairaz A, Bourdarias JP (1981)
+     "Influence of positive end-expiratory pressure on left ventricular
+     performance." N Engl J Med 304(7):387-92.
+     PMID: 7005679   DOI: 10.1056/NEJM198102123040703
+     10 ARDS patients, PEEP stepped 0 -> 30 cmH2O: "progressive declines in
+     cardiac output, mean blood pressure, and left ventricular dimensions and
+     ... equalization of right and left ventricular filling pressures." At the
+     highest PEEP, volume expansion did NOT restore cardiac output. Mechanism:
+     leftward septal displacement restricting LV filling.
+     Verified against PubMed 2026-08-11. Only the abstract has been read, so no
+     numeric CO target is asserted from it — direction and dose-response only.
 
 [11] Lloyd-Donald et al. (2025) DOI: 10.1111/anae.16633
      Normal supine awake CVP = 2-3 mmHg.
@@ -597,7 +605,7 @@ def test_rsa_spontaneous_breathing_hirsch_bishop1981():
 
 
 # ===========================================================================
-# 6. PEEP reduces cardiac output — [PMID: 7273804, Jardin 1981]
+# 6. PEEP reduces cardiac output — [10] Jardin 1981, PMID 7005679
 # ===========================================================================
 
 def _run_vent(mode, peep=5.0, pip=20.0, rr=14.0):
@@ -612,8 +620,11 @@ def _run_vent(mode, peep=5.0, pip=20.0, rr=14.0):
 
 
 def test_peep_reduces_co_jardin1981():
-    """[Jardin 1981, PMID: 7273804] PEEP 10 cmH2O reduces CO by >=5%
-    vs no ventilation, with a dose-response vs PEEP 0 (lit: -24%)."""
+    """[10] PEEP 10 cmH2O reduces CO vs no ventilation, dose-responsively.
+
+    Bounds encode DIRECTION and DOSE-RESPONSE only — all the verified source
+    supports. Do not add a numeric target without reading the full text.
+    """
     s_none   = _run_vent('none')
     s_peep0  = _run_vent('mechanical', peep=0.0,  pip=15.0)
     s_peep10 = _run_vent('mechanical', peep=10.0, pip=25.0)

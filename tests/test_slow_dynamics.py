@@ -344,14 +344,9 @@ def test_stress_relaxation_decays_cvp_after_volume_load():
 #        early phase   : ~100 mL/h in the first 1-2 h (Figs 3, 7)
 #        NE, no bleed  : plasma volume -15% and -19%, reversible (Fig 5)
 #        NE after bleed: plasma volume -220 to -480 mL (-9 to -14%)
+#      NOTE: the paper contains no filtration coefficient. Do not cite it for Kf.
 #
-#      CORRECTION (2026-08-10): this entry previously read "Filtration
-#      coefficient 5.6 +/- 1.4 mL/(min*mmHg*50 kg lean body mass) — consistent
-#      with the whole-body ~6.7 mL/min/mmHg used here." The full text was
-#      obtained and read; the paper contains no filtration coefficient at all.
-#      That number was never in Lister and must not be cited to it.
-#
-# Retrieved via PubMed; full text obtained 2026-08-10.
+# Retrieved via PubMed; full text obtained and read 2026-08-10.
 # ===========================================================================
 
 @pytest.mark.slow

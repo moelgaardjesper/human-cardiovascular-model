@@ -30,7 +30,7 @@ References
 ----------
 Heldt T et al. (2002) J Appl Physiol 92:1239-1254  — ITP model §2.3
 Magosso E & Ursino M (2001) Med Biol Eng Comput 39:155-166 — ITP coupling
-Jardin F et al. (1981) Crit Care Med 9:19-22 — PEEP hemodynamics
+Jardin F et al. (1981) N Engl J Med 304:387-392 (PMID 7005679) — PEEP hemodynamics
 Hirsch JA & Bishop B (1981) Am J Physiol 241:H620-629 — RSA physiology
 """
 

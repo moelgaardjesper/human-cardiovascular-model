@@ -149,8 +149,10 @@ STRESS_RELAX_COMPARTMENTS = (
 #
 # Kf: whole-body filtration coefficient. Guyton's figure is a net filtration of
 # ~2 mL/min at a net force imbalance of ~0.3 mmHg, i.e. ~6.7 mL/min/mmHg for the
-# whole body. Lister 1963 (below) derived 5.6 +/- 1.4 mL/(min*mmHg*50 kg lean
-# body mass) from haemorrhage in normal man — consistent.
+# whole body. Guyton is the only source for this value; it has no independent
+# human anchor. What human data does constrain is the refill TRAJECTORY, which
+# the model matches to within a factor of ~1.6 (Lister 1963, PMID 14067514) —
+# a sharper test than a coefficient would be. See tests/test_slow_dynamics.py.
 KF_TOTAL_ML_PER_MIN_MMHG = 6.7
 KF_TOTAL = KF_TOTAL_ML_PER_MIN_MMHG / 60.0        # mL/s/mmHg
 
