@@ -1136,3 +1136,61 @@ def test_venous_tone_factor_signs_by_drug_class():
     assert vt({"vasopressin":    2.0}) < 1.0, "vasopressin should venoconstrict"
     assert vt({"propofol":       2.0}) > 1.0, "propofol should venodilate"
     assert vt({"spinal":         1.0}) > 1.0, "spinal should venodilate"
+
+
+# ===========================================================================
+# 15. Resting sympathetic tone is arterial, not venous
+#
+# [A1] Abboud FM, Schmid PG, Eckstein JW (1968). Vascular responses after alpha
+#      adrenergic receptor blockade. I. Responses of capacitance and resistance
+#      vessels to norepinephrine in man. J Clin Invest 47(1):1-9.
+#      DOI: 10.1172/JCI105699   PMID: 16695931   PMC297142
+#      HUMAN, 11 male subjects, supine, warm room (82 F), intra-brachial
+#      infusions with no systemic effect (arterial pressure and HR unchanged).
+#
+#      Alpha-blockade with intra-arterial phentolamine NEARLY DOUBLED resting
+#      forearm blood flow (5.95 -> 9.28 and 11.19 mL/100 mL/min, both p < 0.05)
+#      while leaving resting venous distensibility UNCHANGED (4.26 -> 4.46 and
+#      4.50 mL/100 mL, p > 0.05). The authors' conclusion, in their words:
+#      "in comfortable subjects lying supine in a warm environment the
+#      sympatho-adrenal influence on venous distensibility is negligible. This
+#      does not appear to be true however for resistance vessels."
+#
+#      i.e. an unstressed resting human carries substantial ARTERIOLAR
+#      sympathetic tone and essentially NO venous sympathetic tone. The venous
+#      effector is a reserve, held near neutral until it is needed.
+# ===========================================================================
+
+def test_resting_baroreflex_tone_is_arterial_not_venous():
+    """[A1] At rest the venous arm must be near-neutral, the arterial arm not.
+
+    This guards the ASYMMETRY, not the exact numbers. If someone gives the
+    venous effector a resting set-point, an unstressed patient starts out with
+    the venous reserve already partly spent — and every subsequent hypovolaemic
+    or orthostatic challenge then has less reserve to recruit than a real
+    patient does.
+    """
+    from model.baroreflex import BaroreflexController
+
+    b = BaroreflexController(dt=0.001)
+    for _ in range(60000):                      # 60 s at a resting operating point
+        b.update(88.1, 45.0, 2.9)
+
+    venous_tone = 1.0 - b.v0_vein_factor        # fraction of V0 withdrawn
+    arterial_tone = b.svr_factor - 1.0          # fractional resistance added
+
+    assert venous_tone < 0.10, (
+        f"resting venous tone is {venous_tone * 100:.1f}% of V0. [A1] found "
+        f"alpha-blockade did not change resting venous distensibility in supine "
+        f"warm subjects (p > 0.05), i.e. resting venous sympathetic tone is "
+        f"negligible; the reserve should be nearly untouched at rest"
+    )
+    assert arterial_tone > 0.05, (
+        f"resting arterial tone is only {arterial_tone * 100:.1f}%. [A1] found "
+        f"alpha-blockade nearly DOUBLED resting forearm blood flow (p < 0.05), "
+        f"so a resting human carries substantial arteriolar tone"
+    )
+    assert arterial_tone > venous_tone, (
+        f"resting tone is not arterial-dominant (arterial {arterial_tone:.3f} "
+        f"vs venous {venous_tone:.3f}), which inverts [A1]"
+    )
