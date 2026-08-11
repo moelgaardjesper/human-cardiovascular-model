@@ -42,7 +42,7 @@ from .gravity import hydrostatic_delta_mmhg, GravityEnvironment, smooth_tilt_pro
 from .baroreflex import BaroreflexController
 from .pharmacology import combined_drug_factors, NEUTRAL_FACTORS
 from .respiration import intrathoracic_pressure, respiratory_sinus_arrhythmia
-from .slow_dynamics import init_slow_state, update_slow_state
+from .slow_dynamics import init_slow_state, update_slow_state, oncotic_pressure_mmhg
 
 
 # Systemic venous reservoir — holds the bulk of circulating blood volume.
@@ -195,6 +195,32 @@ class SimParams:
         self.slow_stress_relaxation_enabled = True
         self.slow_fluid_exchange_enabled    = True
 
+        # Drug infusion window. Defaults reproduce the historical behaviour
+        # exactly — drug_factors applied for the whole run — so nothing changes
+        # unless a caller sets drug_stop_s.
+        #
+        # This exists because slow dynamics are in DEVIATION form from the state
+        # captured at SETTLE_S. A drug present from t=0 is baked into that
+        # reference, so the Starling balance is zeroed at the drugged state and
+        # the mechanism reports no effect at all. Validating a vasopressor
+        # against slow dynamics therefore *requires* starting it after settling.
+        self.drug_start_s = 0.0
+        self.drug_stop_s  = float("inf")
+
+
+def _drug_factors_at(params, t):
+    """Drug factors in force at time `t`.
+
+    Outside [drug_start_s, drug_stop_s) the patient is undrugged. With the
+    default window (0 -> inf) this returns params.drug_factors itself, so the
+    common path is unchanged and costs one comparison.
+    """
+    start = getattr(params, "drug_start_s", 0.0)
+    stop  = getattr(params, "drug_stop_s", float("inf"))
+    if start <= t < stop:
+        return params.drug_factors
+    return NEUTRAL_FACTORS
+
 
 # ---------------------------------------------------------------------------
 # Pressure helpers
@@ -265,7 +291,7 @@ def _odes(t: float, V: np.ndarray, params: SimParams, baro: BaroreflexController
                     every step (baroreflex/RSA).
     """
     comp  = params.compartments
-    drugs = params.drug_factors
+    drugs = _drug_factors_at(params, t)
 
     # -----------------------------------------------------------------------
     # Elastance parameters (baroreflex + drug modulation)
@@ -687,6 +713,17 @@ def run_simulation(
     brachial_p_ts = np.zeros(n)
     volumes_ts  = np.zeros((n, len(comp)))
 
+    # Slow-dynamics diagnostics. Allocated only when the mechanism is active, so
+    # an ordinary run pays nothing for them and its result dict is unchanged.
+    # Validation against the human haemorrhage literature is expressed in plasma
+    # volume and haematocrit (Lister 1963 measures both), which blood volume
+    # alone cannot supply once red cells are leaving with the bleed.
+    if slow_enabled:
+        plasma_vol_ts   = np.zeros(n)
+        haematocrit_ts  = np.zeros(n)
+        interstitial_ts = np.zeros(n)
+        oncotic_ts      = np.zeros(n)
+
     # We step manually so baroreflex can update each step
     V = V0.copy()
     i = IDX
@@ -713,8 +750,6 @@ def run_simulation(
     # HR / E_max from previous step (1-step lag) for consistent monitoring.
     _hr_monitor   = params.hr_bpm
     _emax_monitor = params.lv_emax
-    drugs = params.drug_factors
-
     # Continuously-integrated cardiac-cycle phase (cycles, wrapped to [0,1)).
     # _cardiac_phase drives the ODE's elastances (advanced using the HR seen
     # by _odes this step); _monitor_phase drives the 1-step-lagged E_ra/E_la
@@ -777,7 +812,7 @@ def run_simulation(
         # HR driving _odes's elastance this step (hr_bpm * drug hr_factor,
         # then baroreflex, then RSA — same formula _odes used internally
         # before this refactor moved phase-integration out to the caller).
-        hr_now = params.hr_bpm * drugs.get("hr_factor", 1.0)
+        hr_now = params.hr_bpm * _drug_factors_at(params, t).get("hr_factor", 1.0)
         if baro is not None:
             hr_now = max(30.0, min(180.0, hr_now + baro.hr_delta))
         if params.ventilation_mode != 'none':
@@ -837,6 +872,26 @@ def run_simulation(
         buckberg_ts[step] = buckberg_index(p_dbp, p_lvedp, hr_eff, p_sbp)
         volumes_ts[step]  = V.copy()
 
+        if slow_enabled:
+            _rcv = slow_state.red_cell_volume_ml
+            if _rcv <= 0.0:
+                # Before SETTLE_S the slow reference has not been captured and
+                # red cell volume is still zero. Emit NaN rather than a number
+                # that looks plausible (plasma volume would read as whole blood
+                # volume, haematocrit as 0).
+                plasma_vol_ts[step]   = np.nan
+                haematocrit_ts[step]  = np.nan
+                interstitial_ts[step] = np.nan
+                oncotic_ts[step]      = np.nan
+            else:
+                _bv = V.sum()
+                _pv = max(_bv - _rcv, 1.0)
+                plasma_vol_ts[step]   = _pv
+                haematocrit_ts[step]  = _rcv / max(_bv, 1.0)
+                interstitial_ts[step] = slow_state.interstitial_volume_ml
+                oncotic_ts[step]      = oncotic_pressure_mmhg(
+                    slow_state.plasma_protein_g, _pv)
+
         # Euler step. When slow dynamics are active, ask _odes to hand back the
         # compartment pressures it already computed (no recomputation), then
         # advance the slow state on its own coarse clock — update_slow_state()
@@ -885,7 +940,15 @@ def run_simulation(
         else np.zeros(n)
     )
 
+    slow_out = {} if not slow_enabled else {
+        "plasma_volume":       plasma_vol_ts,
+        "haematocrit":         haematocrit_ts,
+        "interstitial_volume": interstitial_ts,
+        "oncotic_pressure":    oncotic_ts,
+    }
+
     return {
+        **slow_out,
         "t":           t_eval,
         "aortic_p":    aortic_p,
         "map":         map_ts,

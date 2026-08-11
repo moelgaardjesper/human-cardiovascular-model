@@ -387,6 +387,22 @@ These benefit from distributed height modelling at large tilt angles — current
 ### Blood-volume scale — resolved
 Earlier versions carried a total blood volume of ~3.8 L with a stressed volume of ~0.7 L (17% of BV) against a physiological ~5 L / ~1.3 L (26%), because the systemic veins had roughly 10× too little compliance (MSFP ~19 mmHg vs ~7). That compressed pool exaggerated every preload perturbation and forced repeated downward tuning of venous drug magnitudes. The venous system has since been rebuilt to literature values: **BV ≈ 5.36 L, stressed volume ≈ 1.66 L (31%), MSFP ≈ 9.7 mmHg, venous compliance ≈ 129 mL/mmHg**, with baseline haemodynamics unchanged. Hemorrhage, PPV and PLR tests now run at clinically realistic class I–III volumes (300–1200 mL) rather than the 100–400 mL the old scale required.
 
+### Capillary pressure barely responds to vasoactive drugs
+Found 2026-08-10 by comparison against Lister et al. (1963), the human transcapillary-refill
+study. Capillary pressure is computed as a fixed 20/80 blend of the arteriolar and venular
+compartment pressures — but the `*_art` compartments sit only 1.6–6.5 mmHg above their
+paired veins, because the arteriolar resistance is upstream of them. Modelled capillary
+pressure is therefore close to venous pressure, and a fixed blend cannot express the
+*selective venular* constriction that makes α-agonists raise it.
+
+Consequence: norepinephrine at a dose raising systolic pressure 20 mmHg moves modelled
+capillary pressure by +0.15 mmHg and removes **0.13 %** of the plasma volume, against the
+**15–19 %** Lister measured directly in unbled healthy men. Direction and reversibility are
+correct; the magnitude is short by about 100×. **The model currently under-represents the
+plasma-volume cost of vasopressor support.** Recorded as a strict-xfail regression test so
+it cannot be forgotten, and not patched by retuning K<sub>f</sub> — refill itself agrees
+with Lister to within a factor of ~1.6, so the filtration coefficient is not the defect.
+
 ### CVP paradox in microgravity not fully reproduced
 Measured CVP decreases in orbit despite a cephalad fluid shift (Buckey 1996). Positional ITP coupling is now implemented (`positional_itp_mmhg()` in `gravity.py`), which partially explains the effect, but the full paradox requires changes in lung/chest-wall compliance under weightlessness that are not yet modelled.
 
