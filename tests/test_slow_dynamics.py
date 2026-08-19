@@ -52,26 +52,44 @@ DT = 0.001
 # slow-dynamics machinery.
 # ===========================================================================
 
-def test_slow_dynamics_disabled_is_bit_identical():
-    """With the flag off the model must be UNCHANGED, bit for bit.
+def test_slow_dynamics_disabled_contributes_nothing():
+    """With the flag off the module must contribute NOTHING, past SETTLE_S.
 
-    The fast regression suite is the project's ratchet. Introducing the
-    slow-dynamics scaffolding must not perturb it — not by a rounding step,
-    not by an extra RNG draw, not at all. This asserts exact equality rather
-    than approximate, because any difference at all means the scaffolding is
-    not inert and every existing validation number is silently in question.
+    Slow dynamics default ON since 2026-08-11, so `slow_dynamics_enabled =
+    False` is now the escape hatch that recovers the pre-2026-08 behaviour
+    rather than the shipped default. This is what guarantees that hatch works.
+
+    HISTORY, because it is instructive: this test used to compare `SimParams()`
+    against an explicitly-disabled run over 10 s. When the default flipped it
+    kept passing — but only because 10 s is inside SETTLE_S = 60 s, so neither
+    arm had initialised the slow state yet. It was asserting nothing. Any
+    default-sensitive test must run PAST SETTLE_S to mean anything.
     """
-    a = run_simulation(SimParams(), duration_s=10.0, dt=DT)
-
+    D = 90.0                                   # past SETTLE_S, so the module is live
     p = SimParams()
     p.slow_dynamics_enabled = False
-    b = run_simulation(p, duration_s=10.0, dt=DT)
+    p.ventilation_mode = "none"
+    a = run_simulation(p, duration_s=D, dt=DT)
 
+    # 1. No diagnostics allocated — an ordinary run pays nothing for the module.
+    for key in ("plasma_volume", "haematocrit", "interstitial_volume",
+                "oncotic_pressure"):
+        assert key not in a, f"{key} emitted with slow dynamics disabled"
+
+    # 2. Blood volume EXACTLY conserved. Filtration is the only thing that can
+    #    change it absent haemorrhage or a bolus, so this is a direct check that
+    #    no flux leaked through.
+    bv = a["volumes"].sum(axis=1)
+    drift = float(bv[-1] - bv[0])
+    assert drift == 0.0 or abs(drift) < 1e-9, (
+        f"blood volume moved {drift:+.3e} mL with slow dynamics disabled"
+    )
+
+    # 3. Deterministic — two disabled runs must agree bit for bit, so any future
+    #    difference is a real change and not run-to-run noise.
+    b = run_simulation(p, duration_s=D, dt=DT)
     for key in ("map", "co", "cvp", "sv", "hr", "aortic_p", "volumes"):
-        assert np.array_equal(a[key], b[key]), (
-            f"'{key}' differs with slow dynamics explicitly disabled — "
-            f"the scaffolding is not inert"
-        )
+        assert np.array_equal(a[key], b[key]), f"'{key}' is not deterministic"
 
 
 def test_slow_state_container_starts_neutral():
@@ -220,6 +238,54 @@ def test_stress_relaxation_is_reversible():
     assert abs(state.v0_relax_ml[idx]) < 0.01, (
         f"creep did not reverse: {state.v0_relax_ml[idx]:.4f} mL residual"
     )
+
+
+def test_default_config_is_stable_at_rest():
+    """The DEFAULT configuration must not drift over the API's whole horizon.
+
+    Slow dynamics default ON. The other rest-neutrality test below compares
+    on-vs-off with the baroreflex DISABLED; this one instead takes SimParams
+    exactly as a caller gets it — baroreflex on, spontaneous ventilation, slow
+    dynamics on — and asks whether an undisturbed patient stays put.
+
+    Why it is needed: no other fast test runs past SETTLE_S = 60 s, so the fast
+    suite is structurally blind to the default flip. `/api/simulate` serves up
+    to 300 s and live mode runs indefinitely, which is exactly where these
+    mechanisms act. Without this, turning them on by default would be untested.
+
+    Drift here would mean the deviation-form reference is wrong — the failure
+    mode that referencing `init_volume` instead of the settled state produced,
+    which crept continuously and cost ~1.4 mmHg of resting MAP.
+    """
+    D = 300.0
+    p = SimParams()                       # defaults, deliberately unmodified
+    assert p.slow_dynamics_enabled, "this test exists to cover the ON default"
+    r = run_simulation(p, duration_s=D, dt=DT)
+
+    def window(key, t0, t1):
+        n = len(r[key])
+        return float(np.mean(r[key][int(n * t0 / D):int(n * t1 / D)]))
+
+    def bv(t0, t1):
+        n = len(r["volumes"])
+        return float(r["volumes"][int(n * t0 / D):int(n * t1 / D)].sum(axis=1).mean())
+
+    # 50 s windows: whole numbers of breaths at the default 14/min, so
+    # respiratory variation averages out rather than aliasing into the drift.
+    early_bv, late_bv = bv(100, 150), bv(250, 300)
+    assert abs(late_bv - early_bv) < 15.0, (
+        f"resting blood volume drifted {late_bv - early_bv:+.1f} mL between "
+        f"100-150 s and 250-300 s with the default configuration; the "
+        f"slow-dynamics resting reference is not neutral"
+    )
+
+    for key, tol, unit in (("map", 1.0, "mmHg"), ("co", 0.15, "L/min"),
+                           ("cvp", 0.30, "mmHg")):
+        early, late = window(key, 100, 150), window(key, 250, 300)
+        assert abs(late - early) < tol, (
+            f"resting {key} drifted {late - early:+.3f} {unit} "
+            f"({early:.3f} -> {late:.3f}) under the default configuration"
+        )
 
 
 def test_stress_relaxation_neutral_at_rest():
@@ -547,6 +613,7 @@ def test_drug_window_moves_pressure_at_onset_and_offset():
 def test_slow_diagnostics_are_consistent_and_absent_when_off():
     """Plasma volume + red cells must equal blood volume, and NaN before init."""
     p_off = SimParams()
+    p_off.slow_dynamics_enabled = False     # explicit: do not rely on the default
     p_off.ventilation_mode = "none"
     r_off = run_simulation(p_off, duration_s=5.0, dt=DT)
     for key in ("plasma_volume", "haematocrit", "interstitial_volume",
@@ -771,5 +838,157 @@ def test_norepinephrine_plasma_volume_magnitude_matches_lister():
 
 
 # ===========================================================================
-# Phase 3-4 validation tests land below, each marked @pytest.mark.slow.
+# Phase 3 — RAAS / ADH
+#
+# [P1] Bussien JP, Waeber B, Nussberger J, Schaller MD, Gavras H, Hofbauer K,
+#      Brunner HR (1984). Does vasopressin sustain blood pressure of normally
+#      hydrated healthy volunteers? Am J Physiol 246(1 Pt 2):H143-7.
+#      PMID: 6364837   DOI: 10.1152/ajpheart.1984.246.1.H143
+#      HUMAN. A V1 antagonist, separately shown to block a vasopressin infusion
+#      for >2 h, changed NOTHING in 10 normally hydrated volunteers — not blood
+#      pressure, heart rate or skin blood flow — with the renin system either
+#      intact or blocked by captopril. Circulating vasopressin "does not
+#      actively contribute to maintenance of cardiovascular homeostasis".
+#
+# [P3] Hasser EM, Bishop VS (1988). Neurogenic and humoral factors maintaining
+#      arterial pressure in conscious dogs. Am J Physiol 255(5 Pt 2):R693-8.
+#      PMID: 2903680   DOI: 10.1152/ajpregu.1988.255.5.R693
+#      DOG — used as a RATIO only. With baroreflexes INTACT, blocking RAS or
+#      AVP did not significantly change resting pressure. The quoted 14 +/- 4
+#      (RAS) and 12 +/- 2 mmHg (AVP) are contributions measured only AFTER the
+#      other systems were removed — reserve capacity, not resting tone.
+#
+# [P4] Rascher W (1985). Klin Wochenschr 63(19):989-99. PMID: 4068606.
+#      REVIEW, mechanism only. Physiological AVP raises systemic vascular
+#      resistance, but with intact reflexes cardiac output falls in step so
+#      pressure does not change; the pressor effect is unmasked when reflexes
+#      are blunted or overwhelmed.
+#
+# Together these say the systems are a RESERVE, not a continuous contributor.
+# ===========================================================================
+
+def test_neurohumoral_activation_is_zero_at_rest_and_saturates():
+    """[P1][P3] No activation without a pressure deficit; monotone above it.
+
+    The zero-at-zero property is the whole reason these can default on: it is
+    what makes [P1] reproducible — blocking the system in a resting subject
+    must change nothing, because the system is contributing nothing.
+    """
+    from model.slow_dynamics import (_hill, EC50_RAAS_MMHG, EC50_ADH_MMHG,
+                                     HILL_N_NEUROHUMORAL, RAAS_MAX_SVR_FRACTION,
+                                     ADH_MAX_SVR_FRACTION, SlowState,
+                                     neurohumoral_svr_factor)
+
+    assert _hill(0.0, EC50_RAAS_MMHG, HILL_N_NEUROHUMORAL) == 0.0
+    assert _hill(-5.0, EC50_RAAS_MMHG, HILL_N_NEUROHUMORAL) == 0.0, (
+        "a pressure ABOVE the resting reference must not activate the system"
+    )
+    assert _hill(EC50_RAAS_MMHG, EC50_RAAS_MMHG, HILL_N_NEUROHUMORAL) == pytest.approx(0.5)
+
+    prev = -1.0
+    for deficit in (0.0, 5.0, 10.0, 20.0, 40.0, 80.0):
+        v = _hill(deficit, EC50_RAAS_MMHG, HILL_N_NEUROHUMORAL)
+        assert v > prev, "activation must increase with the deficit"
+        assert 0.0 <= v <= 1.0
+        prev = v
+
+    # AVP is deliberately the less sensitive of the two: classically the later,
+    # larger-haemorrhage hormone.
+    assert EC50_ADH_MMHG > EC50_RAAS_MMHG
+
+    # A resting state contributes exactly nothing to resistance.
+    rest = SlowState()
+    assert neurohumoral_svr_factor(rest) == 1.0
+
+    # Fully activated, the pair sit near [P3]'s unmasked combined contribution
+    # (~26 mmHg on ~95 mmHg resting canine pressure, i.e. ~27%). Ratio, not
+    # absolute — see the species rule in CLAUDE.md.
+    full = SlowState()
+    full.angiotensin = 1.0
+    full.adh = 1.0
+    combined = neurohumoral_svr_factor(full) - 1.0
+    assert 0.20 < combined < 0.35, (
+        f"maximal hormonal SVR contribution {combined * 100:.0f}% is outside "
+        f"the ~27% implied by [P3]"
+    )
+    assert RAAS_MAX_SVR_FRACTION > ADH_MAX_SVR_FRACTION, (
+        "[P3] has RAS contributing more than AVP (14 vs 12 mmHg unmasked)"
+    )
+
+
+@pytest.mark.slow
+def test_raas_adh_defend_pressure_after_haemorrhage():
+    """[P3][P4] The hormonal reserve must raise pressure once unmasked.
+
+    Validated in haemorrhage, not at rest, because at rest the correct answer
+    is "no effect" ([P1]) — a test at rest would pass with the mechanism
+    deleted. Here the baroreflex is already near-saturated, which is the state
+    [P3] and [P4] describe as unmasking these systems.
+
+    Each system is switched independently, so this does not silently become a
+    combined test the way the Phase 1 test did when Phase 2 landed.
+
+    ~10 min simulated per arm, four arms.
+    """
+    D = 600.0
+
+    def run(raas, adh):
+        p = SimParams()
+        p.ventilation_mode = "none"
+        p.slow_raas_enabled = raas
+        p.slow_adh_enabled = adh
+        p.hemorrhage_rate_mlmin = 1000.0
+        p.hemorrhage_start_s = 120.0
+        p.hemorrhage_duration_s = 60.0
+        r = run_simulation(p, duration_s=D, dt=DT)
+
+        def w(key, t0=580.0, t1=598.0):
+            n = len(r[key])
+            return float(np.nanmean(r[key][int(n * t0 / D):int(n * t1 / D)]))
+
+        n = len(r["volumes"])
+        bv = float(r["volumes"][int(n * 580.0 / D):int(n * 598.0 / D)].sum(axis=1).mean())
+        return {"map": w("map"), "co": w("co"), "bv": bv}
+
+    off  = run(False, False)
+    both = run(True, True)
+    raas = run(True, False)
+    adh  = run(False, True)
+
+    gain = both["map"] - off["map"]
+    assert gain > 1.0, (
+        f"the hormonal systems raised MAP only {gain:+.2f} mmHg after a 1000 mL "
+        f"bleed; [P3] has them contributing materially once unmasked"
+    )
+    assert gain < 20.0, (
+        f"hormonal systems raised MAP {gain:+.2f} mmHg — larger than [P3]'s "
+        f"combined unmasked contribution (~26 mmHg) at a deficit this modest"
+    )
+
+    # Vasoconstrictor signature: pressure up, flow NOT up. [P4] is explicit that
+    # cardiac output falls as AVP raises resistance. If CO rose, the effect
+    # would be coming from preload, which is not what this mechanism models.
+    assert both["co"] <= off["co"] + 0.05, (
+        f"CO rose with the hormonal systems ({off['co']:.3f} -> {both['co']:.3f} "
+        f"L/min); a vasoconstrictor must not increase flow"
+    )
+
+    # Blood volume must be essentially unchanged — this phase moves no fluid.
+    assert abs(both["bv"] - off["bv"]) < 25.0, (
+        f"blood volume differed by {both['bv'] - off['bv']:+.1f} mL; Phase 3 "
+        f"is a vasoconstrictor and must not be moving volume"
+    )
+
+    # Each system alone does something, and RAS does more than AVP — the [P3]
+    # ordering, and the reason it holds is EC50 and magnitude, both set from it.
+    assert raas["map"] > off["map"] + 0.3, "RAAS alone had no effect"
+    assert adh["map"] > off["map"] + 0.1, "ADH alone had no effect"
+    assert raas["map"] > adh["map"], (
+        f"AVP ({adh['map']:.2f}) outweighed RAS ({raas['map']:.2f}); [P3] has "
+        f"RAS as the larger contributor"
+    )
+
+
+# ===========================================================================
+# Phase 4 validation tests land below, each marked @pytest.mark.slow.
 # ===========================================================================

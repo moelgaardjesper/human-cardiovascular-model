@@ -107,6 +107,24 @@ All references were accessed via PubMed Central, PubMed, or the open Deranged Ph
 
 ---
 
+### How far this has moved from its source models
+
+Worth stating plainly, because "21 compartments expanded to 23" undersells the distance travelled. Heldt and Mohammadyari supplied the skeleton — compartment topology, time-varying elastance, the 4-step baroreflex, the hydrostatic equation, and a baseline resistance/compliance set. Everything below was added here and has no counterpart in either source model:
+
+| Added | Module |
+|---|---|
+| Hill-equation pharmacodynamics for 6 agents | `pharmacology.py` |
+| Minutes-to-hours mechanisms on a separate coarse clock — venous stress relaxation, Starling filtration, interstitial compliance | `slow_dynamics.py` |
+| Derived perfusion outputs — cerebral (CPP/ICP), coronary (Buckberg) | `perfusion.py` |
+| Intrathoracic pressure, spontaneous and mechanical ventilation, RSA | `respiration.py` |
+| Allometric patient scaling, 3-tier input calibration | `patient.py` |
+
+That is **824 of 1,783 code lines (46 %) in modules Heldt has no equivalent for.** The inherited half has not stood still either: the venous system was rebuilt wholesale to literature values (compliances changed 10–50×), the single lower-body vein was split into three serial segments, limb veins were given a nonlinear collapsible-tube law, and positional intrathoracic-pressure coupling was added.
+
+The honest description is a **Heldt-derived circuit that has been substantially re-parameterised and extended**, not an implementation of Heldt. It is validated independently against 14 human sources rather than against Heldt's outputs.
+
+---
+
 ### Foundational model structure
 
 **Heldt T, Shim EB, Kamm RD, Mark RG** (2002). Computational modeling of cardiovascular response to orthostatic stress. *J Appl Physiol* 92:1239–1254.
@@ -130,6 +148,20 @@ The primary implementation reference; directly provided the parameter set used h
 - Short-duration spaceflight (<10 days): blood volume **−15%**
 - Baroreflex structure: arterial baroreflex (ABR) + cardiopulmonary reflex (CPR), six impulse response functions covering sympathetic fast/slow and parasympathetic components
 - Validation against astronaut stand-test data confirming orthostatic intolerance arises primarily from hypovolemia and cardiac atrophy
+
+---
+
+**Lister J, McNeill IF, Marshall VC, Plzak LF, Dagher FJ, Moore FD** (1963). Transcapillary refilling after hemorrhage in normal man: basal rates and volumes; effect of norepinephrine. *Ann Surg* 158(4):698–712. PMID 14067514.
+
+The foundational **physiological** reference, as distinct from the two structural ones above. Sixteen healthy men, bled 490–968 mL over 15–20 min, followed for 72 h with Cr-51 red cell volume and T-1824 plasma volume. It is the primary human measurement of how a person actually refills after blood loss, and it anchors the entire fluid-exchange side of the model:
+
+- Refill rate **27.9 mL/h** mean over 0–24 h (range 18.8–36.7); **11.1 mL/h** over 24–48 h
+- **50–80 %** of the loss replaced at 24 h; complete refilling only at **36–48 h**
+- Norepinephrine in an unbled subject reduces plasma volume **15–19 %**, reversibly — the model reproduces the direction but not the magnitude (see [Limitations](#limitations))
+- Plasma protein held constant against continuing dilution: ~40 g albumin returning per 830 mL refilled
+- Explicit species contrast: dogs refill "in an hour or less", man takes 36–48 hours
+
+The last point governs how animal data is used throughout this project. See `CLAUDE.md`, "Validation discipline".
 
 ---
 

@@ -42,7 +42,8 @@ from .gravity import hydrostatic_delta_mmhg, GravityEnvironment, smooth_tilt_pro
 from .baroreflex import BaroreflexController
 from .pharmacology import combined_drug_factors, NEUTRAL_FACTORS
 from .respiration import intrathoracic_pressure, respiratory_sinus_arrhythmia
-from .slow_dynamics import init_slow_state, update_slow_state, oncotic_pressure_mmhg
+from .slow_dynamics import (init_slow_state, update_slow_state,
+                            oncotic_pressure_mmhg, neurohumoral_svr_factor)
 
 
 # Systemic venous reservoir — holds the bulk of circulating blood volume.
@@ -178,13 +179,24 @@ class SimParams:
         # venous stress relaxation, RAAS/ADH, baroreflex resetting. See
         # model/slow_dynamics.py.
         #
-        # Default OFF. The model's fast regression suite is a ratchet, and
-        # these mechanisms are being introduced one phase at a time; keeping
-        # the flag off guarantees existing behaviour is bit-for-bit unchanged
-        # while they land. Flipping the default is a deliberate decision to be
-        # taken once all four phases are validated, not a side effect of
-        # adding them.
-        self.slow_dynamics_enabled = False
+        # Default ON as of 2026-08-11 (phases 1 and 2 validated; 3 and 4 still
+        # to land). Deliberate decision, not a side effect of adding a phase.
+        #
+        # The reasoning: with this off, a simulated patient has NO mechanism
+        # slower than the 20 s sympathetic baroreflex arm, so a bled patient
+        # sits in fixed shock forever and any run longer than ~40 s is
+        # stationary by construction. That is wrong in the direction that
+        # matters clinically, and the API serves runs up to 300 s while live
+        # mode runs indefinitely — precisely the horizon where the missing
+        # physiology shows.
+        #
+        # Safe to default on because every mechanism is in DEVIATION form from
+        # a reference captured at SETTLE_S, so it is exactly neutral at rest by
+        # construction. `test_default_config_is_stable_at_rest` guards that at
+        # the API's 300 s ceiling in the configuration users actually get.
+        #
+        # Set False to recover the pre-2026-08 behaviour exactly.
+        self.slow_dynamics_enabled = True
 
         # Per-mechanism switches, gated by the master flag above. These exist so
         # each phase can be validated IN ISOLATION as well as in combination —
@@ -194,6 +206,8 @@ class SimParams:
         # filtration had joined in.)
         self.slow_stress_relaxation_enabled = True
         self.slow_fluid_exchange_enabled    = True
+        self.slow_raas_enabled              = True
+        self.slow_adh_enabled               = True
 
         # Drug infusion window. Defaults reproduce the historical behaviour
         # exactly — drug_factors applied for the whole run — so nothing changes
@@ -427,6 +441,11 @@ def _odes(t: float, V: np.ndarray, params: SimParams, baro: BaroreflexController
     svr_factor = params.svr_scale * drugs.get("svr_factor", 1.0)
     if baro is not None:
         svr_factor *= baro.svr_factor
+    if slow is not None:
+        # Angiotensin II + AVP. Exactly 1.0 at rest, so this cannot shift
+        # baseline haemodynamics; it engages only as arterial pressure falls
+        # below the resting reference.
+        svr_factor *= neurohumoral_svr_factor(slow)
 
     def R(idx_name: str, systemic_arterial: bool = False) -> float:
         r = comp[IDX[idx_name]].resistance

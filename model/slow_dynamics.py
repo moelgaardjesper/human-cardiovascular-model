@@ -43,6 +43,7 @@ pre-existing behaviour — the fast regression suite is the ratchet and must not
 move because this module exists.
 """
 
+import math
 from dataclasses import dataclass, field
 
 import numpy as np
@@ -165,6 +166,56 @@ SIGMA_PROTEIN = 0.9
 # venous side because post-capillary resistance is the smaller of the two
 # (R_pre/R_post ~ 4):  P_c = P_v + FRACTION*(P_a - P_v).
 CAPILLARY_PRESSURE_FRACTION = 0.20
+
+# --- Phase 3: RAAS / ADH ---------------------------------------------------
+#
+# These systems are a RESERVE, not a continuous contributor. Three independent
+# sources agree, two of them human:
+#   - Bussien 1984 (PMID 6364837, HUMAN): a V1 antagonist in 10 normally
+#     hydrated volunteers changed nothing — not blood pressure, heart rate or
+#     skin blood flow — even with the renin system simultaneously blocked by
+#     captopril. The antagonist was separately shown to work.
+#   - Hasser & Bishop 1988 (PMID 2903680, dog): with baroreflexes INTACT,
+#     blocking RAS or AVP did not significantly change resting pressure. The
+#     frequently quoted 14 and 12 mmHg figures are contributions measured only
+#     AFTER the other systems were removed — reserve, not resting tone.
+#   - Rascher 1985 (PMID 4068606, review, mechanism only): physiological AVP
+#     does raise SVR, but with intact reflexes cardiac output falls in step and
+#     pressure is unchanged. The pressor effect is unmasked when reflexes are
+#     blunted or overwhelmed.
+#
+# Deviation form gives the resting-neutrality for free. The threshold below is
+# what gives the RESERVE behaviour: near-nothing for small deviations, engaging
+# as the deficit grows.
+#
+# Low-pass on arterial pressure. Removes pulsatility (a beat is ~0.86 s) while
+# staying far faster than the hormone kinetics, so it does not distort them.
+TAU_MAP_FILTER_S = 10.0
+
+# Activation kinetics. ORDER-OF-MAGNITUDE CHOICES, not fitted: plasma renin
+# activity rises within minutes of haemorrhage and AVP within minutes with a
+# 10-20 min plasma half-life. Roessler 2011 (PMID 21281280, HUMAN) covers the
+# right 30-90 min window but only its abstract has been read, so no time
+# constant is taken from it. What IS validated here is rest-neutrality and the
+# relative ordering — not these numbers.
+TAU_RAAS_S = 300.0
+TAU_ADH_S  = 600.0
+
+# Half-activation MAP deficit (mmHg below the resting reference). AVP is set
+# less sensitive than RAAS: it is classically the later, larger-haemorrhage
+# hormone. Hill exponent > 1 gives the threshold shape the reserve behaviour
+# needs.
+EC50_RAAS_MMHG = 15.0
+EC50_ADH_MMHG  = 22.0
+HILL_N_NEUROHUMORAL = 2.0
+
+# Maximum SVR contribution, as a fraction. Taken as a RATIO from Hasser &
+# Bishop's unmasked contributions against resting canine pressure (~14 and
+# ~12 mmHg on ~95 mmHg), per the species rule in CLAUDE.md — a ratio survives
+# the species jump where an absolute pressure does not. At fixed cardiac output
+# dMAP/MAP ~ dSVR/SVR, which is what makes the conversion legitimate.
+RAAS_MAX_SVR_FRACTION = 0.15
+ADH_MAX_SVR_FRACTION  = 0.13
 
 # Capillary beds: (arterial compartment, venous compartment, share of total Kf).
 # Shares follow roughly the resting distribution of cardiac output / exchange
@@ -308,10 +359,18 @@ class SlowState:
     plasma_volume_ref_ml: float = 0.0
 
     # --- Phase 3: RAAS / ADH -----------------------------------------------
-    # Normalised activation, 0 = none, 1 = maximal. Effects are applied as
-    # multipliers on SVR (and, for ADH V2, on renal water handling).
+    # Normalised activation, 0 = none, 1 = maximal. Applied as a multiplier on
+    # systemic arterial resistance (see neurohumoral_svr_factor). The ADH V2
+    # renal arm is deliberately absent — the model has no urine output or
+    # intake, so retention would have no loss to reduce.
     angiotensin: float = 0.0
     adh: float = 0.0
+
+    # Low-pass arterial pressure and its resting reference (mmHg). The
+    # reference must be a FILTERED value, not an instantaneous sample, or the
+    # deficit that drives the hormones inherits the pulse.
+    map_filt_mmhg: float = 0.0
+    map_ref_mmhg: float = 0.0
 
     # --- Phase 4: baroreflex resetting -------------------------------------
     # Offset (mmHg) applied to the baroreflex MAP setpoint. Without this the
@@ -456,6 +515,55 @@ def _update_fluid_exchange(state: SlowState, dt_slow: float, V: np.ndarray,
     return dV
 
 
+def _update_neurohumoral(state: SlowState, dt_slow: float, map_now: float,
+                         params) -> None:
+    """Advance angiotensin and AVP activation toward their target levels.
+
+    Driven by the DEFICIT of mean arterial pressure below the resting reference,
+    so both are exactly zero at rest by construction — which is what the human
+    evidence requires (Bussien 1984: a V1 antagonist changes nothing in a
+    normally hydrated volunteer, even with the renin system blocked too).
+
+    Each system has its own switch, so it can be validated in isolation. Without
+    that, every earlier phase's test silently becomes a combined test — which is
+    exactly what happened when Phase 2 landed on Phase 1.
+    """
+    deficit = max(0.0, state.map_ref_mmhg - map_now)
+
+    for enabled_attr, field, tau, ec50 in (
+        ("slow_raas_enabled", "angiotensin", TAU_RAAS_S, EC50_RAAS_MMHG),
+        ("slow_adh_enabled",  "adh",         TAU_ADH_S,  EC50_ADH_MMHG),
+    ):
+        if not getattr(params, enabled_attr, True):
+            # Decay to zero rather than freezing, so a disabled system cannot
+            # leave a stale activation applied to the circulation.
+            setattr(state, field,
+                    getattr(state, field) * math.exp(-dt_slow / tau))
+            continue
+        target = _hill(deficit, ec50, HILL_N_NEUROHUMORAL)
+        current = getattr(state, field)
+        setattr(state, field, current + (target - current) * dt_slow / tau)
+
+
+def _hill(x: float, ec50: float, n: float) -> float:
+    """Hill activation, 0 -> 1. Zero at zero stimulus, so rest is neutral."""
+    if x <= 0.0:
+        return 0.0
+    xn = x ** n
+    return xn / (ec50 ** n + xn)
+
+
+def neurohumoral_svr_factor(state: SlowState) -> float:
+    """Multiplier the hormonal systems contribute to systemic arterial resistance.
+
+    Exactly 1.0 at rest. Composes multiplicatively with the baroreflex and drug
+    factors, which is the right structure: these are parallel effectors acting
+    on the same vessels, and blockade of one does not alter the others' gain.
+    """
+    return ((1.0 + RAAS_MAX_SVR_FRACTION * state.angiotensin)
+            * (1.0 + ADH_MAX_SVR_FRACTION * state.adh))
+
+
 def _update_stress_relaxation(state: SlowState, dt_slow: float,
                               P: np.ndarray, compartments) -> None:
     """Viscoelastic creep of the venous wall.
@@ -527,6 +635,8 @@ def update_slow_state(
             state.plasma_protein_g, state.plasma_volume_ref_ml
         )
         state.prev_blood_volume_ml = blood_volume
+        state.map_filt_mmhg = float(P[idx_map["aorta"]])
+        state.map_ref_mmhg = state.map_filt_mmhg
         state.last_update_s = t
         return
 
@@ -535,6 +645,13 @@ def update_slow_state(
         return
     state.last_update_s = t
 
+    # Low-pass arterial pressure on the slow clock, then advance the hormonal
+    # systems against it. Done first so every mechanism this step sees the same
+    # filtered pressure.
+    alpha = 1.0 - math.exp(-dt_slow / TAU_MAP_FILTER_S)
+    state.map_filt_mmhg += (float(P[idx_map["aorta"]]) - state.map_filt_mmhg) * alpha
+    _update_neurohumoral(state, dt_slow, state.map_filt_mmhg, params)
+
     if getattr(params, "slow_stress_relaxation_enabled", True):
         _update_stress_relaxation(state, dt_slow, P, params.compartments)
 
@@ -542,7 +659,4 @@ def update_slow_state(
         return _update_fluid_exchange(state, dt_slow, V, P, idx_map)
     return None
 
-    # Phase 2: transcapillary refill      -> _update_fluid_exchange(...)
-    # Phase 3: RAAS / ADH                 -> _update_neurohumoral(...)
     # Phase 4: baroreflex resetting       -> _update_setpoint(...)
-    return
