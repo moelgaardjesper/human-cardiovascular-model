@@ -13,6 +13,8 @@ Tiers
 BSA formula: Mosteller (1987): BSA = sqrt(height_cm * weight_kg / 3600)
 """
 
+from dataclasses import replace
+
 import numpy as np
 from .compartments import default_compartments, Compartment
 
@@ -65,17 +67,18 @@ def scale_compartments(
 
     for c in compartments:
         # Unstressed volumes scale with blood volume
-        new_v0     = c.unstressed_volume * bv_scale
-        new_c      = c.compliance * bv_scale       # compliance scales with volume
-        new_r      = c.resistance                  # resistance starts unchanged
-        new_vinit  = c.init_volume * bv_scale
-        scaled.append(Compartment(
-            name=c.name,
-            compliance=new_c,
-            resistance=new_r,
-            unstressed_volume=new_v0,
-            height_m=c.height_m,
-            init_volume=new_vinit,
+        # dataclasses.replace copies EVERY field and overrides only the scaled
+        # ones. Listing fields by hand here silently dropped `p_stiffen` — so
+        # every patient-scaled scenario, which is all of the literature tests,
+        # ran with LINEAR limb veins instead of the collapsible-tube law — and
+        # would have dropped `drain_resistance` the same way. Do not go back to
+        # naming fields individually.
+        scaled.append(replace(
+            c,
+            compliance=c.compliance * bv_scale,     # compliance scales with volume
+            unstressed_volume=c.unstressed_volume * bv_scale,
+            init_volume=c.init_volume * bv_scale,
+            # resistance deliberately unscaled here; tiers 1-3 below adjust it
         ))
 
     cardiac = {
