@@ -17,6 +17,17 @@ Factor sign conventions (all multiplicative, 1.0 = no effect):
                           >1 = venodilation (pools blood → reduces preload/CO)
                         This matches the baroreflex `v0_vein_factor` arm and
                         is applied in circulation.py `_odes`.
+    postcap_factor      >1 raises POSTCAPILLARY resistance — the venous drainage
+                        out of each exchange bed. Raising it dams blood in the
+                        venous compartment, lifting venous and hence capillary
+                        pressure, so fluid filters OUT of the plasma. 1.0 = no
+                        effect. Applied in circulation.py `_odes` to the four
+                        systemic venous drainage flows only.
+
+Note that `venous_tone_factor` and `postcap_factor` are different mechanisms on
+the same vessels and are NOT interchangeable: the first is capacitance (how much
+volume the veins hold unstressed), the second is resistance (how fast blood
+leaves). Only the second moves capillary pressure.
 """
 
 import numpy as np
@@ -27,6 +38,52 @@ def _hill(dose: float, ec50: float, e_max: float, n: float = 1.0) -> float:
     if dose <= 0.0:
         return 0.0
     return e_max * (dose ** n) / (ec50 ** n + dose ** n)
+
+
+# --- alpha-1 postcapillary constriction -------------------------------------
+#
+# SHAPE is sourced; MAGNITUDE is fitted. Abboud & Eckstein 1968 II (J Clin Invest
+# 47:10-19, PMID 16695932) perfused the dog forelimb at constant flow and recorded
+# arterial and venous segment pressures separately. Doubling the norepinephrine
+# dose (1 -> 2 ug) raised the arterial response 66.1 -> 82.5 mmHg (x1.25) but the
+# venous response 6.0 -> 13.5 mmHg (x2.25) — the venous dose-response curve is
+# 1.80x steeper. That ratio is dimensionless, so it survives the dog-to-human jump
+# where an absolute resistance would not (see CLAUDE.md species rule).
+#
+# The parameters below reproduce it: over a doubling of dose in the clinical range
+# the postcapillary arm grows ~1.85x faster than the arterial arm, against
+# Abboud's 1.80. Achieved by a higher Hill coefficient (1.6 vs 0.8) and a higher
+# EC50 (0.20 vs 0.10) than the arterial arm, i.e. a curve that is still climbing
+# where the arterial one has begun to saturate.
+#
+# This also reconciles Doorenbos 1991 (human forearm, PMID 1829369), which found
+# no norepinephrine effect on capillary filtration and called NE "a predominant
+# arterial constrictor". That was a single LOW dose. With a steeper venous slope,
+# arterial predominance at low dose and venous catch-up higher up are one curve.
+#
+# E_MAX is anchored to Abboud's VENOUS PRESSURE response, not to a downstream
+# endpoint. At constant flow, pressure is proportional to resistance, so his
+# 2 ug figures — small vein pressure rising 13.5 mmHg on a resting 16.9 mmHg —
+# imply the venous segment resistance roughly doubled (x1.8). E_MAX = 2.60 puts
+# postcap_factor at 2.01 for norepinephrine 0.15 mcg/kg/min, the mid-clinical
+# dose, which matches that.
+#
+# IT IS DELIBERATELY *NOT* FITTED TO LISTER. Fitting it to reproduce Lister's
+# 15-19% plasma volume loss would require postcap_factor around 4.5, roughly
+# 2.5x what Abboud measured, and would cost ~20% of cardiac output. The residual
+# gap is not this parameter's to close: the model's systemic pre/post-capillary
+# resistance ratio is ~25 (arteriolar 3.7-4.6 against venous 0.12-0.17) where the
+# physiological value is ~4, so capillary pressure is pinned to venous pressure
+# and barely responds to ANY pre/post redistribution. See backlog item 20.
+# Inflating a sourced drug parameter to paper over a structural calibration error
+# is the same mistake as closing the gap by raising Kf, which this project has
+# already refused once.
+#
+# Values above the mid-clinical dose are extrapolation: the saturating value of
+# 3.6 is not constrained by any source read so far.
+ALPHA1_POSTCAP_EC50  = 0.20
+ALPHA1_POSTCAP_HILL  = 1.6
+ALPHA1_POSTCAP_EMAX  = 2.60
 
 
 def norepinephrine(dose_mcg_kg_min: float) -> dict:
@@ -46,6 +103,11 @@ def norepinephrine(dose_mcg_kg_min: float) -> dict:
         "rv_emax_factor": emax_factor * 0.7,
         # α1 venoconstriction reduces venous V0 (recruits splanchnic reservoir) → <1.0
         "venous_tone_factor": 1.0 - _hill(dose_mcg_kg_min, ec50=0.20, e_max=0.15),
+        # α1 postcapillary constriction raises capillary pressure → filtration out
+        "postcap_factor": 1.0 + _hill(dose_mcg_kg_min,
+                                      ec50=ALPHA1_POSTCAP_EC50,
+                                      e_max=ALPHA1_POSTCAP_EMAX,
+                                      n=ALPHA1_POSTCAP_HILL),
     }
 
 
@@ -64,6 +126,17 @@ def phenylephrine(dose_mcg_kg_min: float) -> dict:
         "rv_emax_factor": 1.0,
         # Pure α1 venoconstriction reduces venous V0 → <1.0
         "venous_tone_factor": 1.0 - _hill(dose_mcg_kg_min, ec50=0.80, e_max=0.10),
+        # Postcapillary constriction. Abboud [A4] showed the venous response is
+        # α-receptor-mediated — phenoxybenzamine abolished it (-84%) while only
+        # partly reducing the arterial (-28%) — so a pure α1 agonist must have it.
+        # ASSUMPTION: magnitude taken equal to norepinephrine's, EC50 shifted by the
+        # same ratio as the arterial arm (0.50/0.10 = 5x). There is no phenylephrine-
+        # specific measurement; leaving this at 1.0 would itself assert that a pure
+        # α1 agonist has no venous effect, which Abboud contradicts.
+        "postcap_factor": 1.0 + _hill(dose_mcg_kg_min,
+                                      ec50=ALPHA1_POSTCAP_EC50 * 5.0,
+                                      e_max=ALPHA1_POSTCAP_EMAX,
+                                      n=ALPHA1_POSTCAP_HILL),
     }
 
 
@@ -224,6 +297,12 @@ def combined_drug_factors(drugs: dict) -> dict:
         "lv_emax_factor": 1.0,
         "rv_emax_factor": 1.0,
         "venous_tone_factor": 1.0,
+        # Drugs without a sourced postcapillary ratio return 1.0 and so leave this
+        # untouched. Deliberately NOT populated for vasopressin (Quillen 1977 in cat
+        # ileum reports AVP raising the PRE/post ratio, i.e. the opposite sign — but
+        # that paper has not been read in full, so no number is entered),
+        # epinephrine, propofol or spinal block.
+        "postcap_factor": 1.0,
     }
     for drug_name, dose in drugs.items():
         fn = drug_fns.get(drug_name)
@@ -241,4 +320,5 @@ NEUTRAL_FACTORS = {
     "lv_emax_factor": 1.0,
     "rv_emax_factor": 1.0,
     "venous_tone_factor": 1.0,
+    "postcap_factor": 1.0,
 }

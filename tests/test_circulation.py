@@ -144,6 +144,7 @@ import numpy as np
 import pytest
 
 from model.circulation import SimParams, run_simulation
+from model.compartments import IDX
 from model.gravity import GravityEnvironment
 from model.patient import build_patient_params
 from model.heart import LV_EMAX, RV_EMAX
@@ -1204,4 +1205,163 @@ def test_resting_baroreflex_tone_is_arterial_not_venous():
     assert arterial_tone > venous_tone, (
         f"resting tone is not arterial-dominant (arterial {arterial_tone:.3f} "
         f"vs venous {venous_tone:.3f}), which inverts [A1]"
+    )
+
+
+# ===========================================================================
+# 16. Postcapillary resistance — mechanism regression guard (backlog item 18)
+#
+# [A2] Abboud FM, Eckstein JW (1968). Vascular responses after alpha adrenergic
+#      receptor blockade. II. Responses of venous and arterial segments to
+#      adrenergic stimulation in the forelimb of dog. J Clin Invest 47(1):10-19.
+#      PMID 16695932. DOI 10.1172/JCI105700.
+#      Dog forelimb perfused at CONSTANT flow, arterial and venous segment
+#      pressures recorded separately. Doubling the norepinephrine dose (1 -> 2 ug)
+#      raised the arterial response 66.1 -> 82.5 mmHg (x1.25) but the venous
+#      response 6.0 -> 13.5 mmHg (x2.25): the venous dose-response curve is 1.80x
+#      steeper. The authors state the consequence directly — alpha blockade works
+#      "by antagonizing the increase in POSTCAPILLARY venous resistance and by
+#      preserving an increase in PRECAPILLARY arterial resistance, [to] prevent
+#      the excessive CAPILLARY FILTRATION which may occur during adrenergic
+#      stimulation."
+#
+# [D1] Doorenbos CJ, Blauw GJ, van Brummelen P (1991). Arterial and venous effects
+#      of atrial natriuretic peptide in the human forearm. Am J Hypertens
+#      4(4 Pt 1):333-40. PMID 1829369. DOI 10.1093/ajh/4.4.333.
+#      Human forearm, single LOW norepinephrine dose: no effect on capillary
+#      filtration, NE classified as "a predominant arterial constrictor". With a
+#      steeper venous slope [A2] this is the low-dose end of the same curve, which
+#      is why the postcapillary arm must be a Hill curve and not a flat multiplier.
+#
+# `postcap_factor` scales the venous DRAINAGE resistance of each exchange bed.
+# Before this existed, capillary pressure was almost drug-insensitive — raising
+# svr_factor lowered `*_art` pressure while venoconstriction raised `*_vein`
+# pressure and the two nearly cancelled — so norepinephrine removed ~0.13% of the
+# plasma volume against Lister's measured 15-19% in man.
+#
+# These guards are calibration-independent, exactly as in section 14: they assert
+# the mechanism is live, correctly signed, and distinct from venous tone. Do not
+# weaken them to make a dose fit.
+# ===========================================================================
+
+def _run_isolated_factor(**factors):
+    """Run with one or more isolated drug factors, all others neutral.
+
+    Reports the peripheral venous pool as well as the central measures, which is
+    what separates a resistance effect from a capacitance one.
+    """
+    from model.pharmacology import NEUTRAL_FACTORS
+    p = SimParams()
+    p.baroreflex_enabled = False
+    p.drug_factors = dict(NEUTRAL_FACTORS)
+    p.drug_factors.update(factors)
+    r = run_simulation(p, duration_s=30.0, dt=DT, use_baroreflex=False)
+    h = len(r["map"]) // 2
+    out = {k: float(np.mean(r[k][h:])) for k in ("map", "cvp", "co", "sv")}
+    # Volume held in the exchange beds upstream of the drainage resistance
+    vols = r["volumes"][h:]
+    out["venous_pool"] = float(np.mean(
+        vols[:, IDX["splanchnic_vein"]] + vols[:, IDX["upper_body_vein"]]
+        + vols[:, IDX["renal_vein"]]))
+    return out
+
+
+def _run_postcap(pc_factor):
+    """Run with an isolated postcap_factor (all other factors neutral)."""
+    return _run_isolated_factor(postcap_factor=pc_factor)
+
+
+def test_postcap_factor_defaults_are_neutral():
+    """Every drug without a sourced postcapillary ratio must return exactly 1.0.
+
+    A silent non-unity default would move capillary pressure — and hence plasma
+    volume — for drugs we have no evidence for.
+    """
+    from model.pharmacology import (NEUTRAL_FACTORS, combined_drug_factors,
+                                    vasopressin, epinephrine, propofol,
+                                    spinal_anaesthesia)
+
+    assert NEUTRAL_FACTORS["postcap_factor"] == 1.0
+    assert combined_drug_factors({})["postcap_factor"] == 1.0
+    assert combined_drug_factors({"norepinephrine": 0.0})["postcap_factor"] == 1.0
+
+    for fn, dose, name in ((vasopressin, 2.0, "vasopressin"),
+                           (epinephrine, 0.1, "epinephrine"),
+                           (propofol, 2.0, "propofol"),
+                           (spinal_anaesthesia, 10.0, "spinal")):
+        assert fn(dose).get("postcap_factor", 1.0) == 1.0, (
+            f"{name} returned a postcapillary effect, but no source has been read "
+            f"for it. Unsourced drugs must stay at exactly 1.0"
+        )
+
+
+def test_alpha1_postcapillary_slope_is_steeper_than_arterial():
+    """[A2] The venous dose-response must rise faster than the arterial one.
+
+    This is the sourced SHAPE of the mechanism and the property that reconciles
+    [A2] with [D1]. A flat multiplier, or any parameterisation where the two arms
+    rise together, fails here.
+    """
+    from model.pharmacology import norepinephrine
+
+    lo, hi = 0.05, 0.10          # a doubling, mid clinical range
+    a, b = norepinephrine(lo), norepinephrine(hi)
+    arterial = (b["svr_factor"] - 1.0) / (a["svr_factor"] - 1.0)
+    venous   = (b["postcap_factor"] - 1.0) / (a["postcap_factor"] - 1.0)
+
+    assert venous > arterial, (
+        f"postcapillary arm grew x{venous:.2f} against arterial x{arterial:.2f}; "
+        f"[A2] measured the venous dose-response as the STEEPER of the two"
+    )
+    ratio = venous / arterial
+    assert 1.4 < ratio < 2.3, (
+        f"venous/arterial slope ratio is {ratio:.2f}; [A2] measured 1.80 "
+        f"(arterial x1.25 vs venous x2.25 over a dose doubling)"
+    )
+
+
+def test_postcap_factor_is_live_and_correctly_signed():
+    """Raising postcapillary resistance must dam blood in the exchange beds.
+
+    Fails bit-for-bit if the factor is assembled but never applied — the exact
+    failure mode that once silently disabled `venous_tone_factor` (section 14).
+    """
+    base = _run_postcap(1.0)
+    high = _run_postcap(2.0)
+
+    assert high["venous_pool"] > base["venous_pool"] + 1.0, (
+        f"raising postcapillary resistance left venous volume at "
+        f"{high['venous_pool']:.1f} vs {base['venous_pool']:.1f} mL. Impeding "
+        f"drainage must pool blood in the exchange beds — the mechanism is not live"
+    )
+    assert high["cvp"] < base["cvp"], (
+        f"CVP rose ({base['cvp']:.2f} -> {high['cvp']:.2f}) when postcapillary "
+        f"resistance was raised. Damming blood UPSTREAM of the great veins must "
+        f"lower central venous pressure, not raise it"
+    )
+
+
+def test_postcap_and_venous_tone_are_distinct_mechanisms():
+    """Postcapillary resistance and venous tone must not be interchangeable.
+
+    Both act on veins, but one is resistance and the other capacitance, and only
+    the first moves capillary pressure. They must show OPPOSITE central signatures:
+    venoconstriction expels blood centrally (CVP up), postcapillary constriction
+    traps it peripherally (CVP down). If a future edit collapses one into the
+    other, this fails.
+    """
+    base = _run_postcap(1.0)
+    postcap = _run_postcap(2.0)
+    venocon = _run_isolated_factor(venous_tone_factor=0.85)   # < 1 = venoconstriction
+
+    assert postcap["cvp"] < base["cvp"] < venocon["cvp"], (
+        f"expected postcapillary constriction to LOWER CVP and venoconstriction "
+        f"to RAISE it, got postcap {postcap['cvp']:.2f}, base {base['cvp']:.2f}, "
+        f"venoconstriction {venocon['cvp']:.2f}"
+    )
+    assert postcap["venous_pool"] > base["venous_pool"] > venocon["venous_pool"], (
+        f"expected postcapillary constriction to POOL blood peripherally and "
+        f"venoconstriction to expel it, got postcap "
+        f"{postcap['venous_pool']:.1f}, base {base['venous_pool']:.1f}, "
+        f"venoconstriction {venocon['venous_pool']:.1f} mL"
     )

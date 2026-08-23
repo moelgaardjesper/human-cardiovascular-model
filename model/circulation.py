@@ -452,6 +452,36 @@ def _odes(t: float, V: np.ndarray, params: SimParams, baro: BaroreflexController
         return r * svr_factor if systemic_arterial else r
 
     # -----------------------------------------------------------------------
+    # Postcapillary (venous drainage) resistance — backlog item 18
+    # -----------------------------------------------------------------------
+    # The precapillary resistance is already drug-responsive: it is the arteriolar
+    # resistance R("*_art", True), which sits UPSTREAM of each `*_art` compartment
+    # (hence those compartments reading 8-22 mmHg — they are post-arteriolar).
+    # The postcapillary side had no drug pathway at all, so raising svr_factor
+    # lowered `*_art` pressure while venoconstriction raised `*_vein` pressure and
+    # the two very nearly cancelled at the capillary. Capillary pressure was
+    # therefore almost drug-insensitive, and norepinephrine removed ~0.13% of the
+    # plasma volume against Lister's measured 15-19% in man.
+    #
+    # This factor scales the drainage OUT of each exchange bed, which is exactly
+    # what Abboud & Eckstein 1968 II measured: constriction of the venous segments
+    # downstream of their metacarpal vein raised that vein's pressure by 13.5 mmHg
+    # at constant inflow. Damming the venous compartment lifts P_v, and capillary
+    # pressure rides on P_v.
+    #
+    # It deliberately does NOT touch the art->vein resistance. That segment carries
+    # the intra-bed pre/post split expressed by CAPILLARY_PRESSURE_FRACTION, which
+    # no source we have measures; inventing a drug response for it would be a guess
+    # layered on a guess.
+    postcap_factor = drugs.get("postcap_factor", 1.0)
+
+    def R_drain(idx_name: str) -> float:
+        """Venous drainage resistance for an exchange bed (postcapillary).
+
+        """
+        return comp[IDX[idx_name]].resistance * postcap_factor
+
+    # -----------------------------------------------------------------------
     # Flows (mL/s) — Q > 0 means forward flow
     # One-way valve: max(Q, 0) for cardiac valve positions
     # -----------------------------------------------------------------------
@@ -462,7 +492,7 @@ def _odes(t: float, V: np.ndarray, params: SimParams, baro: BaroreflexController
     Q_ao_brachio  = (P[i["aorta"]] - P[i["brachiocephalic"]] + hdp("aorta") - hdp("brachiocephalic")) / R("brachiocephalic", True)
     Q_brachio_ub  = (P[i["brachiocephalic"]] - P[i["upper_body_art"]] + hdp("brachiocephalic") - hdp("upper_body_art")) / R("upper_body_art", True)
     Q_ub_art_vein = (P[i["upper_body_art"]] - P[i["upper_body_vein"]]) / R("upper_body_vein")
-    Q_ub_vein_svc = (P[i["upper_body_vein"]] - P[i["svc"]] + hdp("upper_body_vein") - hdp("svc")) / R("svc")
+    Q_ub_vein_svc = (P[i["upper_body_vein"]] - P[i["svc"]] + hdp("upper_body_vein") - hdp("svc")) / R_drain("svc")
 
     Q_ao_abd      = (P[i["aorta"]] - P[i["abdominal_aorta"]] + hdp("aorta") - hdp("abdominal_aorta")) / R("abdominal_aorta", True)
     Q_abd_renal   = (P[i["abdominal_aorta"]] - P[i["renal_art"]]) / R("renal_art", True)
@@ -497,10 +527,10 @@ def _odes(t: float, V: np.ndarray, params: SimParams, baro: BaroreflexController
     # Pump boost applied to foot→calf and calf→thigh (calf contraction zone).
     Q_foot_calf  = max(0.0, (P[i["foot_vein"]]  - P[i["calf_vein"]]  + hdp("foot_vein")  - hdp("calf_vein")  + pump_p) / R("foot_vein"))
     Q_calf_thigh = max(0.0, (P[i["calf_vein"]]  - P[i["thigh_vein"]] + hdp("calf_vein")  - hdp("thigh_vein") + pump_p) / R("calf_vein"))
-    Q_thigh_ivc  = max(0.0, (P[i["thigh_vein"]] - P[i["ivc"]]        + hdp("thigh_vein") - hdp("ivc"))                  / R("thigh_vein"))
+    Q_thigh_ivc  = max(0.0, (P[i["thigh_vein"]] - P[i["ivc"]]        + hdp("thigh_vein") - hdp("ivc"))                  / R_drain("thigh_vein"))
 
-    Q_renal_ivc   = (P[i["renal_vein"]]     - P[i["ivc"]]) / R("renal_vein")
-    Q_splanch_ivc = (P[i["splanchnic_vein"]] - P[i["ivc"]]) / R("splanchnic_vein")
+    Q_renal_ivc   = (P[i["renal_vein"]]     - P[i["ivc"]]) / R_drain("renal_vein")
+    Q_splanch_ivc = (P[i["splanchnic_vein"]] - P[i["ivc"]]) / R_drain("splanchnic_vein")
 
     # Right heart inflows — one-way valves prevent retrograde venous flow.
     # Without the max(0,...) guard, positive ITP (mechanical PPV) can raise
