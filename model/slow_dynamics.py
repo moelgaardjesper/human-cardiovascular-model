@@ -192,6 +192,22 @@ CAPILLARY_PRESSURE_FRACTION = 0.20
 # staying far faster than the hormone kinetics, so it does not distort them.
 TAU_MAP_FILTER_S = 10.0
 
+# Low-pass on the full compartment pressure vector, used by every slow mechanism.
+#
+# WHY THIS EXISTS. Transcapillary filtration responds to MEAN capillary pressure
+# over seconds to minutes, not to the instantaneous arterial pulse. The resting
+# reference `p_ref` used to be a single instantaneous sample of P, and the running
+# deviation was measured against raw pulsatile P. That was tolerable while the
+# artery-to-vein gradient was ~1.2-1.7 mmHg: 20% of it is a third of a mmHg, so the
+# beat-to-beat swing in Pc was negligible. Since the arteriolar-placement fix
+# (backlog item 20) that gradient is ~76 mmHg, so Pc swings roughly 8 mmHg per beat
+# and a single sample of it picks an arbitrary point on the pulse — a systematic
+# offset of several mmHg in the reference, which with Kf = 6.7 mL/min/mmHg is
+# enough to drive tens of mL of spurious filtration at rest.
+# 5 s is ~6 cardiac cycles (long enough to remove the pulse) and ~50x shorter than
+# the fastest slow mechanism (TAU_STRESS_RELAX = 250 s), so it does not distort them.
+TAU_PRESSURE_FILTER_S = 5.0
+
 # Activation kinetics. ORDER-OF-MAGNITUDE CHOICES, not fitted: plasma renin
 # activity rises within minutes of haemorrhage and AVP within minutes with a
 # 10-20 min plasma half-life. Roessler 2011 (PMID 21281280, HUMAN) covers the
@@ -381,6 +397,12 @@ class SlowState:
     # --- Bookkeeping --------------------------------------------------------
     # Simulated time (s) at which the slow state was last advanced.
     last_update_s: float = -1e9
+
+    # Low-passed compartment pressures (mmHg) and the clock for that filter.
+    # Every slow mechanism reads THESE, not the raw pulsatile pressures — see
+    # TAU_PRESSURE_FILTER_S. Runs from t=0 so it is fully converged by SETTLE_S.
+    p_filt: np.ndarray | None = None
+    last_filter_s: float = -1e9
 
     # Resting transmural pressure per compartment (mmHg). NOT taken from
     # init_volume (which is not the model's true equilibrium — see SETTLE_S);
@@ -580,6 +602,25 @@ def _update_stress_relaxation(state: SlowState, dt_slow: float,
         )
 
 
+def _advance_pressure_filter(state: SlowState, t: float, P: np.ndarray) -> None:
+    """Low-pass the compartment pressures on the slow clock, in place.
+
+    Removes the cardiac pulse from the pressures every slow mechanism reads, so
+    that both the resting reference and the running deviation are mean pressures.
+    See TAU_PRESSURE_FILTER_S for why this is load-bearing rather than cosmetic.
+    """
+    if state.p_filt is None:
+        state.p_filt = np.array(P, dtype=float, copy=True)
+        state.last_filter_s = t
+        return
+    dt = t - state.last_filter_s
+    if dt < SLOW_DT:
+        return
+    state.last_filter_s = t
+    alpha = 1.0 - math.exp(-dt / TAU_PRESSURE_FILTER_S)
+    state.p_filt += (np.asarray(P, dtype=float) - state.p_filt) * alpha
+
+
 def update_slow_state(
     state: SlowState,
     t: float,
@@ -618,10 +659,16 @@ def update_slow_state(
 
     idx_map = {c.name: k for k, c in enumerate(params.compartments)}
 
+    # Keep the pressure filter running from t = 0 so the resting reference
+    # captured at SETTLE_S is a MEAN pressure rather than one arbitrary point on
+    # the arterial pulse (see TAU_PRESSURE_FILTER_S).
+    _advance_pressure_filter(state, t, P)
+
     # Hold everything inert until the model has settled, then capture the
     # resting reference from its own state (see SETTLE_S).
     if t < SETTLE_S:
         return
+    P = state.p_filt          # every mechanism below sees filtered pressures
     if state.p_ref is None:
         state.p_ref = np.array(P, dtype=float, copy=True)
         blood_volume = float(V.sum())

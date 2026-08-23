@@ -666,6 +666,16 @@ def test_norepinephrine_lowers_plasma_volume_and_reverses():
 
     Short window on purpose: the mechanism plateaus within ~25 min, so a few
     minutes is enough to establish direction.
+
+    THIS TEST CHECKS DIRECTION ONLY. It used to demand >50% recovery within 140 s
+    of stopping, which is not a claim [S4] makes — Lister says recovery takes
+    ABOUT AN HOUR, so requiring half of it inside two and a half minutes asserts a
+    rate roughly 25x faster than the source. That threshold only ever passed
+    because capillary pressure was pinned near venous pressure and almost no fluid
+    moved; it began failing the moment the postcapillary pathway made the effect
+    real, and again when the arteriolar-placement fix (backlog item 20) tripled Pc.
+    The RATE is now checked against Lister's own timescale in
+    `test_norepinephrine_recovery_matches_lister_timescale` below.
     """
     from model.pharmacology import combined_drug_factors
 
@@ -690,9 +700,77 @@ def test_norepinephrine_lowers_plasma_volume_and_reverses():
         f"15-19% under NE; the sign here is wrong or the pathway is dead"
     )
     recovered = (after - during) / (before - during)
-    assert recovered > 0.5, (
-        f"plasma volume recovered only {recovered * 100:.0f}% after the "
-        f"infusion stopped; [S4] has it returning within about an hour"
+    assert recovered > 0.05, (
+        f"plasma volume did not begin returning after the infusion stopped "
+        f"({recovered * 100:.1f}% recovered by 140 s). [S4] Fig 5 has the loss "
+        f"reversing once NE is withdrawn; a pressor must not remove plasma "
+        f"volume permanently. The RATE is checked against Lister's ~1 h "
+        f"timescale in test_norepinephrine_recovery_matches_lister_timescale"
+    )
+
+
+@pytest.mark.slow
+def test_norepinephrine_recovery_matches_lister_timescale():
+    """[S4] Plasma volume must come back over ABOUT AN HOUR, not in seconds.
+
+    Lister Fig 5: after the norepinephrine infusion is stopped, plasma volume
+    "recovers within about an hour". That is the only rate claim the source makes
+    about reversal, and it has two testable consequences, which this checks as a
+    pair because either alone is trivially satisfiable:
+
+      (a) recovery IS substantially complete by one hour;
+      (b) recovery is NOT substantially complete within a couple of minutes —
+          otherwise "about an hour" would be a strange description.
+
+    (b) is the physiology that the old fast-test threshold had backwards.
+    Reabsorption is slower than filtration was: the fluid leaves down a raised
+    capillary pressure, but returns only once the concentrated plasma protein has
+    raised oncotic pressure enough to reverse the gradient, and that gradient is
+    the smaller of the two.
+
+    KNOWN GAP, deliberately not asserted here: the model recovers roughly 4x
+    faster than Lister overall (essentially complete by ~15 min against his
+    ~1 h), the same direction as refill running ~1.6x fast. Bounding that would
+    encode the gap as correct. It is tracked in the validation log instead.
+
+    ~70 min simulated (about 23 min wall) — hence `slow`.
+    """
+    from model.pharmacology import combined_drug_factors
+
+    D = 4200.0
+    p = SimParams()
+    p.ventilation_mode = "none"
+    p.slow_dynamics_enabled = True
+    p.drug_factors = combined_drug_factors({"norepinephrine": 0.15})
+    p.drug_start_s, p.drug_stop_s = 90.0, 300.0
+    r = run_simulation(p, duration_s=D, dt=DT)
+
+    def pv_at(t, w=10.0):
+        n = len(r["plasma_volume"])
+        seg = r["plasma_volume"][int(n * (t - w / 2) / D):int(n * (t + w / 2) / D)]
+        return float(np.nanmean(seg))
+
+    before, during = pv_at(85), pv_at(297)
+    removed = before - during
+    assert removed > 0.5, (
+        f"norepinephrine removed only {removed:.2f} mL; nothing to recover from"
+    )
+
+    def frac(t):
+        return (pv_at(t) - during) / removed
+
+    early, one_hour = frac(140.0), frac(3900.0)
+
+    assert one_hour > 0.80, (
+        f"only {one_hour * 100:.0f}% of the plasma volume had returned an hour "
+        f"after the infusion stopped; [S4] Fig 5 has recovery essentially "
+        f"complete by then"
+    )
+    assert early < 0.70, (
+        f"{early * 100:.0f}% of the loss had already reversed 140 s after "
+        f"stopping. [S4] describes recovery over ABOUT AN HOUR, and reabsorption "
+        f"is driven by the oncotic gradient, which is weaker than the capillary "
+        f"pressure that drove the loss — near-instant reversal is not physiological"
     )
 
 
@@ -783,17 +861,23 @@ def test_refill_trajectory_matches_lister_human_haemorrhage():
 
 
 @pytest.mark.xfail(strict=True, reason=(
-    "KNOWN GAP, not a flaky test. Modelled capillary pressure is nearly "
-    "insensitive to vasoactive drugs, so a pressor barely shifts fluid: "
-    "measured -0.13% against Lister's -15%/-19%, a shortfall of about 100x. "
-    "Cause is structural — the *_art compartments sit at 8-22 mmHg, just above "
-    "their paired veins, because the arteriolar resistance is UPSTREAM of them, "
-    "so Pc = P_v + 0.20*(P_a - P_v) is essentially venous pressure and the fixed "
-    "0.20 weighting cannot express the disproportionate VENULAR constriction "
-    "Lister invokes. Precapillary constriction (svr_factor, lowers Pc) and "
-    "venoconstriction (venous_tone_factor, raises Pc) then very nearly cancel: "
-    "net dPc = +0.15 mmHg for a 20 mmHg rise in systolic pressure. Fixing this "
-    "needs a drug-sensitive pre/post-capillary resistance ratio (backlog). "
+    "KNOWN GAP, and the two obvious causes have now been RULED OUT. "
+    "(1) The missing postcapillary pathway was built — pharmacology.postcap_factor, "
+    "sourced from Abboud & Eckstein 1968 II, guarded in test_circulation.py "
+    "section 16 — and moved the result 9x, from -0.13% to -1.19%. "
+    "(2) The mis-wired arteriolar resistance was fixed (backlog item 20): capillary "
+    "pressure went from 10.78 to 24.48 mmHg and the *_art compartments from 8.6 to "
+    "79-84, matching what they were parameterised for. "
+    "NEITHER CLOSED THE GAP, and the residual is now genuinely unexplained rather "
+    "than merely unaddressed. Every other literature anchor still passes (Guyton "
+    "CVP dissipation, Lister refill trajectory, RAAS/ADH), so this is not a "
+    "calibration drift in those. Leading hypothesis: postcap_factor still acts on "
+    "the venous DRAINAGE path, while the Abboud mechanism is a shift in the "
+    "pre/post split INSIDE the exchange segment — a lever that only became "
+    "meaningful once the art-to-vein gradient went from 1.7 to ~76 mmHg. Rebuilding "
+    "item 18 on that split is the next thing to try. "
+    "DO NOT close this by raising Kf (sourced, Guyton) or inflating postcap_factor "
+    "(sourced, Abboud); both refusals are deliberate and logged. "
     "strict=True so this flips to a FAILURE the day it starts passing."
 ))
 @pytest.mark.slow
