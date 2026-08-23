@@ -48,10 +48,25 @@ class Compartment:
     # None → linear P = Vs/C0. Used for the limb veins so they hold recruitable
     # volume supine yet do not pool catastrophically upright.
     p_stiffen: float | None = None
+    # Drainage resistance out of an exchange bed toward the great veins
+    # (mmHg·s/mL). Only meaningful for the systemic venous compartments.
+    #
+    # WHY THIS EXISTS. `renal_vein` and `splanchnic_vein` previously used a single
+    # `resistance` value for BOTH the artery→vein flow through the exchange bed and
+    # the vein→IVC drainage — one number doing two physiologically distinct jobs,
+    # so neither could be changed without silently changing the other. Backlog
+    # item 20 needs exactly that separation: the exchange segment carries the
+    # arteriolar resistance and sets capillary pressure, while drainage sets
+    # venous return. They are not the same quantity and must not share a field.
+    #
+    # None → falls back to `resistance`, which reproduces the old shared behaviour.
+    drain_resistance: float | None = None
 
     def __post_init__(self):
         if self.init_volume is None:
             self.init_volume = self.unstressed_volume
+        if self.drain_resistance is None:
+            self.drain_resistance = self.resistance
 
     def pressure(self, volume: float) -> float:
         """Transmural pressure from stressed volume (mmHg)."""
@@ -71,6 +86,24 @@ class Compartment:
 # With C_aorta=0.50 → need VALVE_R > 0.002 s. Using 0.08 limits peak valve flow
 # to ~500 mL/s (physiological) and keeps LV-aortic ΔP ≈ 40 mmHg during ejection.
 VALVE_R = 0.08
+
+
+# ---------------------------------------------------------------------------
+# Compartments whose `resistance` field carries the systemic ARTERIOLAR
+# resistance, i.e. the artery→vein exchange segment of each bed.
+#
+# Since 2026-08-21 the arteriole sits on the flow OUT of each `*_art` compartment
+# rather than into it (backlog item 20), so the arteriolar resistance is stored on
+# the downstream venous compartment. Anything scaling systemic vascular resistance
+# — the patient calibration in patient.py, drug `svr_factor`, the baroreflex —
+# must act on THESE, not on the `*_art` compartments, which now hold only small
+# conduit resistances. Their `drain_resistance` is a separate, postcapillary
+# quantity and must NOT be scaled by an arteriolar factor.
+# ---------------------------------------------------------------------------
+ARTERIOLAR_SEGMENTS = (
+    "upper_body_vein", "renal_vein", "splanchnic_vein",
+    "thigh_vein", "calf_vein", "foot_vein",
+)
 
 
 # ---------------------------------------------------------------------------
@@ -111,21 +144,41 @@ def default_compartments() -> list[Compartment]:
     return [
         # idx  name                    C(mL/mmHg)  R(mmHg·s/mL)   V0(mL)  h(m)   init_vol(mL)
         # ---- Systemic arterial (large compliant vessels + arterioles) ----
+        #
+        # ARTERIOLAR RESISTANCE PLACEMENT (fixed 2026-08-21, backlog item 20).
+        # `resistance` is the resistance on the flow INTO this compartment. The
+        # arteriolar resistance used to sit here, on the inflow to each `*_art`
+        # compartment, which put the whole arteriolar pressure drop UPSTREAM of it:
+        # `upper_body_art` settled at 8.6 mmHg while its own init_volume
+        # (72 = V0 50 + C 0.25 x 88) and the comment below both say 88 mmHg.
+        # Capillary pressure, computed between `*_art` and `*_vein`, was therefore
+        # pinned to venous pressure at ~6.8 mmHg against a physiological ~20.
+        # The arteriole now sits on the artery→vein segment where the exchange
+        # vessels actually are; each `*_art` keeps only a small conduit resistance.
+        # Artery→vein TOTALS are unchanged per bed, so systemic resistance, MAP and
+        # cardiac output are preserved (measured: CO 4.131 -> 4.140).
+        # See docs/validation_log.md "Backlog 20 diagnosed".
         Compartment("aorta",               0.50, 0.05,  100,  0.05,  145),  # 0  P0=90
         Compartment("brachiocephalic",     0.12, 0.05,   30,  0.15,   41),  # 1  P0=91
-        Compartment("upper_body_art",      0.25, 3.80,   50,  0.25,   72),  # 2  P0=88 (arterioles)
+        Compartment("upper_body_art",      0.25, 0.10,   50,  0.25,   72),  # 2  P0=88 (conduit; arteriole moved to upper_body_vein)
         # Heights reference the volume-weighted thoracic venous centroid (~heart
         # level), not the neck: with physiological compliance the hydrostatic term
         # C·ΔP dominates tilt redistribution, so a mid-neck height (0.15-0.20) would
         # pool ~200 mL into the upper body in head-down tilt and steal preload.
-        Compartment("upper_body_vein",    15.0, 0.10,  350,  0.05,  440),  # 3  P0≈6 (upper-body venous C < splanchnic)
+        Compartment("upper_body_vein",    15.0, 3.80,  350,  0.05,  440,
+                    drain_resistance=0.05),  # 3  P0≈6 (R = arteriole + exchange segment)
         Compartment("svc",                10.0, 0.05,   70,  0.05,  110),  # 4  P0≈4
         Compartment("abdominal_aorta",     0.25, 0.05,   60, -0.10,   82),  # 5  P0=88
-        Compartment("renal_art",           0.05, 4.60,   20, -0.10,   24),  # 6  P0=80 (arterioles)
-        Compartment("renal_vein",          9.0, 0.10,   60, -0.10,  132),  # 7  P0≈8
-        Compartment("splanchnic_art",      0.12, 3.70,   50, -0.15,   60),  # 8  P0=83 (arterioles)
-        Compartment("splanchnic_vein",    65.0, 0.07, 1200, -0.08, 1920),  # 9  P0≈11 (dominant mobilizable reservoir)
-        Compartment("lower_body_art",      0.35, 2.80,   80, -0.50,  111),  # 10 P0=89 (arterioles)
+        Compartment("renal_art",           0.05, 0.10,   20, -0.10,   24),  # 6  P0=80 (conduit; arteriole moved to renal_vein)
+        # renal_vein / splanchnic_vein: `resistance` is the artery→vein exchange
+        # segment; `drain_resistance` is the vein→IVC drainage. These were a single
+        # shared number until 2026-08-21 — see Compartment.drain_resistance.
+        Compartment("renal_vein",          9.0, 4.60,   60, -0.10,  132,
+                    drain_resistance=0.10),                                # 7  P0≈8
+        Compartment("splanchnic_art",      0.12, 0.10,   50, -0.15,   60),  # 8  P0=83 (conduit; arteriole moved to splanchnic_vein)
+        Compartment("splanchnic_vein",    65.0, 3.67, 1200, -0.08, 1920,
+                    drain_resistance=0.07),  # 9  P0≈11 (dominant mobilizable reservoir)
+        Compartment("lower_body_art",      0.35, 0.30,   80, -0.50,  111),  # 10 P0=89 (conduit; arteriole moved to the leg exchange branches)
         # ---- Lower body venous: foot→calf→thigh→ivc (outflow resistance on each segment) ----
         # Compliances reproduce the ~640 mL venous pooling on standing documented by
         # Sjöstrand (1953, DOI: 10.1152/physrev.1953.33.2.202).
@@ -154,9 +207,21 @@ def default_compartments() -> list[Compartment]:
         # filling (supine/leg-raised → hold recruitable volume, restore PLR
         # response) but self-limiting when dependent (upright → pooling capped,
         # no MAP collapse). C0 is the low-pressure compliance.
-        Compartment("thigh_vein",          4.0, 0.30,  300, -0.20,  332, p_stiffen=12.0),  # 11
-        Compartment("calf_vein",           6.0, 0.05,  400, -0.55,  448, p_stiffen=11.0),  # 12
-        Compartment("foot_vein",           5.0, 0.07,  200, -0.85,  241, p_stiffen= 8.0),  # 13
+        # Leg veins follow the same convention as the other exchange beds:
+        # `resistance` is the arteriole + exchange segment feeding the compartment,
+        # `drain_resistance` is its outflow (foot→calf→thigh→IVC). The exchange
+        # resistances were hard-coded inside `_odes` until 2026-08-21, which put
+        # them out of reach of both the patient SVR calibration and the PAD factor.
+        # They carry the 2.80 arteriolar resistance that used to sit on
+        # lower_body_art's inflow, split 30/40/30 across the three segments:
+        #   2.80/0.30 = 9.33,  2.80/0.40 = 7.00,  2.80/0.30 = 9.33
+        #   equivalent parallel R = 2.80 ✓, plus the 0.30 conduit = 3.10 as before.
+        Compartment("thigh_vein",          4.0, 9.333, 300, -0.20,  332, p_stiffen=12.0,
+                    drain_resistance=0.30),  # 11
+        Compartment("calf_vein",           6.0, 7.000, 400, -0.55,  448, p_stiffen=11.0,
+                    drain_resistance=0.05),  # 12
+        Compartment("foot_vein",           5.0, 9.333, 200, -0.85,  241, p_stiffen= 8.0,
+                    drain_resistance=0.07),  # 13
         Compartment("ivc",                15.0, 0.04,  120, -0.15,  195),  # 14 P0≈5
         # ---- Cardiac chambers (elastance model; R = valve resistance) ----
         # RA Vinit=155: at RA_EMIN=0.04 and P_ra_eq≈3.8 mmHg → V=60+3.8/0.04=155 mL.

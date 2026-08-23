@@ -16,7 +16,7 @@ BSA formula: Mosteller (1987): BSA = sqrt(height_cm * weight_kg / 3600)
 from dataclasses import replace
 
 import numpy as np
-from .compartments import default_compartments, Compartment
+from .compartments import default_compartments, Compartment, ARTERIOLAR_SEGMENTS
 
 
 BSA_REF = 1.87   # m² — reference BSA for the default parameter set (70 kg, 175 cm male)
@@ -93,15 +93,21 @@ def scale_compartments(
         svr_measured = _svr(map_mmhg, cvp_mmhg or 5.0, co_est)
         svr_ref      = _svr(93.0, 5.0, 5.0)
         svr_scale    = svr_measured / svr_ref
+        # Scale the ARTERIOLES, which since 2026-08-21 live on the venous side
+        # of each exchange bed (see ARTERIOLAR_SEGMENTS). Matching on "art" in the
+        # name would now hit only the small conduit resistances and scale SVR by
+        # almost nothing.
         for c in scaled:
-            if "art" in c.name or c.name in ("aorta", "brachiocephalic", "abdominal_aorta"):
+            if c.name in ARTERIOLAR_SEGMENTS:
                 c.resistance *= svr_scale
 
     # Tier 2: ABI — peripheral arterial disease increases lower-body resistance
     if abi is not None and abi < 1.0:
         pad_factor = 1.0 + 2.0 * (1.0 - abi)  # up to 3x at ABI=0
+        # The lower-body arteriolar resistance is carried by the three leg
+        # exchange segments, not by lower_body_art (a conduit).
         for c in scaled:
-            if "lower_body_art" in c.name:
+            if c.name in ("thigh_vein", "calf_vein", "foot_vein"):
                 c.resistance *= pad_factor
 
     # Tier 3: pulmonary calibration from PCWP / PAP

@@ -478,8 +478,11 @@ def _odes(t: float, V: np.ndarray, params: SimParams, baro: BaroreflexController
     def R_drain(idx_name: str) -> float:
         """Venous drainage resistance for an exchange bed (postcapillary).
 
+        Reads `drain_resistance`, which is a separate field from `resistance` so
+        that the exchange segment and the drainage path can be set independently
+        (see the note on Compartment.drain_resistance).
         """
-        return comp[IDX[idx_name]].resistance * postcap_factor
+        return comp[IDX[idx_name]].drain_resistance * postcap_factor
 
     # -----------------------------------------------------------------------
     # Flows (mL/s) — Q > 0 means forward flow
@@ -489,30 +492,38 @@ def _odes(t: float, V: np.ndarray, params: SimParams, baro: BaroreflexController
     # Systemic arterial tree
     # Hydrostatic correction: Q = (P_up - P_down + hdp(upstream) - hdp(downstream)) / R
     # Positive hdp(up) - hdp(down) when going downhill (increases flow); negative when uphill.
-    Q_ao_brachio  = (P[i["aorta"]] - P[i["brachiocephalic"]] + hdp("aorta") - hdp("brachiocephalic")) / R("brachiocephalic", True)
-    Q_brachio_ub  = (P[i["brachiocephalic"]] - P[i["upper_body_art"]] + hdp("brachiocephalic") - hdp("upper_body_art")) / R("upper_body_art", True)
-    Q_ub_art_vein = (P[i["upper_body_art"]] - P[i["upper_body_vein"]]) / R("upper_body_vein")
-    Q_ub_vein_svc = (P[i["upper_body_vein"]] - P[i["svc"]] + hdp("upper_body_vein") - hdp("svc")) / R_drain("svc")
+    # Conduit arteries carry no arteriolar resistance and are NOT drug-scaled; the
+    # arteriolar resistance (and with it `svr_factor`) now lives on the artery→vein
+    # exchange segment, which is where the arterioles physically are. See the
+    # placement note in compartments.py.
+    Q_ao_brachio  = (P[i["aorta"]] - P[i["brachiocephalic"]] + hdp("aorta") - hdp("brachiocephalic")) / R("brachiocephalic")
+    Q_brachio_ub  = (P[i["brachiocephalic"]] - P[i["upper_body_art"]] + hdp("brachiocephalic") - hdp("upper_body_art")) / R("upper_body_art")
+    Q_ub_art_vein = (P[i["upper_body_art"]] - P[i["upper_body_vein"]]) / R("upper_body_vein", True)
+    # Every exchange bed now owns both its own numbers: `resistance` is its
+    # arteriole + exchange segment, `drain_resistance` its outflow. (This one used
+    # to read svc.resistance, leaving upper_body_vein.drain_resistance defaulting
+    # to the 3.80 arteriolar value and looking like a drainage figure.)
+    Q_ub_vein_svc = (P[i["upper_body_vein"]] - P[i["svc"]] + hdp("upper_body_vein") - hdp("svc")) / R_drain("upper_body_vein")
 
-    Q_ao_abd      = (P[i["aorta"]] - P[i["abdominal_aorta"]] + hdp("aorta") - hdp("abdominal_aorta")) / R("abdominal_aorta", True)
-    Q_abd_renal   = (P[i["abdominal_aorta"]] - P[i["renal_art"]]) / R("renal_art", True)
-    Q_renal_vein  = (P[i["renal_art"]] - P[i["renal_vein"]]) / R("renal_vein")
-    Q_abd_splanch = (P[i["abdominal_aorta"]] - P[i["splanchnic_art"]]) / R("splanchnic_art", True)
-    Q_splanch_vein= (P[i["splanchnic_art"]] - P[i["splanchnic_vein"]]) / R("splanchnic_vein")
-    Q_abd_lb      = (P[i["abdominal_aorta"]] - P[i["lower_body_art"]] + hdp("abdominal_aorta") - hdp("lower_body_art")) / R("lower_body_art", True)
+    Q_ao_abd      = (P[i["aorta"]] - P[i["abdominal_aorta"]] + hdp("aorta") - hdp("abdominal_aorta")) / R("abdominal_aorta")
+    Q_abd_renal   = (P[i["abdominal_aorta"]] - P[i["renal_art"]]) / R("renal_art")
+    Q_renal_vein  = (P[i["renal_art"]] - P[i["renal_vein"]]) / R("renal_vein", True)
+    Q_abd_splanch = (P[i["abdominal_aorta"]] - P[i["splanchnic_art"]]) / R("splanchnic_art")
+    Q_splanch_vein= (P[i["splanchnic_art"]] - P[i["splanchnic_vein"]]) / R("splanchnic_vein", True)
+    Q_abd_lb      = (P[i["abdominal_aorta"]] - P[i["lower_body_art"]] + hdp("abdominal_aorta") - hdp("lower_body_art")) / R("lower_body_art")
 
     # Capillary inflow from lower body arteries to each venous segment (30/40/30% split).
     # The old single lower_body_vein used R=0.30 (outflow resistance) for the art→vein flow,
     # giving total arteriocapillary R_total=0.30. Split across three parallel branches:
     #   R_to_thigh = 0.30/0.30 = 1.00,  R_to_calf = 0.30/0.40 = 0.75,  R_to_foot = 0.30/0.30 = 1.00
     # Equivalent parallel resistance = 1/(0.30+0.40+0.30) * 0.30 = 0.30 ✓
-    R_lb_cap_total = 0.30   # mmHg·s/mL — original arteriocapillary resistance
-    R_lb_to_thigh  = R_lb_cap_total / 0.30
-    R_lb_to_calf   = R_lb_cap_total / 0.40
-    R_lb_to_foot   = R_lb_cap_total / 0.30
-    Q_lb_art_thigh = (P[i["lower_body_art"]] - P[i["thigh_vein"]]) / R_lb_to_thigh
-    Q_lb_art_calf  = (P[i["lower_body_art"]] - P[i["calf_vein"]])  / R_lb_to_calf
-    Q_lb_art_foot  = (P[i["lower_body_art"]] - P[i["foot_vein"]])  / R_lb_to_foot
+    # Leg arteriolar + exchange resistances now live in the compartment table
+    # (see the leg-vein block in compartments.py), so the patient SVR calibration
+    # and the PAD factor can reach them. Drug-scaled like every other arteriolar
+    # segment.
+    Q_lb_art_thigh = (P[i["lower_body_art"]] - P[i["thigh_vein"]]) / R("thigh_vein", True)
+    Q_lb_art_calf  = (P[i["lower_body_art"]] - P[i["calf_vein"]])  / R("calf_vein", True)
+    Q_lb_art_foot  = (P[i["lower_body_art"]] - P[i["foot_vein"]])  / R("foot_vein", True)
 
     # Muscle pump: rhythmic calf compression drives venous return.
     # sin²(2πft) profile: always ≥ 0 (no suction phase), smooth, periodic.
@@ -525,8 +536,8 @@ def _odes(t: float, V: np.ndarray, params: SimParams, baro: BaroreflexController
     # max(0,...) implements anatomical one-way venous valves — prevents retrograde flow
     # that would otherwise occur when hydrostatic gradient exceeds driving pressure.
     # Pump boost applied to foot→calf and calf→thigh (calf contraction zone).
-    Q_foot_calf  = max(0.0, (P[i["foot_vein"]]  - P[i["calf_vein"]]  + hdp("foot_vein")  - hdp("calf_vein")  + pump_p) / R("foot_vein"))
-    Q_calf_thigh = max(0.0, (P[i["calf_vein"]]  - P[i["thigh_vein"]] + hdp("calf_vein")  - hdp("thigh_vein") + pump_p) / R("calf_vein"))
+    Q_foot_calf  = max(0.0, (P[i["foot_vein"]]  - P[i["calf_vein"]]  + hdp("foot_vein")  - hdp("calf_vein")  + pump_p) / R_drain("foot_vein"))
+    Q_calf_thigh = max(0.0, (P[i["calf_vein"]]  - P[i["thigh_vein"]] + hdp("calf_vein")  - hdp("thigh_vein") + pump_p) / R_drain("calf_vein"))
     Q_thigh_ivc  = max(0.0, (P[i["thigh_vein"]] - P[i["ivc"]]        + hdp("thigh_vein") - hdp("ivc"))                  / R_drain("thigh_vein"))
 
     Q_renal_ivc   = (P[i["renal_vein"]]     - P[i["ivc"]]) / R_drain("renal_vein")

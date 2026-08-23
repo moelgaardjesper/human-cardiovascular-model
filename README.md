@@ -419,21 +419,43 @@ These benefit from distributed height modelling at large tilt angles — current
 ### Blood-volume scale — resolved
 Earlier versions carried a total blood volume of ~3.8 L with a stressed volume of ~0.7 L (17% of BV) against a physiological ~5 L / ~1.3 L (26%), because the systemic veins had roughly 10× too little compliance (MSFP ~19 mmHg vs ~7). That compressed pool exaggerated every preload perturbation and forced repeated downward tuning of venous drug magnitudes. The venous system has since been rebuilt to literature values: **BV ≈ 5.36 L, stressed volume ≈ 1.66 L (31%), MSFP ≈ 9.7 mmHg, venous compliance ≈ 129 mL/mmHg**, with baseline haemodynamics unchanged. Hemorrhage, PPV and PLR tests now run at clinically realistic class I–III volumes (300–1200 mL) rather than the 100–400 mL the old scale required.
 
-### Capillary pressure barely responds to vasoactive drugs
-Found 2026-08-10 by comparison against Lister et al. (1963), the human transcapillary-refill
-study. Capillary pressure is computed as a fixed 20/80 blend of the arteriolar and venular
-compartment pressures — but the `*_art` compartments sit only 1.6–6.5 mmHg above their
-paired veins, because the arteriolar resistance is upstream of them. Modelled capillary
-pressure is therefore close to venous pressure, and a fixed blend cannot express the
-*selective venular* constriction that makes α-agonists raise it.
+### Vasopressor plasma-volume cost still under-predicted
+Found 2026-08-10 against Lister et al. (1963), the human transcapillary-refill study.
+Norepinephrine in unbled healthy men removes **15–19 %** of plasma volume; the model removes
+well under 10 %. Direction and reversibility are correct. Held as a strict-xfail regression
+test so it cannot be forgotten or silently "fixed" by retuning.
 
-Consequence: norepinephrine at a dose raising systolic pressure 20 mmHg moves modelled
-capillary pressure by +0.15 mmHg and removes **0.13 %** of the plasma volume, against the
-**15–19 %** Lister measured directly in unbled healthy men. Direction and reversibility are
-correct; the magnitude is short by about 100×. **The model currently under-represents the
-plasma-volume cost of vasopressor support.** Recorded as a strict-xfail regression test so
-it cannot be forgotten, and not patched by retuning K<sub>f</sub> — refill itself agrees
-with Lister to within a factor of ~1.6, so the filtration coefficient is not the defect.
+Two of the three suspected causes have been resolved, and the residual is now genuinely
+unexplained rather than merely unaddressed:
+
+- **A postcapillary pathway now exists** (`postcap_factor`), sourced from Abboud & Eckstein
+  (1968, II), who measured arterial and venous segment resistances separately in the perfused
+  dog forelimb and found the venous dose–response **1.80×** steeper than the arterial. The
+  model reproduces that slope ratio at 1.84.
+- **Capillary pressure was being computed from a mis-wired network.** The arteriolar
+  resistance sat upstream of each `*_art` compartment, so those compartments settled near
+  venous pressure (8.6 mmHg) despite being parameterised for 88, and capillary pressure was
+  pinned at ~10.8 mmHg. Moving the arteriole onto the artery→vein segment — same total
+  resistance per bed — put capillary pressure at **24.5 mmHg** and the arterial compartments
+  at 79–84. See *Resistance topology* below.
+
+Neither closed the gap. Every literature anchor still passes (Guyton, Lister refill,
+RAAS/ADH), so the residual is not a calibration drift in those. The most likely remaining
+candidate is that the drug pathway still acts on the venous drainage path, whereas the
+Abboud mechanism is a shift in the pre/post split **inside** the exchange segment — a lever
+that only became meaningful once the artery-to-vein gradient went from 1.7 to ~76 mmHg.
+
+Deliberately **not** patched by inflating K<sub>f</sub> or the drug parameter: both have
+sourced values, and refill agrees with Lister to within a factor of ~1.6.
+
+### Resistance topology — a note for anyone reading the compartment table
+`Compartment.resistance` is the resistance on the flow **into** a compartment. Since
+2026-08-21 the systemic arteriolar resistance is stored on the **venous** compartment of each
+exchange bed (`ARTERIOLAR_SEGMENTS` in `compartments.py`), because that is the segment
+between the arterial and venous compartments where the arterioles physically sit. The
+`*_art` compartments hold only small conduit resistances. Anything scaling systemic vascular
+resistance must act on `ARTERIOLAR_SEGMENTS`; `drain_resistance` is a separate, postcapillary
+quantity and must not be scaled by an arteriolar factor.
 
 ### CVP paradox in microgravity not fully reproduced
 Measured CVP decreases in orbit despite a cephalad fluid shift (Buckey 1996). Positional ITP coupling is now implemented (`positional_itp_mmhg()` in `gravity.py`), which partially explains the effect, but the full paradox requires changes in lung/chest-wall compliance under weightlessness that are not yet modelled.
