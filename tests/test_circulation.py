@@ -149,6 +149,7 @@ from model.gravity import GravityEnvironment
 from model.patient import build_patient_params
 from model.heart import LV_EMAX, RV_EMAX
 from model.pharmacology import combined_drug_factors
+from model.slow_dynamics import CAPILLARY_PRESSURE_FRACTION
 
 
 SMOKE_DURATION = 30.0  # seconds — long enough for steady state
@@ -1266,6 +1267,27 @@ def _run_isolated_factor(**factors):
     return out
 
 
+def _pc_with_postcap(pc_factor):
+    """Volume-weighted capillary pressure from a settled run, mmHg."""
+    from model.circulation import _vascular_pressure
+    from model.slow_dynamics import (CAPILLARY_BEDS, capillary_pressure_fraction)
+    from model.pharmacology import NEUTRAL_FACTORS
+
+    p = SimParams()
+    p.baroreflex_enabled = False
+    p.ventilation_mode = "none"
+    p.drug_factors = dict(NEUTRAL_FACTORS)
+    r = run_simulation(p, duration_s=30.0, dt=DT, use_baroreflex=False)
+    V = r["volumes"][len(r["volumes"]) // 2:].mean(axis=0)
+    comp = p.compartments
+    P = [_vascular_pressure(V[k], c.unstressed_volume, c.compliance,
+                            getattr(c, "p_stiffen", None))
+         for k, c in enumerate(comp)]
+    frac = capillary_pressure_fraction(pc_factor)
+    return sum(share * (P[IDX[ven]] + frac * (P[IDX[art]] - P[IDX[ven]]))
+               for art, ven, share in CAPILLARY_BEDS)
+
+
 def _run_postcap(pc_factor):
     """Run with an isolated postcap_factor (all other factors neutral)."""
     return _run_isolated_factor(postcap_factor=pc_factor)
@@ -1321,47 +1343,195 @@ def test_alpha1_postcapillary_slope_is_steeper_than_arterial():
 
 
 def test_postcap_factor_is_live_and_correctly_signed():
-    """Raising postcapillary resistance must dam blood in the exchange beds.
+    """Raising postcapillary resistance must RAISE capillary pressure.
 
     Fails bit-for-bit if the factor is assembled but never applied — the exact
     failure mode that once silently disabled `venous_tone_factor` (section 14).
-    """
-    base = _run_postcap(1.0)
-    high = _run_postcap(2.0)
 
-    assert high["venous_pool"] > base["venous_pool"] + 1.0, (
-        f"raising postcapillary resistance left venous volume at "
-        f"{high['venous_pool']:.1f} vs {base['venous_pool']:.1f} mL. Impeding "
-        f"drainage must pool blood in the exchange beds — the mechanism is not live"
+    This checks the quantity that matters. The factor shifts the pre/post split
+    inside the exchange segment, moving the capillary toward the arterial end; it
+    deliberately does NOT change any flow. An earlier version applied it to the
+    venous drainage resistance instead and was guarded by a volume-damming
+    assertion — the wrong site and the wrong check, since damming the drainage
+    chokes venous return and moves Pc barely at all.
+    """
+    from model.slow_dynamics import capillary_pressure_fraction
+
+    f0 = capillary_pressure_fraction(1.0)
+    f_hi = capillary_pressure_fraction(2.0)
+
+    assert f0 == CAPILLARY_PRESSURE_FRACTION, (
+        f"the capillary fraction is {f0} with no drug on board, but the resting "
+        f"constant is {CAPILLARY_PRESSURE_FRACTION}; the mechanism is not neutral"
     )
-    assert high["cvp"] < base["cvp"], (
-        f"CVP rose ({base['cvp']:.2f} -> {high['cvp']:.2f}) when postcapillary "
-        f"resistance was raised. Damming blood UPSTREAM of the great veins must "
-        f"lower central venous pressure, not raise it"
+    assert f_hi > f0, (
+        f"doubling postcapillary resistance moved the capillary fraction "
+        f"{f0:.3f} -> {f_hi:.3f}. Raising the postcapillary share must move the "
+        f"capillary TOWARD the arterial end and raise Pc — the mechanism is dead "
+        f"or inverted"
+    )
+
+    # And it must show up as real capillary pressure in a real run.
+    base = _pc_with_postcap(1.0)
+    high = _pc_with_postcap(2.0)
+    assert high > base + 2.0, (
+        f"weighted capillary pressure moved only {base:.2f} -> {high:.2f} mmHg "
+        f"when postcapillary resistance was doubled; [A2] has this as the "
+        f"mechanism by which adrenergic drive drives capillary filtration"
     )
 
 
 def test_postcap_and_venous_tone_are_distinct_mechanisms():
     """Postcapillary resistance and venous tone must not be interchangeable.
 
-    Both act on veins, but one is resistance and the other capacitance, and only
-    the first moves capillary pressure. They must show OPPOSITE central signatures:
-    venoconstriction expels blood centrally (CVP up), postcapillary constriction
-    traps it peripherally (CVP down). If a future edit collapses one into the
-    other, this fails.
-    """
-    base = _run_postcap(1.0)
-    postcap = _run_postcap(2.0)
-    venocon = _run_isolated_factor(venous_tone_factor=0.85)   # < 1 = venoconstriction
+    Both act on veins, but they are different quantities with different effects,
+    and only one moves capillary pressure:
 
-    assert postcap["cvp"] < base["cvp"] < venocon["cvp"], (
-        f"expected postcapillary constriction to LOWER CVP and venoconstriction "
-        f"to RAISE it, got postcap {postcap['cvp']:.2f}, base {base['cvp']:.2f}, "
-        f"venoconstriction {venocon['cvp']:.2f}"
+      - venous tone is CAPACITANCE. It expels blood centrally, so it raises CVP,
+        and it moves Pc only incidentally via venous pressure.
+      - postcapillary resistance is a SPLIT within the exchange segment. It moves
+        the capillary toward the arterial end, so it raises Pc substantially and
+        leaves CVP alone — it changes no flow at all.
+
+    If a future edit collapses one into the other, or re-routes the postcapillary
+    effect onto a resistance that carries flow, this fails.
+    """
+    base = _run_isolated_factor()
+    postcap = _run_isolated_factor(postcap_factor=2.0)
+    venocon = _run_isolated_factor(venous_tone_factor=0.85)
+
+    assert abs(postcap["cvp"] - base["cvp"]) < 0.05, (
+        f"postcapillary constriction moved CVP {base['cvp']:.3f} -> "
+        f"{postcap['cvp']:.3f}. It shifts where the capillary sits inside the "
+        f"exchange segment and must not move flow or central pressures; if it "
+        f"does, it has been re-routed onto a resistance that carries flow"
     )
-    assert postcap["venous_pool"] > base["venous_pool"] > venocon["venous_pool"], (
-        f"expected postcapillary constriction to POOL blood peripherally and "
-        f"venoconstriction to expel it, got postcap "
-        f"{postcap['venous_pool']:.1f}, base {base['venous_pool']:.1f}, "
-        f"venoconstriction {venocon['venous_pool']:.1f} mL"
+    assert venocon["cvp"] > base["cvp"] + 0.05, (
+        f"venoconstriction did not raise CVP ({base['cvp']:.3f} -> "
+        f"{venocon['cvp']:.3f}); the capacitance mechanism is dead"
+    )
+
+    pc_base, pc_postcap = _pc_with_postcap(1.0), _pc_with_postcap(2.0)
+    assert pc_postcap - pc_base > 2.0, (
+        f"postcapillary constriction moved Pc only {pc_base:.2f} -> "
+        f"{pc_postcap:.2f} mmHg; that is the effect it exists for"
+    )
+
+
+# ===========================================================================
+# 17. Pulmonary circulation — backlog item 22
+#
+# NOTHING in this suite constrained any pulmonary pressure or volume until
+# 2026-08-22, which is exactly why the pulmonary bed has carried its original
+# parameters since the initial commit while the systemic side was rebuilt. These
+# assertions were written BEFORE changing any parameter, so the fix is measured
+# rather than merely observed.
+#
+# [P1] Widrich J, Shetty M. "Physiology, Pulmonary Vascular Resistance."
+#      StatPearls, NCBI Bookshelf NBK554380.
+#      - PVR normal 0.25-1.6 mmHg*min/L (37-250 dyn*s*cm^-5)
+#      - mean pulmonary arterial pressure 15 mmHg
+#      - "The output pressure represents the pulmonary venous pressure, EQUIVALENT
+#        TO the pulmonary capillary wedge or left atrial pressure (5 to 6 mm Hg)"
+#      - pulmonary hypertension: mean PA > 25 mmHg AND PVR > 3 mmHg*min/L
+#
+#      CAVEAT ON SOURCE QUALITY: StatPearls is tertiary (a teaching reference), not
+#      primary literature. It is used here for textbook-level physiological
+#      constants, which is defensible, but anything load-bearing should be traced
+#      to a primary measurement. Pulmonary BLOOD VOLUME is deliberately NOT asserted
+#      below because no source for it has been read in full — the ~450-500 mL figure
+#      in the backlog is recollection, not a citation.
+# ===========================================================================
+
+def _pulmonary_state():
+    """Settled pulmonary pressures, PVR and blood volume."""
+    from model.circulation import _vascular_pressure
+
+    p = SimParams()
+    p.ventilation_mode = "none"
+    p.slow_dynamics_enabled = False
+    r = run_simulation(p, duration_s=60.0, dt=DT)
+    s = slice(2 * len(r["map"]) // 3, None)
+    V = r["volumes"][2 * len(r["volumes"]) // 3:].mean(axis=0)
+    comp = p.compartments
+    P = [_vascular_pressure(V[k], c.unstressed_volume, c.compliance,
+                            getattr(c, "p_stiffen", None))
+         for k, c in enumerate(comp)]
+    co = float(np.mean(r["co"][s]))
+    return {
+        "pa":  P[IDX["pulmonary_art"]],
+        "cap": P[IDX["pulmonary_cap"]],
+        "pv":  P[IDX["pulmonary_vein"]],
+        "la":  float(np.mean(r["la_pressure"][s])),
+        "co":  co,
+        "volume": float(V[IDX["pulmonary_art"]] + V[IDX["pulmonary_cap"]]
+                        + V[IDX["pulmonary_vein"]]),
+        "blood_volume": float(V.sum()),
+    }
+
+
+def test_pulmonary_vascular_resistance_is_physiological():
+    """[P1] PVR = (mean PA - pulmonary venous) / CO must be 0.25-1.6 mmHg*min/L.
+
+    This one PASSES, and is worth guarding precisely because it shows the
+    resistance DISTRIBUTION across the pulmonary bed is not the defect — the
+    pressures are wrong at their absolute level, not in their gradient.
+    """
+    s = _pulmonary_state()
+    pvr = (s["pa"] - s["pv"]) / s["co"]
+    assert 0.25 <= pvr <= 1.6, (
+        f"PVR is {pvr:.2f} mmHg*min/L, outside [P1]'s normal 0.25-1.6. Above 3 "
+        f"with a mean PA over 25 would be pulmonary hypertension in a subject the "
+        f"model is supposed to treat as healthy"
+    )
+
+
+@pytest.mark.xfail(strict=True, reason=(
+    "KNOWN DEFECT, backlog item 22. There is NO VALVE and essentially no resistance "
+    "between the pulmonary veins and the left atrium — [P1] treats pulmonary venous, "
+    "wedge and left atrial pressure as the same number. The model connects them with "
+    "`comp[left_atrium].resistance`, which is VALVE_R = 0.08, and wraps the flow in "
+    "max(0, ...) so it cannot reverse. That manufactures a ~3.9 mmHg gradient and "
+    "inflates wedge pressure by that much on its own. It also pushes PVR computed the "
+    "clinical way, (mean PA - LA)/CO, to 2.31 — above [P1]'s normal range and "
+    "approaching the pulmonary-hypertension threshold of 3. "
+    "Same class of error as backlog item 20: a resistance in a place with no anatomy "
+    "to justify it. strict=True so this flips to a FAILURE the day it is fixed."
+))
+def test_pulmonary_venous_pressure_equals_left_atrial():
+    """[P1] Pulmonary venous, wedge and left atrial pressure are the same number."""
+    s = _pulmonary_state()
+    gradient = s["pv"] - s["la"]
+    assert abs(gradient) < 1.0, (
+        f"pulmonary venous pressure sits {gradient:+.2f} mmHg above left atrial "
+        f"({s['pv']:.2f} vs {s['la']:.2f}). [P1]: the pulmonary venous pressure is "
+        f"'equivalent to the pulmonary capillary wedge or left atrial pressure'. "
+        f"There is no valve and no meaningful resistance between them"
+    )
+
+
+@pytest.mark.xfail(strict=True, reason=(
+    "KNOWN DEFECT, backlog item 22. Resting wedge/left atrial pressure is far above "
+    "[P1]'s 5-6 mmHg: the model gives pulmonary venous 16.0 and left atrial 12.1, "
+    "and mean PA 21.3 against [P1]'s 15. A resting healthy subject therefore reads as "
+    "mildly volume-overloaded. Total pulmonary compliance is 1.70 mL/mmHg where "
+    "Heldt 2002 Table 3 gives 12.7, so a small volume generates a large pressure — "
+    "but Heldt is a starting point, not the target; the targets are the measured "
+    "values in [P1]. See backlog item 22 for the plan. "
+    "strict=True so this flips to a FAILURE the day it is fixed."
+))
+def test_pulmonary_pressures_are_physiological():
+    """[P1] Mean PA ~15 mmHg; wedge / left atrial 5-6 mmHg."""
+    s = _pulmonary_state()
+    assert s["pa"] < 20.0, (
+        f"mean pulmonary arterial pressure is {s['pa']:.2f} mmHg; [P1] gives 15, and "
+        f"over 25 is pulmonary hypertension"
+    )
+    assert 4.0 <= s["la"] <= 12.0, (
+        f"left atrial pressure is {s['la']:.2f} mmHg; [P1] gives 5-6 (clinical "
+        f"normal wedge 6-12)"
+    )
+    assert 4.0 <= s["pv"] <= 12.0, (
+        f"pulmonary venous / wedge pressure is {s['pv']:.2f} mmHg; [P1] gives 5-6 "
+        f"(clinical normal 6-12)"
     )

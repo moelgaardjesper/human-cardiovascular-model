@@ -449,17 +449,52 @@ def init_slow_state(compartments) -> SlowState:
     )
 
 
-def _capillary_pressures(P: np.ndarray, idx_map: dict) -> np.ndarray:
+def capillary_pressure_fraction(postcap_factor: float = 1.0) -> float:
+    """Where the capillary sits between the arterial and venous ends, 0..1.
+
+    `CAPILLARY_PRESSURE_FRACTION` is R_post/(R_pre + R_post) for the exchange
+    segment, so the resting value of 0.20 encodes a pre/post ratio of 4. Scaling
+    the postcapillary share by `k` moves the capillary toward the arterial end:
+
+        f(k) = k*f0 / ((1 - f0) + k*f0)
+
+    f(1) = f0 exactly, so this is neutral with no drug on board.
+
+    THIS IS WHERE ALPHA-1 POSTCAPILLARY CONSTRICTION ACTS. It used to be applied
+    to the venous DRAINAGE resistance instead, which was the wrong site twice over:
+    drainage sits downstream of the venous compartment, so raising it chokes venous
+    return (cardiac output here is return-limited, not afterload-limited) and cost
+    ~20% of CO to move Pc by 0.86 mmHg. It also only worked at all because the
+    artery-to-vein gradient was tiny; since the arteriolar-placement fix that
+    gradient is ~78 mmHg, so shifting the split within the segment is a strong,
+    cheap lever — Abboud's measured x1.8 venous resistance rise gives f = 0.31 and
+    raises Pc by roughly 8 mmHg.
+
+    Note the division of labour with `svr_factor`: svr_factor scales the WHOLE
+    exchange segment (the common arteriolar + venular rise), while this carries only
+    the DIFFERENTIAL — that the venular response is steeper than the arterial one.
+    That is exactly what Abboud measured, and it keeps the two from double-counting.
+    """
+    f0 = CAPILLARY_PRESSURE_FRACTION
+    if postcap_factor <= 0.0:
+        return f0
+    return (postcap_factor * f0) / ((1.0 - f0) + postcap_factor * f0)
+
+
+def _capillary_pressures(P: np.ndarray, idx_map: dict,
+                         postcap_factor: float = 1.0) -> np.ndarray:
     """Capillary pressure for each bed, between its arteriolar and venular ends."""
+    frac = capillary_pressure_fraction(postcap_factor)
     out = np.zeros(len(CAPILLARY_BEDS))
     for k, (art, ven, _share) in enumerate(CAPILLARY_BEDS):
         p_a, p_v = P[idx_map[art]], P[idx_map[ven]]
-        out[k] = p_v + CAPILLARY_PRESSURE_FRACTION * (p_a - p_v)
+        out[k] = p_v + frac * (p_a - p_v)
     return out
 
 
 def _update_fluid_exchange(state: SlowState, dt_slow: float, V: np.ndarray,
-                           P: np.ndarray, idx_map: dict) -> np.ndarray:
+                           P: np.ndarray, idx_map: dict,
+                           postcap_factor: float = 1.0) -> np.ndarray:
     """Starling filtration across each capillary bed.
 
     Returns the per-compartment volume change (mL) to apply to the circulation:
@@ -498,7 +533,7 @@ def _update_fluid_exchange(state: SlowState, dt_slow: float, V: np.ndarray,
     plasma_volume = blood_volume - state.red_cell_volume_ml
     pi_p = oncotic_pressure_mmhg(state.plasma_protein_g, plasma_volume)
 
-    pc = _capillary_pressures(P, idx_map)
+    pc = _capillary_pressures(P, idx_map, postcap_factor)
 
     # Interstitial back-pressure. Rises as the interstitium fills, falls as it
     # is drained — opposing filtration in both directions. Without this the
@@ -628,6 +663,7 @@ def update_slow_state(
     P: np.ndarray,
     params,
     baro=None,
+    postcap_factor: float = 1.0,
 ):
     """
     Advance the slow state to simulated time `t`, in place.
@@ -677,7 +713,7 @@ def update_slow_state(
         state.plasma_protein_g = (
             PLASMA_PROTEIN_G_PER_L * state.plasma_volume_ref_ml / 1000.0
         )
-        state.pc_ref = _capillary_pressures(P, idx_map)
+        state.pc_ref = _capillary_pressures(P, idx_map, postcap_factor)
         state.pi_p_ref = oncotic_pressure_mmhg(
             state.plasma_protein_g, state.plasma_volume_ref_ml
         )
@@ -703,7 +739,8 @@ def update_slow_state(
         _update_stress_relaxation(state, dt_slow, P, params.compartments)
 
     if getattr(params, "slow_fluid_exchange_enabled", True):
-        return _update_fluid_exchange(state, dt_slow, V, P, idx_map)
+        return _update_fluid_exchange(state, dt_slow, V, P, idx_map,
+                                      postcap_factor)
     return None
 
     # Phase 4: baroreflex resetting       -> _update_setpoint(...)

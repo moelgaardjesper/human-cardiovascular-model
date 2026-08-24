@@ -452,37 +452,26 @@ def _odes(t: float, V: np.ndarray, params: SimParams, baro: BaroreflexController
         return r * svr_factor if systemic_arterial else r
 
     # -----------------------------------------------------------------------
-    # Postcapillary (venous drainage) resistance — backlog item 18
+    # Postcapillary resistance — backlog item 18
     # -----------------------------------------------------------------------
-    # The precapillary resistance is already drug-responsive: it is the arteriolar
-    # resistance R("*_art", True), which sits UPSTREAM of each `*_art` compartment
-    # (hence those compartments reading 8-22 mmHg — they are post-arteriolar).
-    # The postcapillary side had no drug pathway at all, so raising svr_factor
-    # lowered `*_art` pressure while venoconstriction raised `*_vein` pressure and
-    # the two very nearly cancelled at the capillary. Capillary pressure was
-    # therefore almost drug-insensitive, and norepinephrine removed ~0.13% of the
-    # plasma volume against Lister's measured 15-19% in man.
+    # The alpha-1 postcapillary effect does NOT act here. It shifts the pre/post
+    # split WITHIN the exchange segment, which moves capillary pressure without
+    # moving flow, and is applied in slow_dynamics.capillary_pressure_fraction().
+    # It was briefly applied to the venous drainage resistance instead; that is the
+    # wrong site (drainage is downstream of the venous compartment, so raising it
+    # chokes venous return) and it is not applied to any resistance here now.
     #
-    # This factor scales the drainage OUT of each exchange bed, which is exactly
-    # what Abboud & Eckstein 1968 II measured: constriction of the venous segments
-    # downstream of their metacarpal vein raised that vein's pressure by 13.5 mmHg
-    # at constant inflow. Damming the venous compartment lifts P_v, and capillary
-    # pressure rides on P_v.
-    #
-    # It deliberately does NOT touch the art->vein resistance. That segment carries
-    # the intra-bed pre/post split expressed by CAPILLARY_PRESSURE_FRACTION, which
-    # no source we have measures; inventing a drug response for it would be a guess
-    # layered on a guess.
-    postcap_factor = drugs.get("postcap_factor", 1.0)
-
+    # The division of labour: `svr_factor` above scales the whole exchange segment
+    # — the common arteriolar + venular rise — while `postcap_factor` carries only
+    # the differential, that the venular response is steeper than the arterial one.
     def R_drain(idx_name: str) -> float:
-        """Venous drainage resistance for an exchange bed (postcapillary).
+        """Venous drainage resistance for an exchange bed.
 
         Reads `drain_resistance`, which is a separate field from `resistance` so
         that the exchange segment and the drainage path can be set independently
         (see the note on Compartment.drain_resistance).
         """
-        return comp[IDX[idx_name]].drain_resistance * postcap_factor
+        return comp[IDX[idx_name]].drain_resistance
 
     # -----------------------------------------------------------------------
     # Flows (mL/s) — Q > 0 means forward flow
@@ -963,7 +952,9 @@ def run_simulation(
             # Transcapillary flux is returned as a volume change rather than
             # folded into _odes: it is a slow-clock quantity (mL moved over
             # SLOW_DT), not a rate the 1 ms integrator should see.
-            dV_slow = update_slow_state(slow_state, t, V, _p_scratch, params, baro)
+            dV_slow = update_slow_state(
+                slow_state, t, V, _p_scratch, params, baro,
+                postcap_factor=_drug_factors_at(params, t).get("postcap_factor", 1.0))
             if dV_slow is not None:
                 V = V + dV_slow
 

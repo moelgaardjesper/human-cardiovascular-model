@@ -120,6 +120,38 @@ Every change that touches physiology follows the same loop:
 The regression suite is a ratchet. If a change cannot leave it green without weakening a
 test, that is a finding to report, not a licence to retune.
 
+### Model the physiology, not the result
+
+**Always align the model with physiology as it actually is, rather than tuning it to make
+a number come out right.** Work from first principles: what does the vessel, the reflex,
+the Starling equation actually do — and then live with whatever the model produces.
+
+**Getting the physiology right will sometimes make a validation number worse. That is
+acceptable, and it is information.** A model that agrees with the literature for the wrong
+structural reason is worth less than one that disagrees for a reason you understand,
+because the first will mislead you the moment you ask it a question nobody has validated.
+
+In practice:
+
+- **Never tune a sourced parameter to hit an endpoint.** If Kf came from Guyton and the
+  postcapillary magnitude from Abboud, they are what they are; a shortfall downstream is a
+  finding about the structure, not permission to inflate them. Every large gap this project
+  has closed turned out to be a wiring or structural error, and each would have been hidden
+  by tuning: the dead `venous_tone_factor`, venous compliance 10x low, the arteriolar
+  resistance on the wrong side of `*_art`, the postcapillary effect on the wrong site.
+- **Prefer a structural fix to a calibration fix**, and when you cannot tell which you are
+  making, say so.
+- **Do not treat another model's parameter table as ground truth.** Heldt 2002 is this
+  model's ancestor, not its validation target — it has 12 compartments to our 23, and its
+  own tables mark several values "Estimate". Anchor on quantities measured in humans and
+  use a source model only as a starting point or cross-check.
+- **Do not encode a known gap as correct.** If the model recovers 4x faster than the
+  literature, do not add an assertion that accepts 4x — record the gap and leave the test
+  honest.
+- **When a test fails after a physiologically-motivated change, ask which is wrong before
+  touching either.** Sometimes the test was asserting something its own cited source never
+  claimed.
+
 **Check the species before adopting a number as a calibration target.** The fast model is
 almost entirely human-validated; the slow-dynamics work drifted onto dog data without
 anyone noticing, and it cost real time. A tau of 39 min from dogs turned out to be

@@ -860,26 +860,6 @@ def test_refill_trajectory_matches_lister_human_haemorrhage():
     )
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    "KNOWN GAP, and the two obvious causes have now been RULED OUT. "
-    "(1) The missing postcapillary pathway was built — pharmacology.postcap_factor, "
-    "sourced from Abboud & Eckstein 1968 II, guarded in test_circulation.py "
-    "section 16 — and moved the result 9x, from -0.13% to -1.19%. "
-    "(2) The mis-wired arteriolar resistance was fixed (backlog item 20): capillary "
-    "pressure went from 10.78 to 24.48 mmHg and the *_art compartments from 8.6 to "
-    "79-84, matching what they were parameterised for. "
-    "NEITHER CLOSED THE GAP, and the residual is now genuinely unexplained rather "
-    "than merely unaddressed. Every other literature anchor still passes (Guyton "
-    "CVP dissipation, Lister refill trajectory, RAAS/ADH), so this is not a "
-    "calibration drift in those. Leading hypothesis: postcap_factor still acts on "
-    "the venous DRAINAGE path, while the Abboud mechanism is a shift in the "
-    "pre/post split INSIDE the exchange segment — a lever that only became "
-    "meaningful once the art-to-vein gradient went from 1.7 to ~76 mmHg. Rebuilding "
-    "item 18 on that split is the next thing to try. "
-    "DO NOT close this by raising Kf (sourced, Guyton) or inflating postcap_factor "
-    "(sourced, Abboud); both refusals are deliberate and logged. "
-    "strict=True so this flips to a FAILURE the day it starts passing."
-))
 @pytest.mark.slow
 def test_norepinephrine_plasma_volume_magnitude_matches_lister():
     """[S4] NE in an unbled human should remove 15-19% of the plasma volume.
@@ -897,6 +877,24 @@ def test_norepinephrine_plasma_volume_magnitude_matches_lister():
 
     ~50 min simulated (about 16 min wall) — hence `slow`. The mechanism plateaus
     inside 25 min, so this is long enough to settle the magnitude.
+
+    HISTORY. This was a strict xfail from 2026-08-10 to 2026-08-22, and closing it
+    took two structural fixes rather than any tuning:
+
+      - backlog 20: the arteriolar resistance sat UPSTREAM of each `*_art`
+        compartment, so capillary pressure was pinned near venous pressure at
+        ~10.8 mmHg. Moving it onto the artery→vein segment put Pc at 24.5 and the
+        artery-to-vein gradient at ~78 mmHg, where it had been 1.7.
+      - backlog 18: the alpha-1 postcapillary effect was applied to the venous
+        DRAINAGE resistance, which chokes venous return and moves Pc by under a
+        mmHg. It now shifts the pre/post split INSIDE the exchange segment, which
+        only became a usable lever once that gradient was real.
+
+    With both in place, Abboud's measured x1.8 venous resistance rise gives a
+    capillary fraction of 0.31 and the model removes ~16% of plasma volume against
+    Lister's 15% and 19%. No parameter was fitted to this endpoint: the Hill shape
+    is Abboud's dose-response slope and E_max is anchored to his venous pressure
+    response.
     """
     from model.pharmacology import combined_drug_factors
 
@@ -916,8 +914,17 @@ def test_norepinephrine_plasma_volume_magnitude_matches_lister():
     before, after = pv_at(290), pv_at(2980)
     drop = (before - after) / before
     assert drop > 0.10, (
-        f"norepinephrine removed {drop * 100:.2f}% of the plasma volume; [S4] "
-        f"Fig 5 measured 15% and 19% in normal man"
+        f"norepinephrine removed only {drop * 100:.2f}% of the plasma volume; "
+        f"[S4] Fig 5 measured 15% and 19% in normal man. This passed from "
+        f"2026-08-22; a regression here means the postcapillary split has been "
+        f"broken or re-routed onto a resistance that carries flow"
+    )
+    assert drop < 0.28, (
+        f"norepinephrine removed {drop * 100:.2f}% of the plasma volume, well "
+        f"beyond [S4]'s 15-19%. Over-predicting the plasma-volume cost of a "
+        f"pressor is as wrong as under-predicting it, and the likely cause is an "
+        f"inflated ALPHA1_POSTCAP_EMAX — which is anchored to Abboud's venous "
+        f"resistance response and must not be tuned to force this test"
     )
 
 

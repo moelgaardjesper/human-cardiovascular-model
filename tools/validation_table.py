@@ -161,27 +161,34 @@ LOGGED = [
     ("Transcapillary refill after haemorrhage",
      "Lister 1963, 550 mL over 15 min, human",
      "refill incomplete at 2 h; 50-80% by 24 h",
-     "model refills ~1.6x too fast on cumulative volume, ~1.45x on mean rate; "
-     "correctly incomplete at 2 h  [2026-08-10]"),
+     "PASSES. Correctly incomplete at 2 h; model refills ~1.6x fast on cumulative "
+     "volume  [2026-08-22]"),
     ("Norepinephrine plasma-volume cost",
      "Lister 1963 Fig 5, unbled healthy men",
      "plasma volume falls 15-19%",
-     "1.19% (was 0.13% before the postcapillary pathway) — STRICT XFAIL, "
-     "blocked by backlog item 20  [2026-08-21]"),
+     "PASSES at 16.07%. Was a strict xfail at 0.13% until 2026-08-22; closed by two "
+     "structural fixes (backlog 20 then 18), no parameter fitted to this endpoint"),
+    ("Norepinephrine recovery timescale",
+     "Lister 1963 Fig 5",
+     "recovery over ~1 h; not near-complete within minutes",
+     "PASSES both bounds. Model still recovers ~4x faster than Lister overall — "
+     "deliberately not asserted  [2026-08-22]"),
     ("Venous stress relaxation + filtration, CVP dissipation",
      "Guyton (~82% of an acute CVP rise dissipated)",
      "~82%",
-     "79.8% combined (creep alone 27.4%)  [2026-08-10]"),
+     "PASSES. 79.8% combined (creep alone 27.4%)  [2026-08-22]"),
     ("RAAS/ADH pressure defence after 1000 mL bleed",
      "Bussien 1984 (human), Hasser & Bishop 1988, Rascher 1985",
      "no effect at rest; pressor reserve unmasked when reflexes overwhelmed",
-     "MAP 71.44 -> 74.94 (+3.50 mmHg), CO slightly DOWN (vasoconstrictor "
-     "signature), blood volume unchanged  [2026-08-12]"),
+     "PASSES. +3.50 mmHg MAP, CO slightly DOWN (vasoconstrictor signature), blood "
+     "volume unchanged  [2026-08-22]"),
     ("Autonomic modulation of refill time constant",
      "Shigemi (dog): autonomic blockade doubles recovery tau, 39 -> 74 min",
      "ratio ~1.9",
-     "9.31 -> 9.11 min, ratio 0.98 — NOT REPRODUCED, open  [2026-08-10]"),
+     "NOT REPRODUCED, open. 9.31 -> 9.11 min, ratio 0.98. No test asserts it; "
+     "candidate for a baroreflex arm on the postcapillary split  [2026-08-10]"),
 ]
+
 
 
 def main():
