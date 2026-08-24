@@ -85,7 +85,10 @@ class Compartment:
 # VALVE_R must satisfy: VALVE_R * C_aorta > dt for Euler stability at dt=0.001 s.
 # With C_aorta=0.50 → need VALVE_R > 0.002 s. Using 0.08 limits peak valve flow
 # to ~500 mL/s (physiological) and keeps LV-aortic ΔP ≈ 40 mmHg during ejection.
-VALVE_R = 0.08
+VALVE_R = 0.01
+
+# Great-vein -> atrium resistance. NOT A VALVE. See backlog item 23.
+VENOATRIAL_R = 0.02
 
 
 # ---------------------------------------------------------------------------
@@ -167,7 +170,7 @@ def default_compartments() -> list[Compartment]:
         # pool ~200 mL into the upper body in head-down tilt and steal preload.
         Compartment("upper_body_vein",    15.0, 3.80,  350,  0.05,  440,
                     drain_resistance=0.05),  # 3  P0≈6 (R = arteriole + exchange segment)
-        Compartment("svc",                10.0, 0.05,   70,  0.05,  110),  # 4  P0≈4
+        Compartment("svc",                10.0, 0.05,   70,  0.05,  110, drain_resistance=VENOATRIAL_R),  # 4  P0≈4
         Compartment("abdominal_aorta",     0.25, 0.05,   60, -0.10,   82),  # 5  P0=88
         Compartment("renal_art",           0.05, 0.10,   20, -0.10,   24),  # 6  P0=80 (conduit; arteriole moved to renal_vein)
         # renal_vein / splanchnic_vein: `resistance` is the artery→vein exchange
@@ -222,21 +225,21 @@ def default_compartments() -> list[Compartment]:
                     drain_resistance=0.05),  # 12
         Compartment("foot_vein",           5.0, 9.333, 200, -0.85,  241, p_stiffen= 8.0,
                     drain_resistance=0.07),  # 13
-        Compartment("ivc",                15.0, 0.04,  120, -0.15,  195),  # 14 P0≈5
+        Compartment("ivc",                15.0, 0.04,  120, -0.15,  195, drain_resistance=VENOATRIAL_R),  # 14 P0≈5
         # ---- Cardiac chambers (elastance model; R = valve resistance) ----
         # RA Vinit=155: at RA_EMIN=0.04 and P_ra_eq≈3.8 mmHg → V=60+3.8/0.04=155 mL.
         # End-diastolic (rolling-minimum) CVP ≈ 3 mmHg once RA partially empties ✓
-        Compartment("right_atrium",        0.35, VALVE_R,  60,  0.0,  155),  # 15
+        Compartment("right_atrium",        0.35, VALVE_R,  16,  0.0,   47),  # 15
         # RV Vinit=163: at RV_EMIN=0.02, P_rv_dia=0.02×(163-80)=1.7 mmHg → CVP can be 2-3 mmHg.
         # ESV=V0+P_pa/E_max=80+15/1.15=93 mL; SV=163-93=70 mL (improved from 56 mL). ✓
-        Compartment("right_ventricle",     0.10, VALVE_R,  80,  0.0,  163),  # 16 EDV≈163 mL
+        Compartment("right_ventricle",     0.10, VALVE_R,  38,  0.0,  159),  # 16 EDV≈163 mL
         # ---- Pulmonary (PVR ≈ 0.08 mmHg·s/mL) ----
         Compartment("pulmonary_art",       0.40, 0.03,  100,  0.0,  106),  # 17 P0=15
         Compartment("pulmonary_cap",       0.50, 0.06,   80,  0.0,   85),  # 18 P0=10
-        Compartment("pulmonary_vein",      0.80, 0.02,  160,  0.0,  168),  # 19 P0=10
+        Compartment("pulmonary_vein",      0.80, 0.02,  160,  0.0,  168, drain_resistance=VENOATRIAL_R),  # 19 P0=10
         # ---- Left heart ----
-        Compartment("left_atrium",         0.20, VALVE_R,  45,  0.0,  145),  # 20 EDP≈9
-        Compartment("left_ventricle",      0.08, VALVE_R,  60,  0.0,  160),  # 21 EDV≈160
+        Compartment("left_atrium",         0.20, VALVE_R,  15,  0.0,   47),  # 20 EDP≈9
+        Compartment("left_ventricle",      0.08, VALVE_R,  10,  0.0,  137),  # 21 EDV≈160
         # ---- Coronary ----
         Compartment("coronary",            0.10, 15.0,   20,  0.05,   21),  # 22 flow≈0.3 L/min
     ]

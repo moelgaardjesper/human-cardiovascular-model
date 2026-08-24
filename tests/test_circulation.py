@@ -1535,3 +1535,117 @@ def test_pulmonary_pressures_are_physiological():
         f"pulmonary venous / wedge pressure is {s['pv']:.2f} mmHg; [P1] gives 5-6 "
         f"(clinical normal 6-12)"
     )
+
+
+# ===========================================================================
+# 18. Atrial volumes and phasic function — backlog item 23
+#
+# Nothing constrained atrial VOLUME until 2026-08-24. The atria were sized to
+# produce a plausible PRESSURE (the left_atrium compartment still carries an
+# "EDP≈9" comment, and 108 mL stressed x E_min 0.09 does give 9.7 mmHg) — but a
+# large compliant atrium and a small stiff one hold the same pressure, and only
+# volume tells them apart. Both atria came out 2.9-4.6x too large.
+#
+# Written BEFORE changing any parameter, so the fix is measured, not observed.
+#
+# [G1] Gao Y et al. (2022). "Reference values of left and right atrial volumes and
+#      phasic function based on a large sample of healthy Chinese adults: a
+#      cardiovascular magnetic resonance study." Int J Cardiol 352:180-187.
+#      PMID 35124105. DOI 10.1016/j.ijcard.2022.01.071
+#      CMR, 408 healthy adults, BSA 1.72 +/- 0.18. Table 2, all subjects, indexed:
+#        LAVmax/BSA 36.9 +/- 7.7   LAVmin/BSA 14.4 +/- 4.1   LAEF total 61.1 +/- 6.2%
+#        RAVmax/BSA 33.9 +/- 8.9   RAVmin/BSA 17.1 +/- 5.6   RAEF total 49.7 +/- 9.2%
+#
+# [G2] Figliozzi S et al. (2022). "Normal ranges of left atrial volumes and ejection
+#      fraction by 3D echocardiography in adults: a systematic review and
+#      meta-analysis." Int J Cardiovasc Imaging 38:1329-1340. PMID 34994882.
+#      DOI 10.1007/s10554-021-02520-9
+#      15 studies, 4,226 healthy adults, 3D echo:
+#        LAVi max 25.18 mL/m2 (CI 23.10-27.26)
+#        LAVi min 11.10 mL/m2 (10.01-12.18)
+#        LA-EF    55.94%      (51.92-59.96)
+#
+# THE TWO LA SOURCES DISAGREE, and that is expected: CMR routinely reads larger
+# atrial volumes than echo. The bands below span both rather than picking a winner.
+# The model exceeds both by a wide margin, so the disagreement does not affect the
+# verdict — but it does mean these bands must not be tightened onto one modality.
+# ===========================================================================
+
+REFERENCE_BSA = (175.0 * 70.0 / 3600.0) ** 0.5   # Mosteller, the default patient
+
+
+def _atrial_state():
+    """Cycle max/min volume and emptying fraction for both atria."""
+    p = SimParams()
+    p.ventilation_mode = "none"
+    p.slow_dynamics_enabled = False
+    r = run_simulation(p, duration_s=60.0, dt=DT)
+    V = r["volumes"][2 * len(r["volumes"]) // 3:]
+    out = {}
+    for key, name in (("la", "left_atrium"), ("ra", "right_atrium")):
+        v = V[:, IDX[name]]
+        vmax, vmin = float(v.max()), float(v.min())
+        out[key] = {
+            "vmax": vmax, "vmin": vmin,
+            "vmax_i": vmax / REFERENCE_BSA, "vmin_i": vmin / REFERENCE_BSA,
+            "ef": 100.0 * (vmax - vmin) / vmax,
+        }
+    return out
+
+
+@pytest.mark.xfail(strict=True, reason=(
+    "NARROW REMAINING GAP, backlog item 23. Three of the four bounds now PASS after "
+    "the whole-heart rebuild: LAVmin 17.19, RAVmax 31.14, RAVmin 18.99 mL/m2 are all "
+    "inside their bands. Only LAVmax fails, at 50.51 against a band ceiling of 50 — a "
+    "miss of 1%, and within 2 SD of [G1]'s 36.9 +/- 7.7. It was 106.4 mL/m2 before the "
+    "rebuild. "
+    "NOT CLOSED DELIBERATELY, because of an unexplained observation: across two atrial "
+    "parameter sets differing in V0, E_min AND E_max, LA Vmax came out at EXACTLY "
+    "93.2 mL both times while Vmin did differ (31.7 vs 36.6). An identical result "
+    "across varied inputs is the signature of a clamp, or of the parameter not "
+    "reaching the quantity being measured. Leading hypothesis: with the mitral valve "
+    "at 0.01 and the pulmonary-vein junction at 0.02, the pulmonary veins, left atrium "
+    "and left ventricle are nearly continuous, so 'LA volume' is a compliance-weighted "
+    "share of one pooled volume rather than an independently-set quantity. "
+    "Understand that before tuning this last 1%. "
+    "strict=True so this flips to a FAILURE the day it is fixed."
+))
+def test_atrial_volumes_are_physiological():
+    """[G1][G2] Atrial volumes indexed to BSA must match human reference ranges."""
+    s = _atrial_state()
+    # Bands span [G2] 3D-echo and [G1] CMR; see the modality note above.
+    assert 20.0 <= s["la"]["vmax_i"] <= 50.0, (
+        f"LAVmax {s['la']['vmax_i']:.1f} mL/m2 ({s['la']['vmax']:.0f} mL) outside "
+        f"20-50; [G2] 3D echo 25.18, [G1] CMR 36.9 +/- 7.7"
+    )
+    assert 8.0 <= s["la"]["vmin_i"] <= 22.0, (
+        f"LAVmin {s['la']['vmin_i']:.1f} mL/m2 outside 8-22; [G2] 11.10, [G1] 14.4"
+    )
+    assert 20.0 <= s["ra"]["vmax_i"] <= 48.0, (
+        f"RAVmax {s['ra']['vmax_i']:.1f} mL/m2 ({s['ra']['vmax']:.0f} mL) outside "
+        f"20-48; [G1] CMR 33.9 +/- 8.9"
+    )
+    assert 8.0 <= s["ra"]["vmin_i"] <= 28.0, (
+        f"RAVmin {s['ra']['vmin_i']:.1f} mL/m2 outside 8-28; [G1] 17.1 +/- 5.6"
+    )
+
+
+def test_atrial_emptying_fractions_are_physiological():
+    """[G1][G2] Total atrial emptying fraction must match human reference ranges.
+
+    PASSES since the whole-heart rebuild (2026-08-24). Was a strict xfail at
+    LA-EF 38.0% and RA-EF 32.4% — an oversized atrium moving a normal stroke volume
+    necessarily empties poorly, and both were consequences of chamber volumes 3-6x
+    too large rather than of the elastance ratio itself.
+    Asserted separately from the volumes because emptying fraction constrains the
+    E_max/E_min RATIO while the volumes constrain V0 and the operating point; fixing
+    one without the other leaves an atrium the right size with the wrong dynamics.
+    """
+    s = _atrial_state()
+    assert 45.0 <= s["la"]["ef"] <= 72.0, (
+        f"LA emptying fraction {s['la']['ef']:.1f}% outside 45-72; [G1] 61.1 +/- 6.2, "
+        f"[G2] 55.94 (CI 51.92-59.96)"
+    )
+    assert 35.0 <= s["ra"]["ef"] <= 65.0, (
+        f"RA emptying fraction {s['ra']['ef']:.1f}% outside 35-65; [G1] 49.7 +/- 9.2"
+    )

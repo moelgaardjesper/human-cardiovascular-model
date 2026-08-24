@@ -535,8 +535,12 @@ def _odes(t: float, V: np.ndarray, params: SimParams, baro: BaroreflexController
     # Right heart inflows — one-way valves prevent retrograde venous flow.
     # Without the max(0,...) guard, positive ITP (mechanical PPV) can raise
     # P_RA above P_SVC/IVC and drive blood backward through the great veins.
-    Q_svc_ra = max(0.0, (P[i["svc"]] - P[i["right_atrium"]] + hdp("svc") - hdp("right_atrium")) / R("right_atrium"))
-    Q_ivc_ra = max(0.0, (P[i["ivc"]] - P[i["right_atrium"]] + hdp("ivc") - hdp("right_atrium")) / R("right_atrium"))
+    # These junctions are NOT valves — see VENOATRIAL_R in compartments.py. The
+    # max(0, ...) guard is retained deliberately: it substitutes for venous collapse,
+    # which the great veins do not model (backlog item 11), and without it positive
+    # ITP under PPV drives blood backward up the great veins without limit.
+    Q_svc_ra = max(0.0, (P[i["svc"]] - P[i["right_atrium"]] + hdp("svc") - hdp("right_atrium")) / R_drain("svc"))
+    Q_ivc_ra = max(0.0, (P[i["ivc"]] - P[i["right_atrium"]] + hdp("ivc") - hdp("right_atrium")) / R_drain("ivc"))
 
     # Tricuspid valve (RA → RV)
     Q_tricuspid = max(0.0, (P[i["right_atrium"]] - P[i["right_ventricle"]]) / comp[i["right_ventricle"]].resistance)
@@ -548,7 +552,9 @@ def _odes(t: float, V: np.ndarray, params: SimParams, baro: BaroreflexController
     Q_cap_pv    = (P[i["pulmonary_cap"]] - P[i["pulmonary_vein"]]) / R("pulmonary_vein")
 
     # Mitral valve (PV → LA → LV)
-    Q_pv_la     = max(0.0, (P[i["pulmonary_vein"]] - P[i["left_atrium"]]) / comp[i["left_atrium"]].resistance)
+    # Pulmonary veins → LA: continuous, no valve. A wedge catheter reads LA pressure
+    # precisely because of this.
+    Q_pv_la     = max(0.0, (P[i["pulmonary_vein"]] - P[i["left_atrium"]]) / R_drain("pulmonary_vein"))
     Q_mitral    = max(0.0, (P[i["left_atrium"]] - P[i["left_ventricle"]]) / comp[i["left_ventricle"]].resistance)
     # Aortic valve (LV → aorta) — use valve resistance, not aortic outflow resistance
     Q_aortic    = max(0.0, (P[i["left_ventricle"]] - P[i["aorta"]]) / comp[i["left_ventricle"]].resistance)
