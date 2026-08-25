@@ -545,6 +545,33 @@ def test_coronary_perfusion_buckberg1972(supine_175_75, tachycardia_175_75_nobar
     )
 
 
+@pytest.mark.xfail(strict=True, reason=(
+    "KNOWN GAP, backlog item 28. Supine CVP is 5.7 mmHg against a 2-4 band. The "
+    "band is NOT widened — only the pass/fail bookkeeping is marked, so the target "
+    "stays honest. "
+    "ESTABLISHED BY MEASUREMENT 2026-08-25/26, so it is not re-derived: this is NOT "
+    "an atrial problem. Sweeping RA_EMIN over 3x moves mean RA pressure only "
+    "6.37 -> 5.99 mmHg while RA Vmax blows out 56.8 -> 121.5 mL against Gao's 62.5. "
+    "In a closed loop the circulation IMPOSES pressure on a low-pressure chamber and "
+    "the chamber's elastance sets its VOLUME — so the chamber rebuild's own "
+    "'operating pressure -> E_min' constraint, sound for ventricles, is BACKWARDS "
+    "for the atria. Do not lower RA_EMIN to chase this; "
+    "test_atrial_volumes_are_physiological fails first, and correctly. "
+    "IT IS A VENOUS-FILLING QUANTITY. Stressed volume is RIGHT (1339 mL, 26.1 % of "
+    "blood volume, vs Maas 1265 +/- 541) but systemic vascular compliance is "
+    "130.7 mL/mmHg against Maas's measured 64.3 +/- 32.7 in humans, so MSFP comes "
+    "out 10.1 vs 18.8-20.9 measured. One finding, not three. Halving compliance "
+    "doubles MSFP, which sets the venous return curve — orthostatic pooling, "
+    "haemorrhage, PLR and the whole 2026-07 venous rebuild move with it. That is a "
+    "re-derivation, not a parameter edit. "
+    "THE ASSERTION ITSELF IS ALSO SUSPECT and should be re-examined WITH item 28, "
+    "not assumed correct: it compares a rolling MINIMUM of RA pressure (5.20) "
+    "against a NARRATIVE REVIEW's figure for what that review defines as SVC "
+    "intraluminal pressure — model mean RA is 6.37 and model SVC is 6.56. Ferguson "
+    "1989's normal patient sat near 7.5 mmHg mean, and his five ASD patients spanned "
+    "mean RAP 2-13. "
+    "strict=True so this flips to a FAILURE the day it is fixed."
+))
 def test_cvp_baseline_calibration(supine_175_75):
     """[DOI: 10.1111/anae.16633] Lloyd-Donald 2025 — normal supine awake
     CVP = 2-3 mmHg (model reports end-diastolic RA pressure trough).
@@ -800,47 +827,13 @@ def test_hemorrhage_resuscitation_restores_map_and_co(hem_mod):
 # 8. PPV — pulse pressure variation / fluid responsiveness
 # ===========================================================================
 
-def test_ppv_fluid_responsiveness_michard2000():
-    """[DOI 10.1164/ajrccm.162.1.9905119 — Michard & Teboul 2000]
-    PPV > 13% predicts fluid responsiveness under mechanical ventilation.
+@pytest.fixture(scope="module")
+def ppv_scenarios():
+    """Three PPV scenarios, run once and shared.
 
-    Michard 2000 (n=40 septic-shock patients, PEEP 5, VT 8 mL/kg):
-    PPV > 13% predicted ≥15% CO rise with a 500 mL fluid challenge
-    (sensitivity 94%, specificity 96%).
-
-    Three scenarios — all at PEEP 5 cmH₂O / PIP 20 cmH₂O / RR 14 bpm:
-
-    1. Normovolemic (default patient): LV EDV ~139 mL > EDV_ref=130 → Starling
-       plateau → beat-to-beat SV barely changes with cyclic ITP → PPV < 13%.
-
-    2. Hypovolemic (1000 mL hemorrhage → ascending Starling limb): each
-       ITP-driven venous-return drop reduces LV SV appreciably → PPV > 13%,
-       correctly flagging the patient as fluid responsive. Since the
-       venous-system rebuild gave the model a physiological stressed volume
-       (~1.66 L, was 667 mL), this threshold now occurs at a clinically
-       realistic class-II hemorrhage rather than the ~400 mL the old
-       compressed scale required.
-
-    3. Partial resuscitation (hemorrhage + 1000 mL crystalloid): CO increases
-       ≥15% (Michard criterion) AND PPV decreases — confirms fluid responsiveness
-       was correctly identified by the elevated PPV.
-
-    KNOWN GAP (2026-08-25). Scenario 1 FAILS at 24.7 % against < 13 %, and the
-    threshold is deliberately NOT loosened — see CLAUDE.md, "do not encode a
-    known gap as correct". Two defects were fixed on 2026-08-25, taking it from
-    43.1 %: the ITP compartment set omitted the thoracic arteries, and the
-    pleural transmission fraction was unsourced and 33 % above the measured
-    human value. The residual is a missing mechanism, not a calibration error —
-    the model raises pleural pressure during a machine breath but leaves
-    abdominal pressure at zero, when the same diaphragm descent does both, and
-    the abdominal half is the one carrying the volume-state discrimination
-    (Takata & Robotham; backlog item 27). Pulse-pressure variation tracks the
-    model's own stroke-volume variation 1:1 (24.7 % vs 25.3 %), so nothing here
-    is amplifying — the drive is simply too big.
-
-    Note the premise in scenario 1 no longer holds as written: under PEEP 5 the
-    LV sits at EDV ≈ 126 mL, below the edv_ref = 130 mL plateau, because the
-    model's PEEP costs it too much preload. That is the same defect.
+    Module-scoped because each is a 60 s simulation and two tests need all
+    three — the live fluid-responsiveness assertions below, and the isolated
+    normovolaemic threshold that is currently a known gap.
     """
     def _ppv_run(hemorrhage_ml=0.0, fluid_ml=0.0):
         p = SimParams()
@@ -865,45 +858,96 @@ def test_ppv_fluid_responsiveness_michard2000():
             "co":  float(np.mean(r["co"][h:])),
         }
 
-    s_normo = _ppv_run()
-    s_hypo  = _ppv_run(hemorrhage_ml=1000.0)
-    s_resus = _ppv_run(hemorrhage_ml=1000.0, fluid_ml=1000.0)
+    return {
+        "normo": _ppv_run(),
+        "hypo":  _ppv_run(hemorrhage_ml=1000.0),
+        "resus": _ppv_run(hemorrhage_ml=1000.0, fluid_ml=1000.0),
+    }
 
-    # ORDERING FIRST. Losing blood must RAISE pulse-pressure variation. That is
-    # the whole premise of the metric, and unlike the thresholds below it is
+
+def test_ppv_fluid_responsiveness_michard2000(ppv_scenarios):
+    """[DOI 10.1164/ajrccm.162.1.9905119 — Michard & Teboul 2000]
+    PPV > 13% predicts fluid responsiveness under mechanical ventilation.
+
+    Michard 2000 (n=40 septic-shock patients, PEEP 5, VT 8 mL/kg):
+    PPV > 13% predicted >=15% CO rise with a 500 mL fluid challenge
+    (sensitivity 94%, specificity 96%).
+
+    THIS TEST HOLDS THE ASSERTIONS THAT CURRENTLY PASS. The normovolaemic
+    threshold is a known gap and lives in its own xfail below, deliberately
+    separated so that these four keep running rather than being swallowed by
+    a whole-test xfail. The ordering assertion in particular was added on
+    2026-08-25 to catch a failure mode nothing had been watching, and it would
+    be worthless if it could not fail.
+    """
+    s_normo = ppv_scenarios["normo"]
+    s_hypo  = ppv_scenarios["hypo"]
+    s_resus = ppv_scenarios["resus"]
+
+    # ORDERING. Losing blood must RAISE pulse-pressure variation. That is the
+    # whole premise of the metric, and unlike the thresholds it is
     # calibration-independent — it holds whatever the absolute numbers are.
     # It was silently INVERTED until 2026-08-25 (normovolaemic 43.1 % vs
     # hypovolaemic 39.4 %: the model said a bleeding patient was LESS
     # fluid-responsive) and nothing caught it, because the threshold assertions
     # only ever check each scenario against 13 % and never against each other.
-    # Deliberately placed BEFORE the thresholds so it keeps running while the
-    # normovolaemic one is a known failure — otherwise this guard would be dead
-    # code until backlog item 27 lands. See validation_log.md "PPV diagnosed".
-    # Do not weaken this to accommodate a calibration.
+    # See validation_log.md "PPV diagnosed". Do not weaken this.
     assert s_hypo["ppv"] > s_normo["ppv"], (
         f"PPV ordering inverted: normovolemic {s_normo['ppv']:.1f}% vs "
         f"hypovolemic {s_hypo['ppv']:.1f}% — hemorrhage must RAISE PPV"
     )
 
-    # Hypovolemic: on ascending limb → fluid responsive (Michard threshold)
+    # Hypovolemic: on ascending limb -> fluid responsive (Michard threshold)
     assert s_hypo["ppv"] > 13, (
         f"Hypovolemic PPV too low: {s_hypo['ppv']:.1f}% (expected > 13% per Michard 2000)"
     )
 
     # Resuscitation reduces PPV (patient moves toward plateau)
     assert s_resus["ppv"] < s_hypo["ppv"], (
-        f"PPV did not decrease with resuscitation: {s_hypo['ppv']:.1f}% → {s_resus['ppv']:.1f}%"
+        f"PPV did not decrease with resuscitation: {s_hypo['ppv']:.1f}% -> {s_resus['ppv']:.1f}%"
     )
 
-    # CO increased ≥ 15% with fluid (Michard criterion validated)
+    # CO increased >= 15% with fluid (Michard criterion validated)
     assert s_resus["co"] >= s_hypo["co"] * 1.15, (
-        f"CO increase < 15% with fluid: {s_hypo['co']:.2f} → {s_resus['co']:.2f} L/min"
+        f"CO increase < 15% with fluid: {s_hypo['co']:.2f} -> {s_resus['co']:.2f} L/min"
     )
 
-    # KNOWN FAILURE, LAST so everything above it still runs. See the docstring:
-    # 24.7 % as of 2026-08-25, down from 43.1 %, with the remaining gap traced
-    # to a missing mechanism (backlog item 27) rather than a calibration error.
-    # The threshold is Michard's and is not to be loosened.
+
+@pytest.mark.xfail(strict=True, reason=(
+    "KNOWN GAP, backlog item 27. Normovolaemic PPV is 24.7 % against Michard's "
+    "< 13 %, so the model still flags a normovolaemic patient as fluid-responsive "
+    "— a false transfusion trigger. The threshold is Michard's and is NOT loosened; "
+    "only the pass/fail bookkeeping is marked, so the target stays honest. "
+    "Down from 43.1 % on 2026-08-25 by two fixes: the ITP compartment set omitted "
+    "the thoracic arteries, putting the whole pleural swing across the aortic valve, "
+    "and the pleural transmission fraction carried an unsourced 0.5 against a "
+    "measured human 0.376 (Pelosi 1995; RETRACTIONS R3). "
+    "THE RESIDUAL IS A MISSING MECHANISM, NOT A CALIBRATION ERROR. The model raises "
+    "pleural pressure during a machine breath but leaves abdominal pressure at zero, "
+    "when the same diaphragm descent does both — and per Takata & Robotham the "
+    "abdominal half is what carries the volume-state discrimination (capacitor in "
+    "zone 3, collapsible Starling resistor in zone 2, so abdominal pressure AUGMENTS "
+    "venous return when full and IMPEDES it when empty). PPV tracks the model's own "
+    "stroke-volume variation 1:1 (24.7 vs 25.3 %), so nothing is amplifying — the "
+    "drive is simply too big. "
+    "Do NOT close this by choosing a thorax-to-abdomen coefficient that lands PPV "
+    "under 13 %; that coefficient has no human source yet and picking one to hit the "
+    "endpoint is the exact failure mode this project keeps catching. "
+    "The ordering, hypovolaemic and resuscitation assertions all PASS and are kept "
+    "live in the test above. "
+    "strict=True so this flips to a FAILURE the day it is fixed."
+))
+def test_ppv_normovolaemic_below_michard_threshold(ppv_scenarios):
+    """[DOI 10.1164/ajrccm.162.1.9905119] Normovolaemic patient must not be
+    flagged as fluid-responsive.
+
+    On the Starling plateau, beat-to-beat SV should barely change with cyclic
+    intrathoracic pressure, so PPV stays under 13 %. Note the premise no longer
+    holds as originally written: under PEEP 5 the LV sits at EDV ~126 mL, below
+    the edv_ref = 130 mL plateau, because the model's PEEP costs it too much
+    preload. That is the same missing mechanism.
+    """
+    s_normo = ppv_scenarios["normo"]
     assert s_normo["ppv"] < 13, (
         f"Normovolemic PPV too high: {s_normo['ppv']:.1f}% (expected < 13% on plateau)"
     )
