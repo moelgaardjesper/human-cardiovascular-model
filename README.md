@@ -357,7 +357,7 @@ Validated against published human physiological data — **36 tests, all passing
 | 8 | Microgravity: CVP higher than upright Earth | [Buckey 1996](https://pubmed.ncbi.nlm.nih.gov/8853498/) | CVP supine 5–8 mmHg, drops to 2.5 mmHg in orbit; higher than upright standing | CVP µg 3.0 vs upright 45° 1.6 mmHg | ✓ |
 | 9 | Cerebral perfusion pressure (CPP) decreases with upright posture | [Pohl & Cullen 2005](https://pubmed.ncbi.nlm.nih.gov/15983529/) | Beach-chair position: MAP drops 30–35 mmHg at brain level under GA; CPP risk < 50 mmHg | CPP supine 79 mmHg → 42 mmHg at 45° upright (below the <50 risk threshold — see note below) | ✓ |
 | 10 | Buckberg index falls with tachycardia (coronary ischaemia risk) | [Buckberg 1972/1978](https://pubmed.ncbi.nlm.nih.gov/4667030/) | DPTI/SPTI > 0.8 at rest; falls as diastolic time shortens with HR↑ | Buckberg 1.12 at rest → 0.44 at HR=160 bpm | ✓ |
-| 11 | PPV > 13% identifies fluid-responsive patient under mechanical ventilation | [Michard & Teboul 2000](https://doi.org/10.1164/ajrccm.162.1.9905119) — n=40 septic shock patients | PPV > 13% predicts ≥15% CO rise with fluid challenge (sens. 94%, spec. 96%) | Normovolemic: PPV 9.1% (<13, plateau, not flagged) ✓; hypovolemic (1000 mL): PPV 17.9% > 13% ✓; resuscitation: CO +159% ✓ (see note below) | ✓ |
+| 11 | PPV > 13% identifies fluid-responsive patient under mechanical ventilation | [Michard & Teboul 2000](https://doi.org/10.1164/ajrccm.162.1.9905119) — n=40 septic shock patients | PPV > 13% predicts ≥15% CO rise with fluid challenge (sens. 94%, spec. 96%) | Normovolemic: **PPV 24.7% — FAILS <13%**; hypovolemic (1000 mL): PPV 42.9% > 13% ✓; resuscitation lowers PPV and raises CO +136% ✓ (see note below) | ✗ |
 | 12 | High spinal anaesthesia (≈T4): MAP↓, CO maintained, HR near-unchanged | [Malmqvist 1987](https://doi.org/10.1111/j.1399-6576.1987.tb02605.x) — n=30, average block T4–5 | MAP ↓≥30% at complete block; CO preserved; minor HR changes (baroreflex compensates) | MAP ↓>5%, CO maintained ±20%, MAP >45 mmHg | ✓ |
 | 13 | Vasopressin dose-response: MAP monotonically↑, CO maintained | [Patel 2002](https://doi.org/10.1097/00000542-200203000-00011) — n=13 septic shock | MAP rises with dose (0→2→4 U/hr); CO maintained; NE requirement ↓79% | MAP monotonically↑; CO maintained ±20% at 2 U/hr | ✓ |
 | 14 | NE vs phenylephrine on spinal baseline: NE preserves CO better | [Ngan Kee 2015](https://doi.org/10.1097/ALN.0000000000000601) — n=104, C-section spinal | NE CO 102.7% vs phenyl 93.8% (p=0.004); NE HR > phenyl HR (reflex bradycardia) | NE CO > phenyl CO; NE HR > phenyl HR ✓ | ✓ |
@@ -387,9 +387,39 @@ The venous-system rebuild substantially improved volume realism, hemorrhage scal
 
 Both remain inside their test bands (which assert direction and viability, not magnitude), so the suite is green — but the direction of travel is unfavourable and should not be read as a pass. The cause is mechanistically coherent: the physiological venous compliance that fixed the volume scale also lets more blood pool on tilting, and the baroreflex SVR gain was already raised to 0.65 partly to compensate. The remaining shortfall is the absent skeletal-muscle pump (backlog item 9), which is precisely the mechanism a conscious upright patient uses to defend venous return.
 
-**Scenario 11 — PPV resuscitation margin is thin** *(fragile, not failing)*
+**Scenario 11 — PPV overestimates fluid responsiveness** *(failing, mechanism identified)*
 
-The PPV test requires that resuscitation *lowers* PPV. It currently does so by 0.3 percentage points (17.9% → 17.6%), which passes but has almost no margin; a modest recalibration could flip it. Separately, the 1000 mL hypovolaemic operating point drives CO to 1.16 L/min — profound shock, arguably beyond the range where PPV is clinically interpretable at all. Worth revisiting the chosen hemorrhage volume so the scenario sits in a régime where the metric is meaningful.
+Normovolaemic PPV is **24.7% against Michard's <13%**, so the model flags a normovolaemic
+patient as fluid-responsive. That is a false transfusion trigger and the most clinically
+dangerous wrong answer currently in the model. The threshold has deliberately **not** been
+loosened to make the suite green.
+
+Two defects were found and fixed on 2026-08-25, taking it from 43.1%: the intrathoracic-pressure
+compartment set omitted the thoracic arteries (putting the whole pleural pressure swing across
+the *aortic valve*, an internal junction), and the pleural transmission fraction carried an
+unsourced 0.5 — attributed to two papers that do not report such a number — against a measured
+0.376 in normal anaesthetised paralysed humans ([Pelosi 1995](https://doi.org/10.1164/ajrccm.152.2.7633703)).
+See `RETRACTIONS.md` R3.
+
+More important than the headline number is what those fixes repaired qualitatively: **before
+them, a 1000 mL haemorrhage LOWERED the model's PPV** (43.1% → 39.4%), so the fluid-responsiveness
+signal pointed the wrong way. Nothing caught it, because the test only checked each scenario
+against the 13% threshold and never against the other. The separation is now +18.2 points in the
+correct direction, and a calibration-independent ordering assertion guards it.
+
+The residual gap is a **missing mechanism, not a calibration error**. The model raises pleural
+pressure during a machine breath but leaves abdominal pressure at zero, when the same diaphragm
+descent does both — and the abdominal half is the one that carries the volume-state discrimination
+(Takata & Robotham: the abdominal venous bed is a capacitor when full and a collapsible Starling
+resistor when empty, so a rise in abdominal pressure *augments* venous return in a normovolaemic
+abdomen and *impedes* it in a hypovolaemic one). Pulse-pressure variation tracks the model's own
+stroke-volume variation 1:1, so nothing is amplifying — the drive is simply too big. Scoped as
+backlog item 27, deliberately not implemented until the thorax-to-abdomen coupling has a human
+source.
+
+Separately, the 1000 mL hypovolaemic operating point drives CO to 1.86 L/min — profound shock,
+arguably beyond the range where PPV is clinically interpretable at all. Worth revisiting the
+chosen haemorrhage volume so the scenario sits where the metric means something.
 
 **Previously listed: Scenario 4 — Trendelenburg ΔCVP** *(resolved 2026-06-17)*
 

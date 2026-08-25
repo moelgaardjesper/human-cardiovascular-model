@@ -97,6 +97,45 @@ MOBILIZABLE_VENOUS_RESERVOIR = ("splanchnic_vein", "upper_body_vein")
 _VENOUS_TONE_IDX = frozenset(IDX[name] for name in MOBILIZABLE_VENOUS_RESERVOIR)
 
 
+# Compartments that lie inside the chest and are therefore surrounded by pleural
+# pressure. ITP is added to their intraluminal pressure in _odes().
+#
+# The governing principle is that intrathoracic pressure is a *uniform external
+# pressure*. A uniform pressure applied around a closed elastic system produces
+# no internal flow — it can only drive flow where a vessel crosses the chest
+# wall, because that is the only place a pressure step exists. So the membership
+# of this set is not a tuning knob: it fixes *where the boundaries are*, and any
+# compartment wrongly left out creates a spurious ITP-driven gradient at an
+# internal junction that has no business carrying one.
+#
+# Anatomy, and the boundaries that follow:
+#   arterial out : aorta and brachiocephalic (innominate) are mediastinal →
+#                  boundaries at aorta→abdominal_aorta (aortic hiatus) and
+#                  brachiocephalic→upper_body_art (thoracic outlet)
+#   venous in    : the SVC is entirely intrathoracic → boundary at
+#                  upper_body_vein→svc, at the thoracic outlet
+#   the IVC is NOT included: only its last 2–3 cm are intrathoracic, so the
+#                  boundary belongs at ivc→right_atrium, where it already is
+#   coronary     : epicardial, inside the pericardium
+#
+# Until 2026-08-25 the aorta, brachiocephalic, SVC and coronary were all
+# omitted, which put the entire ITP swing across the *aortic valve* — an
+# internal junction, where it acted as a spurious respiratory modulation of
+# ejection. Its magnitude scaled with 1/VALVE_R, so it was largely hidden at
+# VALVE_R = 0.08 and grew eightfold when the valve rebuild dropped VALVE_R to
+# 0.01, taking normovolaemic PPV to 43 %. Removing it drops PPV to 32.6 % at an
+# unchanged transmission fraction. Note it inflated STROKE-VOLUME variation, not
+# the pressure-to-volume ratio: PPV tracks the model's own `sv` 1:1 both before
+# and after (1.02 and 0.98). See docs/validation_log.md, "PPV diagnosed".
+THORACIC_COMPARTMENTS = (
+    "aorta", "brachiocephalic", "svc", "coronary",
+    "right_atrium", "right_ventricle",
+    "pulmonary_art", "pulmonary_cap", "pulmonary_vein",
+    "left_atrium", "left_ventricle",
+)
+_THORACIC_IDX = tuple(IDX[name] for name in THORACIC_COMPARTMENTS)
+
+
 # ---------------------------------------------------------------------------
 # Simulation parameters dataclass
 # ---------------------------------------------------------------------------
@@ -426,9 +465,7 @@ def _odes(t: float, V: np.ndarray, params: SimParams, baro: BaroreflexController
     itp_total = itp_resp + itp_pos
 
     if itp_total != 0.0:
-        for _ti in (i["right_atrium"], i["right_ventricle"],
-                    i["pulmonary_art"], i["pulmonary_cap"], i["pulmonary_vein"],
-                    i["left_atrium"], i["left_ventricle"]):
+        for _ti in _THORACIC_IDX:
             P[_ti] += itp_total
 
     def hdp(idx_name: str) -> float:

@@ -106,6 +106,17 @@ variable that silently zeroed all venoconstriction — so two calibration-indepe
 regression guards in `tests/test_circulation.py` §14 assert the mechanism is live
 and correctly signed. Do not weaken them to make a calibration fit.
 
+**`THORACIC_COMPARTMENTS` is anatomy, not a knob.** Intrathoracic pressure is a
+*uniform external pressure*: applied around a closed elastic system it produces
+no internal flow, so it can only drive flow where a vessel crosses the chest
+wall. Membership of that tuple therefore fixes **where the boundaries are**, and
+a compartment wrongly left out invents a pressure step at an internal junction.
+The aorta, brachiocephalic, SVC and coronary were all missing until 2026-08-25,
+which put the whole pleural swing across the *aortic valve* and scaled it with
+`1/VALVE_R` — so the valve rebuild silently grew it eightfold. Never add or
+remove a compartment here to move a number; argue it from where the vessel
+actually is.
+
 ## Validation discipline
 
 This project is a clinical model, so a number is only as good as the source behind it.
@@ -158,6 +169,15 @@ anyone noticing, and it cost real time. A tau of 39 min from dogs turned out to 
 untransferable because their vascular compliance is 3.3x higher per kg than the (human-
 calibrated) model's. When only animal data exists, **prefer ratios over absolute values** —
 a ratio survives a species jump far better than an absolute time constant.
+
+**Record EVERY number from a paper you read, not just the ones you need today.**
+`docs/reference_values.md` is the ledger. When a source is read in full, transcribe its
+whole relevant table — including values the model has no use for yet — with the PMID/DOI,
+the cohort, and a note on what is and is not used. This has already paid off repeatedly:
+Gao's atrial tables were fetched for one item and immediately settled the ordering of the
+next; Heldt Table 3 was fetched for the pulmonary bed and settled the systemic comparison.
+Re-fetching and re-reading a paper costs far more than writing the table down once, and a
+number you skipped is a number you will later half-remember and get wrong.
 
 **Do not cite a paper whose numbers you have not read.** A source was once added to the
 validation log on the strength of its title; when finally retrieved it reported a value 9x

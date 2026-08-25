@@ -135,11 +135,34 @@ def test_odes_pressure_passthrough_matches_recompute():
     assert np.any(p_out), "p_out was never written"
     assert np.all(np.isfinite(p_out)), "p_out contains non-finite pressures"
 
-    # Aortic pressure should match the direct compliance calculation.
     from model.compartments import IDX
+    from model.circulation import THORACIC_COMPARTMENTS
+    from model.respiration import intrathoracic_pressure
+
+    # An EXTRATHORACIC compartment carries no ITP, so p_out must equal the plain
+    # compliance calculation exactly. This is the passthrough contract proper.
+    c_ub = comps[IDX["upper_body_art"]]
+    assert "upper_body_art" not in THORACIC_COMPARTMENTS
+    expected = (V[IDX["upper_body_art"]] - c_ub.unstressed_volume) / c_ub.compliance
+    assert abs(p_out[IDX["upper_body_art"]] - expected) < 1e-9
+
+    # An INTRATHORACIC compartment must carry ITP, because _odes works in
+    # intraluminal pressure inside the chest. Until 2026-08-25 the aorta was
+    # wrongly outside the thoracic set and this assertion read the plain
+    # transmural value; see validation_log.md "PPV diagnosed". Checking the
+    # offset is present doubles as a guard that the thoracic set is LIVE —
+    # this repo's most common defect is a documented mechanism silently doing
+    # nothing, and a set that is applied to no one would still pass a
+    # finiteness check.
+    itp = intrathoracic_pressure(
+        0.0, params.ventilation_mode, params.resp_rate_bpm,
+        params.peep_cmh2o, params.pip_cmh2o, params.ie_ratio,
+    )
+    assert itp != 0.0, "test needs a ventilation mode with a non-zero ITP"
+    assert "aorta" in THORACIC_COMPARTMENTS
     c_ao = comps[IDX["aorta"]]
-    expected = (V[IDX["aorta"]] - c_ao.unstressed_volume) / c_ao.compliance
-    assert abs(p_out[IDX["aorta"]] - expected) < 1e-9
+    transmural = (V[IDX["aorta"]] - c_ao.unstressed_volume) / c_ao.compliance
+    assert abs(p_out[IDX["aorta"]] - (transmural + itp)) < 1e-9
 
 
 # ===========================================================================

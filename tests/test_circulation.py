@@ -801,6 +801,23 @@ def test_ppv_fluid_responsiveness_michard2000():
     3. Partial resuscitation (hemorrhage + 1000 mL crystalloid): CO increases
        ≥15% (Michard criterion) AND PPV decreases — confirms fluid responsiveness
        was correctly identified by the elevated PPV.
+
+    KNOWN GAP (2026-08-25). Scenario 1 FAILS at 24.7 % against < 13 %, and the
+    threshold is deliberately NOT loosened — see CLAUDE.md, "do not encode a
+    known gap as correct". Two defects were fixed on 2026-08-25, taking it from
+    43.1 %: the ITP compartment set omitted the thoracic arteries, and the
+    pleural transmission fraction was unsourced and 33 % above the measured
+    human value. The residual is a missing mechanism, not a calibration error —
+    the model raises pleural pressure during a machine breath but leaves
+    abdominal pressure at zero, when the same diaphragm descent does both, and
+    the abdominal half is the one carrying the volume-state discrimination
+    (Takata & Robotham; backlog item 27). Pulse-pressure variation tracks the
+    model's own stroke-volume variation 1:1 (24.7 % vs 25.3 %), so nothing here
+    is amplifying — the drive is simply too big.
+
+    Note the premise in scenario 1 no longer holds as written: under PEEP 5 the
+    LV sits at EDV ≈ 126 mL, below the edv_ref = 130 mL plateau, because the
+    model's PEEP costs it too much preload. That is the same defect.
     """
     def _ppv_run(hemorrhage_ml=0.0, fluid_ml=0.0):
         p = SimParams()
@@ -829,9 +846,20 @@ def test_ppv_fluid_responsiveness_michard2000():
     s_hypo  = _ppv_run(hemorrhage_ml=1000.0)
     s_resus = _ppv_run(hemorrhage_ml=1000.0, fluid_ml=1000.0)
 
-    # Normovolemic: on Starling plateau → not flagged as fluid responsive
-    assert s_normo["ppv"] < 13, (
-        f"Normovolemic PPV too high: {s_normo['ppv']:.1f}% (expected < 13% on plateau)"
+    # ORDERING FIRST. Losing blood must RAISE pulse-pressure variation. That is
+    # the whole premise of the metric, and unlike the thresholds below it is
+    # calibration-independent — it holds whatever the absolute numbers are.
+    # It was silently INVERTED until 2026-08-25 (normovolaemic 43.1 % vs
+    # hypovolaemic 39.4 %: the model said a bleeding patient was LESS
+    # fluid-responsive) and nothing caught it, because the threshold assertions
+    # only ever check each scenario against 13 % and never against each other.
+    # Deliberately placed BEFORE the thresholds so it keeps running while the
+    # normovolaemic one is a known failure — otherwise this guard would be dead
+    # code until backlog item 27 lands. See validation_log.md "PPV diagnosed".
+    # Do not weaken this to accommodate a calibration.
+    assert s_hypo["ppv"] > s_normo["ppv"], (
+        f"PPV ordering inverted: normovolemic {s_normo['ppv']:.1f}% vs "
+        f"hypovolemic {s_hypo['ppv']:.1f}% — hemorrhage must RAISE PPV"
     )
 
     # Hypovolemic: on ascending limb → fluid responsive (Michard threshold)
@@ -847,6 +875,14 @@ def test_ppv_fluid_responsiveness_michard2000():
     # CO increased ≥ 15% with fluid (Michard criterion validated)
     assert s_resus["co"] >= s_hypo["co"] * 1.15, (
         f"CO increase < 15% with fluid: {s_hypo['co']:.2f} → {s_resus['co']:.2f} L/min"
+    )
+
+    # KNOWN FAILURE, LAST so everything above it still runs. See the docstring:
+    # 24.7 % as of 2026-08-25, down from 43.1 %, with the remaining gap traced
+    # to a missing mechanism (backlog item 27) rather than a calibration error.
+    # The threshold is Michard's and is not to be loosened.
+    assert s_normo["ppv"] < 13, (
+        f"Normovolemic PPV too high: {s_normo['ppv']:.1f}% (expected < 13% on plateau)"
     )
 
 

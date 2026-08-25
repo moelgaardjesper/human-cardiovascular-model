@@ -39,6 +39,27 @@ import math
 # 1 cmH₂O = 0.735 mmHg
 _CMHG_TO_MMHG = 0.735
 
+# Fraction of airway pressure that reaches the pleural space during
+# positive-pressure ventilation. Physically this is the chest-wall share of
+# total respiratory-system elastance, Est,w / Est,rs.
+#
+# Pelosi 1995 (PMID 7633703, DOI 10.1164/ajrccm.152.2.7633703) measured both
+# halves with an esophageal balloon in a NORMAL anaesthetised-paralysed control
+# group (n=8) — the model's own target population — at PEEP 0:
+#     Est,L 9.3 ± 1.7,  Est,w 5.6 ± 2.3 cmH2O/L
+#     Est,w / (Est,L + Est,w) = 5.6 / 14.9 = 0.376
+# Their two injury arms give 0.418 (moderate ALI) and 0.358 (ARDS), so the ratio
+# is close to 0.4 regardless of lung pathology even though both elastances rise
+# steeply with severity. Full table in docs/reference_values.md.
+#
+# This replaces an unsourced 0.5 that was attributed to Suter 1978 and Talmor
+# 2008. Neither paper reports a transmission fraction — Suter (1975, not 1978)
+# is a PEEP-titration study and Talmor 2008 is an outcome RCT. See RETRACTIONS
+# R3. The old value was ~33% above the measured human ratio and, because every
+# ITP-driven venous-return effect scales with it, that error propagated into
+# the model's PEEP sensitivity and its pulse-pressure variation.
+PLEURAL_TRANSMISSION = 0.376
+
 
 def intrathoracic_pressure(
     t: float,
@@ -71,18 +92,25 @@ def intrathoracic_pressure(
     phase = (t % T) / T                    # 0–1 within one breath cycle
 
     if mode == 'spontaneous':
-        # Model constraint: the SVC→RA and IVC→RA connections use VALVE_R=0.08
-        # (low resistance, as appropriate for large veins). With a normal driving
-        # pressure of ~2 mmHg, even a −5 mmHg ITP would drive Q_svc_ra to 88 mL/s
-        # (3.5× the normal 25 mL/s), flooding the RA every inspiration cycle.
-        # The physiological limiter (vein collapse / Guyton waterfall at thoracic
-        # inlet) is not modelled, so ITP must be kept small enough that the RA
-        # self-limits via its own compliance before the cascade destabilises.
+        # Model constraint: the SVC→RA and IVC→RA connections are low-resistance,
+        # as large veins should be (VENOATRIAL_R = 0.02 since the valve rebuild;
+        # this comment said VALVE_R = 0.08 until 2026-08-25, which those junctions
+        # have not used since they stopped being modelled as valves). With a
+        # normal driving pressure of ~2 mmHg, even a −5 mmHg ITP would flood the
+        # RA every inspiratory cycle. The physiological limiter is not modelled,
+        # so ITP has to be kept small enough that the RA self-limits via its own
+        # compliance before the cascade destabilises.
+        #
+        # The limiter is NOT the Guyton waterfall, contrary to what this comment
+        # used to claim — see validation_log.md "PPV diagnosed" (2026-08-25) for
+        # the algebra: with the SVC inside the thoracic set, ITP cancels out of
+        # the waterfall form. What is actually missing is the respiratory swing
+        # in ABDOMINAL pressure (backlog item 27), which in a real subject moves
+        # with pleural pressure and partly cancels it on the IVC path.
         #
         # Calibration: baseline −2 cmH₂O, swing −1 cmH₂O (peak −3 cmH₂O =
-        # −2.2 mmHg). At peak inspiration: Q_svc_ra ≈ 53 mL/s (2× normal),
-        # which raises RA transmural pressure enough to restore equilibrium within
-        # the same breath. RSA (modelled separately) remains the main respiratory
+        # −2.2 mmHg), chosen so the RA restores equilibrium within the same
+        # breath. RSA (modelled separately) remains the main respiratory
         # signature in HR.
         baseline  = -2.0   # cmH₂O, resting end-expiratory
         swing     = -1.0   # additional cmH₂O at mid-inspiration (total: −3 cmH₂O)
@@ -92,12 +120,9 @@ def intrathoracic_pressure(
             itp_cmh2o = baseline
 
     elif mode == 'mechanical':
-        # Airway pressure (PEEP→PIP) is attenuated by chest-wall compliance
-        # before reaching the pleural space. The pleural pressure transmission
-        # fraction is typically 0.4–0.5 (Suter 1978; Talmor 2008). Using 0.5
-        # keeps the CO reduction from PEEP within the Jardin 1981 range while
-        # preventing complete venous-return block at PEEP 10 cmH₂O.
-        _TRANSMISSION = 0.5
+        # Airway pressure (PEEP→PIP) is attenuated by the chest wall before it
+        # reaches the pleural space. See PLEURAL_TRANSMISSION above.
+        _TRANSMISSION = PLEURAL_TRANSMISSION
         if phase < ie_ratio:
             airway    = peep_cmh2o + (pip_cmh2o - peep_cmh2o) * math.sin(
                 math.pi * phase / ie_ratio
