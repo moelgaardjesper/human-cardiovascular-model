@@ -113,16 +113,46 @@ def frank_starling_emax(
 LV_EMAX = 3.00   # mmHg/mL  left ventricle peak systolic elastance
 LV_EMIN = 0.055   # mmHg/mL  left ventricle diastolic elastance
 RV_EMAX = 1.15   # mmHg/mL  right ventricle peak systolic elastance
-# RV_EMIN reduced 0.05→0.02: the RV is highly compliant at diastole (thin wall).
-# With RV_EMIN=0.05 and EDV≈180 mL: P_rv_dia=5 mmHg, forcing RA (CVP) to stay ≥5 mmHg.
-# With RV_EMIN=0.02 and EDV≈163 mL: P_rv_dia=1.7 mmHg → CVP end-diastolic ≈2 mmHg ✓
-# ESV is unchanged (determined by P_pa/RV_EMAX = 15/1.15 ≈ 93 mL), so SV improves.
-RV_EMIN = 0.04   # mmHg/mL  right ventricle diastolic elastance (was 0.05)
-RA_EMAX = 0.30   # mmHg/mL  right atrium
-# RA_EMIN reduced 0.07→0.04: with P_rv_dia≈1.4 mmHg (from RV_EMIN=0.02),
-# equilibrium RA pressure ≈ 3.8 mmHg, giving end-diastolic CVP ≈ 3 mmHg.
-# Analytical: at equilibrium 2×(P_svc−P_ra)/R = (P_ra−P_rv)/R → P_ra≈3.8 mmHg ✓
-RA_EMIN = 0.20   # mmHg/mL  right atrium diastolic elastance (was 0.07)
+# The RV is highly compliant in diastole (thin wall). Measured: P_rv_dia = 1.68 mmHg
+# at RV Vmin 80 mL, which is what lets the RA sit low enough to be a plausible CVP.
+RV_EMIN = 0.04   # mmHg/mL  right ventricle diastolic elastance
+# RA_EMAX 0.30 -> 0.45 (2026-08-26), derived from Gao 2022's RA emptying fraction.
+# E_max/E_min is the RATIO that sets emptying fraction, which is why it is derivable even
+# though the atrium's absolute stiffness is not (see RA_EMIN below, and the note on
+# Ferguson 1989 in docs/reference_values.md — that paper's volumes are in RELATIVE units).
+# Sweep with E_min held at 0.20:
+#   E_max   RAEF      RA Vmin        (Gao n=408: RAEF 49.7 +/- 9.2 %, RAVmin 17.1 +/- 5.6 mL/m2)
+#    0.30   39.0 %    34.7 mL / 18.8 mL/m2
+#    0.45   49.5 %    28.7 mL / 15.5 mL/m2
+#    0.50   51.6 %    27.5 mL / 14.9 mL/m2
+# 0.45 hits the emptying fraction almost exactly and leaves Vmin inside 1 SD of Gao. RA
+# Vmax is unmoved at 56.8 mL, so this costs nothing on the volume side.
+# It also drops reported CVP as a CONSEQUENCE — a harder atrial contraction empties the
+# chamber further during the x descent, and CVP is reported as a rolling minimum:
+# 5.20 -> 4.89 on the default patient with reflexes off, and 6.0 -> 5.7 on the 175/75
+# fixture that test_cvp_baseline_calibration uses. That is not why the value was chosen
+# and it does not close the CVP gap; see backlog item 28.
+RA_EMAX = 0.45   # mmHg/mL  right atrium peak systolic elastance
+# RA_EMIN IS SET BY VOLUME, NOT BY PRESSURE — do not lower it to chase CVP.
+#
+# The comments here used to derive RA_EMIN from an "equilibrium RA pressure ≈ 3.8 mmHg",
+# and they described values (0.04, and RV_EMIN 0.02) that the 2026-08-24 chamber rebuild
+# had already replaced. Both the values and the reasoning were stale. Measured on
+# 2026-08-25 by sweeping RA_EMIN over 3x with everything else held:
+#
+#   RA_EMIN   mean RA P    RA Vmax     (Gao 2022 CMR target: RA Vmax 62.5 mL @ BSA 1.845)
+#     0.200      6.37       56.8
+#     0.097      6.19       92.0
+#     0.064      5.99      121.5
+#
+# A threefold change in atrial stiffness moves mean RA pressure by 0.4 mmHg and more than
+# doubles the volume. That is the expected behaviour of a low-pressure chamber in a closed
+# loop: the circulation IMPOSES the pressure, and the chamber's elastance sets how much
+# volume it takes up at that pressure. CVP is a venous-filling quantity — it belongs to
+# mean systemic filling pressure and total vascular compliance (backlog item 28), not here.
+# 0.200 is the best volume match of the sweep; test_atrial_volumes_are_physiological
+# (RAVmax band 20-48 mL/m2) fails at 0.097 and below.
+RA_EMIN = 0.20   # mmHg/mL  right atrium diastolic elastance
 LA_EMAX = 0.45   # mmHg/mL  left atrium
 LA_EMIN = 0.28   # mmHg/mL
 

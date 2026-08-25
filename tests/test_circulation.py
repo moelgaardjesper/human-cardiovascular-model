@@ -547,7 +547,30 @@ def test_coronary_perfusion_buckberg1972(supine_175_75, tachycardia_175_75_nobar
 
 def test_cvp_baseline_calibration(supine_175_75):
     """[DOI: 10.1111/anae.16633] Lloyd-Donald 2025 — normal supine awake
-    CVP = 2-3 mmHg (model reports end-diastolic RA pressure trough)."""
+    CVP = 2-3 mmHg (model reports end-diastolic RA pressure trough).
+
+    KNOWN FAILURE at 5.2-6.4 mmHg. Investigated 2026-08-25, no fix applied —
+    full record in validation_log.md "CVP investigated". Two things established
+    so they are not re-derived:
+
+    1. THE ATRIUM DOES NOT SET CVP. Sweeping RA_EMIN over 3x moves mean RA
+       pressure 6.37 -> 5.99 mmHg while RA Vmax goes 56.8 -> 121.5 mL against
+       Gao's 62.5. In a closed loop the circulation imposes pressure on a
+       low-pressure chamber and its elastance sets volume. Do not lower
+       RA_EMIN to chase this number; test_atrial_volumes_are_physiological
+       fails first, and correctly.
+    2. IT IS A VENOUS-FILLING QUANTITY. Stressed volume is right (1339 mL,
+       26.1 % of blood volume, vs Maas 1265 +/- 541) but systemic compliance is
+       ~2x the measured human value, so MSFP is ~half. Backlog item 28 — a
+       venous re-derivation, not a parameter edit.
+
+    Also note this assertion is not yet like-for-like with its source: the model
+    reports a rolling MINIMUM of RA pressure over two cardiac cycles (5.20)
+    where the mean is 6.37, and Lloyd-Donald is a narrative review describing
+    CVP as the intraluminal pressure of the SVC, which the model puts at 6.56.
+    Straightening that out changes CVP in every other test, so it belongs with
+    item 28 rather than here.
+    """
     cvp = supine_175_75["cvp"]
     assert 2.0 <= cvp <= 4.0, f"Supine CVP {cvp:.1f} mmHg outside 2-4 mmHg target"
 
@@ -1684,4 +1707,75 @@ def test_atrial_emptying_fractions_are_physiological():
     )
     assert 35.0 <= s["ra"]["ef"] <= 65.0, (
         f"RA emptying fraction {s['ra']['ef']:.1f}% outside 35-65; [G1] 49.7 +/- 9.2"
+    )
+
+
+# ===========================================================================
+# 19. Respiratory modulation of right atrial filling
+#     [F1] Ferguson JJ, Miller MJ, Aroesty JM, Sahagian P, Grossman W,
+#          McKay RG (1989) J Am Coll Cardiol 13:630-6. PMID 2918169,
+#          DOI 10.1016/0735-1097(89)90604-9
+# ===========================================================================
+
+def test_ra_fills_during_spontaneous_inspiration_ferguson1989():
+    """[F1 Figure 3] Right atrial volume RISES during spontaneous inspiration.
+
+    Ferguson recorded simultaneous right atrial pressure and impedance volume
+    in a patient without an atrial septal defect, and states it directly:
+    "With inspiration there is a decline in right atrial pressure and an
+    increase in right atrial volume. During expiration, right atrial pressure
+    increases as right atrial volume declines."
+
+    This is a CALIBRATION-INDEPENDENT guard on the thoracic compartment set
+    (`THORACIC_COMPARTMENTS` in circulation.py). Atrial filling rises on
+    inspiration only because the falling pleural pressure is applied to the
+    right atrium and not to the abdominal IVC, which widens the venoatrial
+    gradient. A model that left the RA out of the set, or applied intrathoracic
+    pressure with the wrong sign, would flatten or invert this. Until
+    2026-08-25 the set omitted the aorta, brachiocephalic, SVC and coronary —
+    see validation_log.md "PPV diagnosed" — so the boundaries this asserts are
+    newly established and worth pinning.
+
+    Volume is compared rather than pressure for two reasons. Ferguson's volumes
+    are in RELATIVE impedance units, so only the DIRECTION is usable from that
+    paper at all; and the model's reported `cvp` deliberately excludes
+    respiratory ITP (it is defined as an end-expiratory clinical reading), so
+    no model output corresponds to Ferguson's continuous catheter pressure
+    trace. The pressure half of his sentence therefore cannot be asserted
+    against any current output — recorded in the validation log rather than
+    silently dropped.
+
+    Phase-averaged across whole breaths: heart rate and respiratory rate are
+    deliberately incommensurate (72 bpm vs 10 breaths/min = 7.2 beats per
+    breath), so averaging by respiratory phase over many breaths cancels the
+    cardiac oscillation instead of aliasing it.
+    """
+    from model.circulation import THORACIC_COMPARTMENTS
+
+    assert "right_atrium" in THORACIC_COMPARTMENTS, (
+        "the RA must be inside the thoracic set for this test to mean anything"
+    )
+
+    p = SimParams()
+    p.ventilation_mode   = 'spontaneous'
+    p.resp_rate_bpm      = 10.0
+    p.baroreflex_enabled = False
+    r = run_simulation(p, duration_s=60.0, dt=DT, use_baroreflex=False)
+
+    t = r["t"]
+    v_ra = r["volumes"][:, IDX["right_atrium"]]
+
+    # Discard the settling transient, then bin by position within the breath.
+    m = t >= 20.0
+    breath_s = 60.0 / p.resp_rate_bpm
+    phase = (t[m] % breath_s) / breath_s
+    insp = phase < p.ie_ratio          # inspiratory fraction of the cycle
+    v_insp = float(v_ra[m][insp].mean())
+    v_exp  = float(v_ra[m][~insp].mean())
+
+    assert v_insp > v_exp, (
+        f"RA did not fill on inspiration: inspiratory mean {v_insp:.2f} mL vs "
+        f"expiratory {v_exp:.2f} mL. [F1 Fig 3] requires inspiration > expiration. "
+        f"Check that 'right_atrium' is in THORACIC_COMPARTMENTS and that the IVC "
+        f"is NOT (the gradient depends on the boundary sitting at ivc->RA)."
     )
