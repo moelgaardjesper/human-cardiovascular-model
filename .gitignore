@@ -8,5 +8,15 @@ build/
 .env
 logs/
 
-# Working notes — not part of the repo
-docs/
+# Working notes — not part of the repo.
+# Note `docs/*` rather than `docs/`: git cannot re-include a file whose parent
+# DIRECTORY is excluded, so the directory itself must stay visible for the
+# negation below to work.
+docs/*
+
+# ...except the reference ledger, which is published literature values only —
+# every number transcribed from a source read in full, with PMID/DOI, cohort,
+# and a note on what is and is not used by the model. It is the most reusable
+# artefact here and the only one that had no history or backup. The validation
+# log, backlog and ethics draft stay excluded.
+!docs/reference_values.md
