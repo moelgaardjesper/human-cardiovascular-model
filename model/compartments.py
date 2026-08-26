@@ -88,7 +88,14 @@ class Compartment:
 VALVE_R = 0.01
 
 # Great-vein -> atrium resistance. NOT A VALVE. See backlog item 23.
+# Kept for the PULMONARY venoatrial junction (pulmonary_vein -> LA), which is a
+# different circulation and was not part of the 2026-08-26 systemic rework.
 VENOATRIAL_R = 0.02
+
+# Cava -> right atrium (SVC and IVC). Split out from VENOATRIAL_R and raised
+# 0.02 -> 0.04 on 2026-08-26 as part of the resistance-to-venous-return work,
+# backlog item 28. See VENOUS_DRAINAGE_SCALE below for the whole change.
+CAVOATRIAL_R = 0.04
 
 
 # ---------------------------------------------------------------------------
@@ -107,6 +114,61 @@ ARTERIOLAR_SEGMENTS = (
     "upper_body_vein", "renal_vein", "splanchnic_vein",
     "thigh_vein", "calf_vein", "foot_vein",
 )
+
+
+# ---------------------------------------------------------------------------
+# VENOUS COMPLIANCE AND DRAINAGE — reworked 2026-08-26, backlog item 28.
+#
+# Two changes applied together, because each alone makes the model worse and
+# they were cancelling each other:
+#   venous compliance    x0.80   (upper_body_vein, svc, renal_vein,
+#                                 splanchnic_vein, thigh/calf/foot, ivc)
+#   venous drainage      x2      (each vein's drain_resistance, and the cava ->
+#                                 RA resistance CAVOATRIAL_R 0.02 -> 0.06)
+# The x3 is taken OUT of each bed's exchange segment so every bed's TOTAL
+# artery-to-cava resistance is unchanged: 3.850, 4.700, 3.740, 9.633, 7.050,
+# 9.403 before and after. Total systemic resistance, and therefore MAP at a
+# given cardiac output, is preserved by construction.
+#
+# WHY. Maas 2009 (PMID 19237896) measured the venous return curve directly in
+# humans — slope -0.465 +/- 0.151 L/min/mmHg, i.e. resistance to venous return
+# Rvr = 0.129 mmHg.s/mL, with Rvr/Rsys = 15 %. The model had Rvr = 0.054 and
+# Rvr/Rsys = 5.6 %: total systemic resistance was right but only ~5 % of it sat
+# downstream of the mean-filling-pressure point where humans have ~15 %.
+#
+# WHY BOTH AT ONCE. CO = (MSFP - CVP)/Rvr and MSFP = stressed volume /
+# compliance, and MSFP is a ZERO-FLOW quantity so no rearrangement of
+# resistances can change it. Raising Rvr alone therefore just throttles venous
+# return — measured: MAP fell to 59.5 and CO to 3.15. Lowering compliance alone
+# raises filling pressure with nothing to absorb it — measured: CO 10.5, SV 161.
+# For a normal operating point the two are tied:
+#     MSFP = CVP + CO x Rvr = 3 + 100 x 0.129 = 15.9 mmHg
+#
+# THE SCALES ARE SET BY THE MEASURED SLOPE, NOT BY THAT ARITHMETIC. A first pass
+# used x0.66 / x3, derived from Rvr computed against the ZERO-FLOW MSFP. Measured
+# with Maas's own hold protocol that overshot — slope -0.346 against his -0.465,
+# i.e. venous resistance 1.33x too HIGH. The zero-flow MSFP and the extrapolated
+# intercept are different quantities and only the latter is what Maas reports.
+# Retuned against the measured slope:
+#     x0.66 / x3   slope -0.346  (0.74x)   pmsf 21.12
+#     x0.80 / x2   slope -0.456  (0.98x)   pmsf 17.38   <- chosen
+#     x0.90 / x1.6 slope -0.530  (1.14x)   pmsf 15.43
+# Resulting systemic compliance ~1.41 mL/mmHg/kg: at the bottom of the 30-second
+# animal range (1.4-2.6) and above Maas's 20-minute reflex-intact 0.98, which is
+# where a passive compliance belongs relative to those two methods.
+#
+# THIS IS A DERIVATION, NOT A FIT. The compliance falls out of the model's own
+# identities plus one directly measured quantity; it does not use Maas's own
+# compliance figure, which is not comparable (he measures >20 min after loading
+# in reflex-intact patients, where the model's C is passive). Two independent
+# checks it was not fitted to: the resulting 1.17 mL/mmHg/kg lands BETWEEN
+# Maas's 0.98 and the 30-second animal range of 1.4-2.6, which is where a
+# passive compliance belongs relative to those two methods; and the model's
+# Maas-style extrapolated MSFP comes out ~19.4 against his measured 18.76.
+#
+# Full record in docs/validation_log.md under "Item 28".
+VENOUS_COMPLIANCE_SCALE = 0.80   # documentation only; values are inlined below
+VENOUS_DRAINAGE_SCALE = 2.0      # documentation only; values are inlined below
 
 
 # ---------------------------------------------------------------------------
@@ -168,19 +230,19 @@ def default_compartments() -> list[Compartment]:
         # level), not the neck: with physiological compliance the hydrostatic term
         # C·ΔP dominates tilt redistribution, so a mid-neck height (0.15-0.20) would
         # pool ~200 mL into the upper body in head-down tilt and steal preload.
-        Compartment("upper_body_vein",    15.0, 3.80,  350,  0.05,  440,
-                    drain_resistance=0.05),  # 3  P0≈6 (R = arteriole + exchange segment)
-        Compartment("svc",                10.0, 0.05,   70,  0.05,  110, drain_resistance=VENOATRIAL_R),  # 4  P0≈4
+        Compartment("upper_body_vein",    12.00, 3.75,  350,  0.05,  440,
+                    drain_resistance=0.100),  # 3  P0≈6 (R = arteriole + exchange segment)
+        Compartment("svc",                 8.00, 0.05,   70,  0.05,  110, drain_resistance=CAVOATRIAL_R),  # 4  P0≈4
         Compartment("abdominal_aorta",     0.25, 0.05,   60, -0.10,   82),  # 5  P0=88
         Compartment("renal_art",           0.05, 0.10,   20, -0.10,   24),  # 6  P0=80 (conduit; arteriole moved to renal_vein)
         # renal_vein / splanchnic_vein: `resistance` is the artery→vein exchange
         # segment; `drain_resistance` is the vein→IVC drainage. These were a single
         # shared number until 2026-08-21 — see Compartment.drain_resistance.
-        Compartment("renal_vein",          9.0, 4.60,   60, -0.10,  132,
-                    drain_resistance=0.10),                                # 7  P0≈8
+        Compartment("renal_vein",          7.20, 4.50,   60, -0.10,  132,
+                    drain_resistance=0.200),                                # 7  P0≈8
         Compartment("splanchnic_art",      0.12, 0.10,   50, -0.15,   60),  # 8  P0=83 (conduit; arteriole moved to splanchnic_vein)
-        Compartment("splanchnic_vein",    65.0, 3.67, 1200, -0.08, 1920,
-                    drain_resistance=0.07),  # 9  P0≈11 (dominant mobilizable reservoir)
+        Compartment("splanchnic_vein",    52.00, 3.60, 1200, -0.08, 1920,
+                    drain_resistance=0.140),  # 9  P0≈11 (dominant mobilizable reservoir)
         Compartment("lower_body_art",      0.35, 0.30,   80, -0.50,  111),  # 10 P0=89 (conduit; arteriole moved to the leg exchange branches)
         # ---- Lower body venous: foot→calf→thigh→ivc (outflow resistance on each segment) ----
         # Compliances reproduce the ~640 mL venous pooling on standing documented by
@@ -219,13 +281,13 @@ def default_compartments() -> list[Compartment]:
         # lower_body_art's inflow, split 30/40/30 across the three segments:
         #   2.80/0.30 = 9.33,  2.80/0.40 = 7.00,  2.80/0.30 = 9.33
         #   equivalent parallel R = 2.80 ✓, plus the 0.30 conduit = 3.10 as before.
-        Compartment("thigh_vein",          4.0, 9.333, 300, -0.20,  332, p_stiffen=12.0,
-                    drain_resistance=0.30),  # 11
-        Compartment("calf_vein",           6.0, 7.000, 400, -0.55,  448, p_stiffen=11.0,
-                    drain_resistance=0.05),  # 12
-        Compartment("foot_vein",           5.0, 9.333, 200, -0.85,  241, p_stiffen= 8.0,
-                    drain_resistance=0.07),  # 13
-        Compartment("ivc",                15.0, 0.04,  120, -0.15,  195, drain_resistance=VENOATRIAL_R),  # 14 P0≈5
+        Compartment("thigh_vein",          3.20, 9.033, 300, -0.20,  332, p_stiffen=12.0,
+                    drain_resistance=0.600),  # 11
+        Compartment("calf_vein",           4.80, 6.950, 400, -0.55,  448, p_stiffen=11.0,
+                    drain_resistance=0.100),  # 12
+        Compartment("foot_vein",           4.00, 9.263, 200, -0.85,  241, p_stiffen= 8.0,
+                    drain_resistance=0.140),  # 13
+        Compartment("ivc",                12.00, 0.04,  120, -0.15,  195, drain_resistance=CAVOATRIAL_R),  # 14 P0≈5
         # ---- Cardiac chambers (elastance model; R = valve resistance) ----
         # RA Vinit=155: at RA_EMIN=0.04 and P_ra_eq≈3.8 mmHg → V=60+3.8/0.04=155 mL.
         # End-diastolic (rolling-minimum) CVP ≈ 3 mmHg once RA partially empties ✓

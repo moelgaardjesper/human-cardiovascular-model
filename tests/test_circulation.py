@@ -1614,17 +1614,24 @@ def test_pulmonary_venous_pressure_equals_left_atrial():
     )
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    "KNOWN DEFECT, backlog item 22. Resting wedge/left atrial pressure is far above "
-    "[P1]'s 5-6 mmHg: the model gives pulmonary venous 16.0 and left atrial 12.1, "
-    "and mean PA 21.3 against [P1]'s 15. A resting healthy subject therefore reads as "
-    "mildly volume-overloaded. Total pulmonary compliance is 1.70 mL/mmHg where "
-    "Heldt 2002 Table 3 gives 12.7, so a small volume generates a large pressure — "
-    "but Heldt is a starting point, not the target; the targets are the measured "
-    "values in [P1]. See backlog item 22 for the plan. "
-    "strict=True so this flips to a FAILURE the day it is fixed."
-))
 def test_pulmonary_pressures_are_physiological():
+    """CLOSED 2026-08-26 by the venous rework, backlog item 28.
+
+    Was a strict xfail: resting pulmonary venous pressure 16.0 and left atrial
+    12.1 against [P1]'s 5-6, with mean PA 21.3 against 15 — a resting healthy
+    subject reading as pulmonary hypertension. Backlog item 22 had this down as
+    a pulmonary-compliance problem (~7.5x low against Heldt Table 3).
+
+    It was NOT a pulmonary problem. Lowering systemic venous compliance (x0.80)
+    and raising venous drainage resistance (x2) — a change aimed entirely at the
+    SYSTEMIC resistance-to-venous-return gap, item 28 — moved pulmonary venous to
+    11.52 and mean PA to 19.27 without touching a single pulmonary parameter.
+    Less systemic capacitance and more resistance to venous return simply leaves
+    less volume sitting centrally.
+
+    That is the layering lesson again: item 22 was diagnosed by looking at the
+    compartment whose numbers were wrong rather than the one causing it.
+    """
     """[P1] Mean PA ~15 mmHg; wedge / left atrial 5-6 mmHg."""
     s = _pulmonary_state()
     assert s["pa"] < 20.0, (
@@ -1697,24 +1704,25 @@ def _atrial_state():
     return out
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    "NARROW REMAINING GAP, backlog item 23. Three of the four bounds now PASS after "
-    "the whole-heart rebuild: LAVmin 17.19, RAVmax 31.14, RAVmin 18.99 mL/m2 are all "
-    "inside their bands. Only LAVmax fails, at 50.51 against a band ceiling of 50 — a "
-    "miss of 1%, and within 2 SD of [G1]'s 36.9 +/- 7.7. It was 106.4 mL/m2 before the "
-    "rebuild. "
-    "NOT CLOSED DELIBERATELY, because of an unexplained observation: across two atrial "
-    "parameter sets differing in V0, E_min AND E_max, LA Vmax came out at EXACTLY "
-    "93.2 mL both times while Vmin did differ (31.7 vs 36.6). An identical result "
-    "across varied inputs is the signature of a clamp, or of the parameter not "
-    "reaching the quantity being measured. Leading hypothesis: with the mitral valve "
-    "at 0.01 and the pulmonary-vein junction at 0.02, the pulmonary veins, left atrium "
-    "and left ventricle are nearly continuous, so 'LA volume' is a compliance-weighted "
-    "share of one pooled volume rather than an independently-set quantity. "
-    "Understand that before tuning this last 1%. "
-    "strict=True so this flips to a FAILURE the day it is fixed."
-))
 def test_atrial_volumes_are_physiological():
+    """[G1][G2] Atrial volumes indexed to BSA must match human reference ranges.
+
+    CLOSED 2026-08-26 by the venous rework, backlog item 28. Was a strict xfail
+    on LAVmax alone, at 50.51 mL/m2 against a ceiling of 50 (down from 106.4
+    before the chamber rebuild). Now 48.7.
+
+    THE 93.2 mL ANOMALY IS RESOLVED. LAVmax had come out at exactly 93.2 mL
+    across two atrial parameter sets differing in V0, E_min AND E_max — the
+    signature of a clamp, or of the parameter not reaching the quantity being
+    measured. The standing hypothesis was that with the mitral valve at 0.01 and
+    the pulmonary-vein junction at 0.02, the pulmonary veins, left atrium and
+    left ventricle were nearly continuous, so "LA volume" was a
+    compliance-weighted share of one pooled volume rather than an independently
+    set quantity. That hypothesis was RIGHT, and the fix came from the systemic
+    side: reducing systemic venous compliance and raising drainage resistance
+    left less volume in the central pool, so the shared pool shrank. LAVmax is
+    once again a function of atrial parameters rather than of the pool.
+    """
     """[G1][G2] Atrial volumes indexed to BSA must match human reference ranges."""
     s = _atrial_state()
     # Bands span [G2] 3D-echo and [G1] CMR; see the modality note above.
