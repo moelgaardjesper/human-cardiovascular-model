@@ -1957,3 +1957,79 @@ def test_female_chamber_volumes_match_luu_and_gao():
     assert 27.0 <= f["right_atrium"] <= 38.0, (
         f"female RAVmax {f['right_atrium']:.1f} mL/m2 outside 27-38; "
         f"[G1] female 32.7 ± 8.2, male 34.9")
+
+
+# ===========================================================================
+# 21. Drug dose-response sanity — the guard that would have caught the
+#     noradrenaline RV inotropy sign inversion (2026-08-28)
+# ===========================================================================
+
+def test_every_drug_is_neutral_at_zero_dose():
+    """At zero dose every drug factor must be exactly 1.0.
+
+    This is what a dose-response MEANS, and it is calibration-independent: it
+    asserts nothing about magnitudes, only that a drug which is not being given
+    does nothing.
+
+    It would have caught the defect it was written for. `norepinephrine()`
+    returned `rv_emax_factor = emax_factor * 0.7`, and since `emax_factor` is a
+    multiplier around 1.0, that inverted the effect instead of scaling it: a
+    23 % SUPPRESSION of right ventricular contractility at the therapeutic dose,
+    from a drug documented as mildly inotropic — and 0.7, a 30 % suppression, at
+    a dose of ZERO. The zero-dose value is the tell, which is why this test
+    checks there. See validation_log.md, "Noradrenaline vs phenylephrine".
+
+    Applies to every drug, so a future one cannot reintroduce the same shape.
+    """
+    from model.pharmacology import (norepinephrine, phenylephrine, vasopressin,
+                                    epinephrine, propofol, spinal_anaesthesia,
+                                    combined_drug_factors)
+
+    drugs = {
+        "norepinephrine": norepinephrine, "phenylephrine": phenylephrine,
+        "vasopressin": vasopressin, "epinephrine": epinephrine,
+        "propofol": propofol, "spinal_anaesthesia": spinal_anaesthesia,
+    }
+    for name, fn in drugs.items():
+        for factor, value in fn(0.0).items():
+            assert value == pytest.approx(1.0, abs=1e-12), (
+                f"{name}(0.0) returns {factor}={value}, must be exactly 1.0. "
+                f"A drug that is not being given must do nothing. If this is a "
+                f"'fraction of another effect' term, it must be written "
+                f"1 + k*(f - 1), not f*k — the latter inverts the effect."
+            )
+
+    # And through the combining path, which is what the model actually calls.
+    for name in drugs:
+        for factor, value in combined_drug_factors({name: 0.0}).items():
+            assert value == pytest.approx(1.0, abs=1e-12), (
+                f"combined_drug_factors({{{name!r}: 0.0}}) returns "
+                f"{factor}={value}, must be exactly 1.0"
+            )
+
+
+def test_norepinephrine_rv_inotropy_is_a_boost_not_a_suppression():
+    """Noradrenaline must not weaken the right ventricle.
+
+    Its own docstring says "Secondary: mild inotropy". The RV factor is
+    deliberately a FRACTION of the LV effect — the RV is thinner-walled and less
+    beta-1 responsive — but a fraction of a boost is still a boost. Asserted
+    across the clinical range (0.01-0.5 mcg/kg/min) rather than at one dose,
+    because the defect this replaces was wrong at every dose including zero.
+
+    Direction only. No magnitude is asserted, because none is sourced: the 0.7
+    fraction is a modelling choice, not a measurement.
+    """
+    from model.pharmacology import norepinephrine
+
+    for dose in (0.0, 0.01, 0.05, 0.10, 0.20, 0.50):
+        f = norepinephrine(dose)
+        lv, rv = f["lv_emax_factor"], f["rv_emax_factor"]
+        assert rv >= 1.0, (
+            f"NE {dose} mcg/kg/min gives rv_emax_factor {rv:.3f} — noradrenaline "
+            f"must not SUPPRESS the right ventricle")
+        assert rv <= lv, (
+            f"NE {dose} gives rv_emax_factor {rv:.3f} above lv {lv:.3f}; the RV "
+            f"effect is meant to be a fraction of the LV effect")
+        if dose > 0:
+            assert rv > 1.0, f"NE {dose} gives no RV inotropic effect at all"

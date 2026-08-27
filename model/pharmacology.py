@@ -100,7 +100,17 @@ def norepinephrine(dose_mcg_kg_min: float) -> dict:
         "svr_factor": svr_factor,
         "hr_factor": hr_factor,
         "lv_emax_factor": emax_factor,
-        "rv_emax_factor": emax_factor * 0.7,
+        # The RV gets 70 % of the LV inotropic effect, so 70 % of the DEVIATION
+        # from 1.0 — not 70 % of the factor itself.
+        #
+        # This was `emax_factor * 0.7` until 2026-08-28, which inverted the sign of
+        # the effect: at the therapeutic dose of 0.10 mcg/kg/min it returned 0.772,
+        # a 23 % SUPPRESSION of right ventricular contractility, from a drug this
+        # function's own docstring describes as mildly inotropic. At ZERO dose it
+        # returned 0.7 — a 30 % suppression from a drug that is not being given,
+        # which is the tell: every other factor here is 1.0 at zero dose, because
+        # that is what a dose-response means.
+        "rv_emax_factor": 1.0 + 0.7 * (emax_factor - 1.0),
         # α1 venoconstriction reduces venous V0 (recruits splanchnic reservoir) → <1.0
         "venous_tone_factor": 1.0 - _hill(dose_mcg_kg_min, ec50=0.20, e_max=0.15),
         # α1 postcapillary constriction raises capillary pressure → filtration out
