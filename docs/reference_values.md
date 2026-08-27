@@ -68,6 +68,62 @@ only in WOMEN; LAEF total, LAEF passive, RAEF total, RAEF passive all FALL with 
 LAEF BOOSTER RISES — the atrium compensating for stiffer ventricular filling, i.e. HFpEF
 physiology (backlog 25).
 
+---
+## Gao 2022 TABLE 3 — the age-stratified biatrial reference values (backlog item 25)
+Int J Cardiol 352:180-187. PMID 35124105, DOI 10.1016/j.ijcard.2022.01.071
+**TABLE 3 READ IN FULL 2026-08-27.** Same cohort as the Table 2 entry above: n=408 healthy
+Chinese adults, CMR. Stratified by decade AND sex. Means +/- SD below; the source also gives
+a 95 % CI for every cell and a p-for-trend per row, which are recorded here only where the
+trend matters. Group sizes: men 32 / 65 / 67 / 35 / 21, women 28 / 47 / 49 / 31 / 33 across
+21-30 / 31-40 / 41-50 / 51-60 / 61-70.
+
+**INDEXED VOLUMES (mL/m2) — what the model would scale on.**
+| | 21-30 | 31-40 | 41-50 | 51-60 | 61-70 | p trend |
+|---|---|---|---|---|---|---|
+| LAVmax/BSA, men | 34.8 ± 7.5 | 35.8 ± 6.9 | 35.8 ± 7.6 | 35.9 ± 9.3 | 36.1 ± 6.7 | 0.548 |
+| LAVmax/BSA, women | 35.8 ± 6.1 | 38.5 ± 6.4 | 38.9 ± 6.6 | 37.0 ± 7.6 | 39.9 ± 9.3 | 0.104 |
+| LAVmin/BSA, men | 13.8 ± 4.0 | 13.9 ± 3.5 | 14.2 ± 3.9 | 15.4 ± 4.4 | 14.8 ± 3.3 | 0.134 |
+| LAVmin/BSA, women | 12.2 ± 2.7 | 14.1 ± 3.7 | 14.9 ± 3.6 | 14.4 ± 3.6 | 15.9 ± 4.9 | <0.001 |
+| LAVpac/BSA, men | 21.0 ± 6.1 | 21.8 ± 4.8 | 23.1 ± 5.5 | 25.4 ± 6.8 | 25.8 ± 5.2 | <0.001 |
+| LAVpac/BSA, women | 19.8 ± 5.5 | 23.5 ± 4.8 | 24.7 ± 5.1 | 24.9 ± 5.2 | 28.7 ± 7.6 | <0.001 |
+| RAVmax/BSA, men | 30.9 ± 9.4 | 35.1 ± 7.5 | 35.1 ± 9.0 | 37.6 ± 12.4 | 34.9 ± 7.4 | 0.057 |
+| RAVmax/BSA, women | 31.7 ± 7.1 | 31.2 ± 7.0 | 32.0 ± 8.9 | 33.1 ± 8.8 | 36.6 ± 8.4 | 0.012 |
+| RAVmin/BSA, men | 15.2 ± 5.1 | 18.6 ± 5.3 | 18.7 ± 5.3 | 20.5 ± 8.1 | 19.1 ± 5.7 | 0.006 |
+| RAVmin/BSA, women | 13.5 ± 3.6 | 13.6 ± 3.9 | 15.8 ± 4.5 | 17.1 ± 4.8 | 17.8 ± 4.7 | <0.001 |
+| RAVpac/BSA, men | 22.3 ± 7.2 | 26.8 ± 6.3 | 27.8 ± 7.9 | 30.3 ± 10.2 | 29.6 ± 6.9 | <0.001 |
+| RAVpac/BSA, women | 20.3 ± 5.1 | 21.9 ± 5.8 | 24.9 ± 7.0 | 26.0 ± 6.5 | 29.5 ± 6.7 | <0.001 |
+
+**PHASIC FUNCTION (%) — the part that carries the physiology.**
+| | 21-30 | 31-40 | 41-50 | 51-60 | 61-70 | p trend |
+|---|---|---|---|---|---|---|
+| LAEF total, men | 60.4 ± 6.2 | 61.1 ± 6.2 | 60.6 ± 5.3 | 57.1 ± 7.5 | 58.9 ± 5.4 | 0.056 |
+| LAEF total, women | 65.9 ± 3.9 | 63.4 ± 6.9 | 61.9 ± 5.8 | 61.1 ± 5.2 | 60.3 ± 5.4 | <0.001 |
+| LAEF passive, men | 39.9 ± 10.4 | 39.0 ± 6.9 | 35.6 ± 6.8 | 29.4 ± 6.0 | 28.5 ± 6.8 | <0.001 |
+| LAEF passive, women | 45.3 ± 6.6 | 39.1 ± 5.3 | 36.5 ± 5.9 | 32.2 ± 7.8 | 28.1 ± 5.7 | <0.001 |
+| **LAEF booster, men** | 33.3 ± 9.2 | 36.2 ± 7.8 | 38.7 ± 6.1 | 39.3 ± 8.9 | **42.3 ± 6.5** | <0.001 |
+| **LAEF booster, women** | 37.2 ± 8.0 | 40.0 ± 8.8 | 40.1 ± 6.3 | 42.4 ± 7.5 | **44.9 ± 5.6** | <0.001 |
+| RAEF total, men | 49.9 ± 9.1 | 47.4 ± 8.4 | 46.7 ± 7.6 | 45.7 ± 9.2 | 45.8 ± 7.6 | 0.049 |
+| RAEF total, women | 57.0 ± 9.4 | 56.7 ± 8.1 | 50.0 ± 9.3 | 48.0 ± 8.4 | 51.2 ± 7.9 | <0.001 |
+| RAEF passive, men | 27.1 ± 9.9 | 23.7 ± 7.5 | 20.9 ± 7.6 | 19.3 ± 7.7 | 15.6 ± 6.3 | <0.001 |
+| RAEF passive, women | 35.7 ± 11.8 | 30.3 ± 8.4 | 23.0 ± 6.7 | 20.7 ± 6.2 | 18.7 ± 8.7 | <0.001 |
+| RAEF booster, men | 31.2 ± 9.3 | 31.1 ± 9.2 | 32.7 ± 8.5 | 32.6 ± 10.3 | 35.8 ± 8.3 | 0.054 |
+| RAEF booster, women | 32.8 ± 10.3 | 37.7 ± 9.9 | 34.9 ± 11.2 | 34.4 ± 9.1 | 39.4 ± 11.3 | 0.097 |
+
+Absolute volumes and emptying volumes (LATEV, LAPEV, LAAEV, RATEV, RAAEV) by decade are in
+the source and were read; recorded here only where the model could use them, since the
+indexed values are what a BSA-scaled model needs. LAAEV men 13.1 -> 19.0 mL and women
+11.6 -> 20.5 mL across the decades (both p<0.001) — the booster stroke itself grows.
+
+**THE PHYSIOLOGY WORTH KEEPING.** Total emptying fraction falls with age while the BOOSTER
+fraction RISES and the PASSIVE fraction falls — steeply, LAEF passive 39.9 -> 28.5 % in men
+and 45.3 -> 28.1 % in women. That is the atrium compensating for stiffer ventricular filling
+with a harder kick, which is the physiology of HFpEF appearing in a healthy ageing cohort.
+A model that reproduced it would get diastolic dysfunction as a consequence of ageing rather
+than as an invented disease model.
+NOTE the model has NO separate conduit and booster phases — a single time-varying elastance
+produces one emptying stroke. Reproducing the passive/booster split is a structural
+prerequisite for using most of this table, and is the real scope of item 25.
+
 ## Figliozzi S et al. 2022 — 3D echo LA reference values (meta-analysis)
 Int J Cardiovasc Imaging 38:1329-1340. PMID 34994882, DOI 10.1007/s10554-021-02520-9
 15 studies, 4,226 healthy adults. Values read from the abstract, which states them:
