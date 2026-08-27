@@ -23,6 +23,101 @@ BSA_REF = 1.87   # m² — reference BSA for the default parameter set (70 kg, 1
 BV_REF  = 5000.0 # mL — reference total blood volume
 
 
+# ---------------------------------------------------------------------------
+# PATIENT SEX — backlog item 32.
+#
+# The reference parameter set is MALE. That was not a choice made explicitly: the
+# 2026-08-24 chamber rebuild derived every chamber from the MALE columns of Luu
+# 2022 and Gao 2022, so the model has been a male reference patient without ever
+# saying so. A female patient entered by height and weight got male chamber
+# proportions scaled by BSA, and the residual error was systematic, not random.
+#
+# THE SEX DIFFERENCE SURVIVES BSA INDEXING — that is the whole point. These are
+# female/male ratios of values ALREADY indexed to body surface area, so they are
+# what remains after body size is accounted for:
+#
+#   Luu 2022 (PMID 34980185, n=3206), ventricles, indexed mL/m2:
+#       LVEDV 74 -> 65 (0.878)   LVESV 28 -> 23 (0.821)   LVEF 62 -> 64 (1.032)
+#       RVEDV 86 -> 72 (0.837)   RVESV 41 -> 31 (0.756)   RVEF 53 -> 58 (1.094)
+#   Gao 2022 (PMID 35124105, n=408), atria, indexed mL/m2:
+#       LAVmax 35.7 -> 38.4 (1.076)   LAEF total 60.0 -> 62.5 (1.042)
+#       RAVmax 34.9 -> 32.7 (0.937)   RAEF total 47.2 -> 52.6 (1.114)
+#
+# NOTE THE LEFT ATRIUM RUNS THE OTHER WAY. Indexed to BSA the female LA is
+# LARGER (1.076) while every other chamber is smaller. A single "female chambers
+# are smaller" factor would be wrong, and would be wrong in a direction that
+# matters — the LA is the wedge-pressure surrogate.
+#
+# HOW THE FACTORS ARE APPLIED. For a chamber, EDV = V0 + P/E_min. To scale the
+# volume at an UNCHANGED filling pressure, V0 and 1/E_min must scale together —
+# scaling V0 alone would drop the filling pressure with it, which is not what the
+# data says (a woman's filling pressures are not 12 % lower than a man's). So
+# `volume` scales unstressed volume and init_volume, and E_min is divided by the
+# same factor. `emax` then carries the ejection-fraction difference, since
+# ESV = V0 + P_sys/E_max.
+#
+# MALE IS THE IDENTITY. Every male factor is exactly 1.0, so a male patient is
+# bit-for-bit what the model did before this existed — which is what keeps the
+# entire validation suite untouched. There is a regression test asserting it.
+SEX_CHAMBER_FACTORS = {
+    "male": {
+        "left_ventricle":  {"volume": 1.0, "emax": 1.0},
+        "right_ventricle": {"volume": 1.0, "emax": 1.0},
+        "left_atrium":     {"volume": 1.0, "emax": 1.0},
+        "right_atrium":    {"volume": 1.0, "emax": 1.0},
+    },
+    "female": {
+        # These are NOT the raw female/male ratios. In a closed loop a chamber
+        # does not keep the volume it is assigned — the circulation pushes back,
+        # so an assigned factor is only partly transmitted. Measured
+        # transmission, at fixed body size: LV 0.62, RV 0.71, RA 0.87. The
+        # factors below are the raw ratios divided through by that, and were
+        # then verified by re-measuring against Luu's and Gao's female columns.
+        # Same lesson as RA_EMIN in heart.py: elastance and V0 set VOLUME, and
+        # how much volume they actually get is the circulation's decision.
+        "left_ventricle":  {"volume": 0.804, "emax": 1.032},
+        "right_ventricle": {"volume": 0.769, "emax": 1.094},
+        # LEFT ATRIUM DELIBERATELY 1.0 — it cannot be scaled this way. Measured
+        # transmission is NEGATIVE (-0.11): assigning a LARGER LA volume made the
+        # chamber SMALLER. That is the pooled-volume problem confirmed from a
+        # second direction — with the mitral valve at 0.01 and the pulmonary-vein
+        # junction at 0.02, the pulmonary veins, LA and LV are nearly continuous,
+        # so LA volume is a compliance-weighted share of one pool rather than an
+        # independently set quantity (see backlog items 23 and 25a). The female
+        # LA is the one chamber that is LARGER indexed to BSA (1.076), so this is
+        # a real gap, not a rounding decision. It needs 25a's structural fix.
+        "left_atrium":     {"volume": 1.0,   "emax": 1.042},
+        "right_atrium":    {"volume": 0.928, "emax": 1.114},
+    },
+}
+
+_CHAMBER_TO_PARAM = {
+    "left_ventricle": "lv", "right_ventricle": "rv",
+    "left_atrium": "la", "right_atrium": "ra",
+}
+
+
+def apply_cardiac(params, cardiac: dict) -> None:
+    """Apply a `cardiac` dict from scale_compartments() onto a SimParams.
+
+    Callers used to do this by hand and set only `lv_emax`/`rv_emax`. That is the
+    same failure mode that silently dropped `p_stiffen` from the compartment copy
+    for months — a hand-written field list that stops matching what produces it.
+    Anything added to the cardiac dict is applied here and nowhere else.
+    """
+    from .heart import LV_EMAX, RV_EMAX, LA_EMAX, RA_EMAX
+    from .heart import LV_EMIN, RV_EMIN, LA_EMIN, RA_EMIN
+    base_max = {"lv": LV_EMAX, "rv": RV_EMAX, "la": LA_EMAX, "ra": RA_EMAX}
+    base_min = {"lv": LV_EMIN, "rv": RV_EMIN, "la": LA_EMIN, "ra": RA_EMIN}
+    if "hr_bpm" in cardiac:
+        params.hr_bpm = cardiac["hr_bpm"]
+    for tag in ("lv", "rv", "la", "ra"):
+        setattr(params, f"{tag}_emax",
+                base_max[tag] * cardiac.get(f"{tag}_emax_factor", 1.0))
+        setattr(params, f"{tag}_emin",
+                base_min[tag] * cardiac.get(f"{tag}_emin_factor", 1.0))
+
+
 def bsa_mosteller(height_cm: float, weight_kg: float) -> float:
     """Body surface area (m²) using Mosteller formula."""
     return np.sqrt(height_cm * weight_kg / 3600.0)
@@ -46,6 +141,7 @@ def scale_compartments(
     cvp_mmhg: float | None = None,
     pcwp_mmhg: float | None = None,
     pap_mean_mmhg: float | None = None,
+    sex: str = "male",
 ) -> tuple[list[Compartment], dict]:
     """
     Return scaled compartment list and a dict of cardiac parameters.
@@ -61,7 +157,17 @@ def scale_compartments(
     cvp_mmhg        : central venous pressure — tier 3
     pcwp_mmhg       : pulmonary capillary wedge pressure — tier 3
     pap_mean_mmhg   : mean pulmonary artery pressure — tier 3
+    sex             : "male" (default, the reference set) or "female".
+                      See SEX_CHAMBER_FACTORS — male is the identity, so a male
+                      patient is unchanged by this parameter existing.
     """
+    if sex not in SEX_CHAMBER_FACTORS:
+        raise ValueError(
+            f"sex must be one of {sorted(SEX_CHAMBER_FACTORS)}, got {sex!r}. "
+            "The reference data (Luu 2022, Gao 2022) reports biological sex, "
+            "which is what carries the chamber physiology."
+        )
+    sex_factors = SEX_CHAMBER_FACTORS[sex]
     bv_scale = bsa / BSA_REF
     scaled = []
 
@@ -73,19 +179,28 @@ def scale_compartments(
         # ran with LINEAR limb veins instead of the collapsible-tube law — and
         # would have dropped `drain_resistance` the same way. Do not go back to
         # naming fields individually.
+        # Sex applies ONLY to the four cardiac chambers, and only after BSA:
+        # these are ratios of BSA-indexed values, so body size is already out.
+        sex_vol = sex_factors.get(c.name, {}).get("volume", 1.0)
         scaled.append(replace(
             c,
             compliance=c.compliance * bv_scale,     # compliance scales with volume
-            unstressed_volume=c.unstressed_volume * bv_scale,
-            init_volume=c.init_volume * bv_scale,
+            unstressed_volume=c.unstressed_volume * bv_scale * sex_vol,
+            init_volume=c.init_volume * bv_scale * sex_vol,
             # resistance deliberately unscaled here; tiers 1-3 below adjust it
         ))
 
     cardiac = {
         "hr_bpm": hr_bpm if hr_bpm is not None else 70.0,
-        "lv_emax_factor": 1.0,
-        "rv_emax_factor": 1.0,
+        "sex": sex,
     }
+    # E_min is divided by the volume factor so the chamber holds its scaled
+    # volume at an UNCHANGED filling pressure (EDV = V0 + P/E_min); E_max carries
+    # the ejection-fraction difference. See SEX_CHAMBER_FACTORS.
+    for chamber, tag in _CHAMBER_TO_PARAM.items():
+        f = sex_factors.get(chamber, {})
+        cardiac[f"{tag}_emax_factor"] = f.get("emax", 1.0)
+        cardiac[f"{tag}_emin_factor"] = 1.0 / f.get("volume", 1.0)
 
     # Tier 1: scale SVR from MAP if cardiac output not available
     if map_mmhg is not None:
@@ -139,8 +254,16 @@ def build_patient_params(
     cvp_mmhg: float | None = None,
     pcwp_mmhg: float | None = None,
     pap_mean_mmhg: float | None = None,
+    sex: str = "male",
 ) -> tuple[list[Compartment], dict]:
-    """Convenience wrapper: compute BSA then scale compartments."""
+    """Convenience wrapper: compute BSA then scale compartments.
+
+    `sex` defaults to "male" because the reference parameter set IS male — the
+    chambers were derived from the male columns of Luu 2022 and Gao 2022. All
+    validation and calibration is done against male patients (see the note in
+    tests/test_circulation.py), so the default keeps every comparison
+    like-for-like.
+    """
     bsa = bsa_mosteller(height_cm, weight_kg)
     compartments = default_compartments()
     return scale_compartments(
@@ -152,6 +275,7 @@ def build_patient_params(
         cvp_mmhg=cvp_mmhg,
         pcwp_mmhg=pcwp_mmhg,
         pap_mean_mmhg=pap_mean_mmhg,
+        sex=sex,
     )
 
 

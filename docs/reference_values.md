@@ -70,6 +70,53 @@ physiology (backlog 25).
 
 ---
 ---
+---
+## SEX SPLIT — the female/male ratios, indexed to BSA (backlog item 32)
+Assembled 2026-08-27 from Luu 2022 Table 2 (PMID 34980185, n=3206) and Gao 2022 Table 2
+(PMID 35124105, n=408). **These are ratios of values ALREADY INDEXED TO BSA**, so they are
+what remains after body size is accounted for — the sex difference survives indexing, which
+is the entire reason a sex input is needed at all.
+
+| quantity | male | female | female/male |
+|---|---|---|---|
+| LVEDV mL/m2 | 74 ± 13 | 65 ± 11 | 0.878 |
+| LVESV mL/m2 | 28 ± 7 | 23 ± 6 | 0.821 |
+| LVSV mL/m2 | 46 ± 8 | 42 ± 7 | 0.913 |
+| LVEF % | 62 ± 6 | 64 ± 6 | 1.032 |
+| RVEDV mL/m2 | 86 ± 16 | 72 ± 13 | 0.837 |
+| RVESV mL/m2 | 41 ± 11 | 31 ± 8 | 0.756 |
+| RVSV mL/m2 | 45 ± 8 | 42 ± 7 | 0.933 |
+| RVEF % | 53 ± 6 | 58 ± 6 | 1.094 |
+| LV mass g/m2 | 61 ± 10 | 48 ± 8 | 0.787 |
+| **LAVmax/BSA mL/m2** | 35.7 ± 7.5 | **38.4 ± 7.7** | **1.076** |
+| LAVmin/BSA mL/m2 | 14.3 ± 3.8 | 14.5 ± 4.4 | 1.014 (p = 0.618, NS) |
+| LAVpac/BSA mL/m2 | 23.0 ± 5.8 | 24.6 ± 6.6 | 1.070 |
+| LAEF total % | 60.0 ± 6.2 | 62.5 ± 5.9 | 1.042 |
+| LAEF passive % | 35.6 ± 8.4 | 36.3 ± 8.2 | 1.020 (p = 0.404, NS) |
+| LAEF booster % | 37.6 ± 7.9 | 40.9 ± 7.6 | 1.088 |
+| RAVmax/BSA mL/m2 | 34.9 ± 9.3 | 32.7 ± 8.2 | 0.937 |
+| RAVmin/BSA mL/m2 | 18.5 ± 6.0 | 15.5 ± 4.6 | 0.838 |
+| RAVpac/BSA mL/m2 | 27.3 ± 8.0 | 24.5 ± 6.9 | 0.897 |
+| RAEF total % | 47.2 ± 8.4 | 52.6 ± 9.3 | 1.114 |
+| RAEF passive % | 21.9 ± 8.4 | 25.6 ± 10.2 | 1.169 |
+| RAEF booster % | 32.3 ± 9.1 | 36.0 ± 10.6 | 1.115 |
+Gao's absolute (non-indexed) atrial volumes are all LARGER in men — LAVmax 65.2 vs 61.0 mL,
+RAVmax 63.7 vs 52.2 — because men are bigger. Indexing reverses the LA and shrinks the RA
+difference. Gao states this explicitly: after BSA normalisation LAVmax and LAVpac are
+GREATER IN WOMEN while the RA measures stay greater in men.
+
+**THE LEFT ATRIUM IS THE ONE THAT RUNS THE OTHER WAY.** Indexed to BSA the female LA is
+LARGER (1.076) while LV, RV and RA are all smaller. Every ejection fraction is higher in
+women. A single "female chambers are smaller" factor would be wrong, and wrong on the
+chamber that is the wedge-pressure surrogate.
+
+USED: `SEX_CHAMBER_FACTORS` in model/patient.py — LV, RV and RA volume factors, and all four
+E_max factors. NOT USED and recorded as a gap: the LA volume factor. The model cannot apply
+it — measured transmission of an assigned LA volume factor is NEGATIVE, because the
+pulmonary veins, LA and LV are nearly continuous and LA volume is a share of one pooled
+volume (items 23, 25a). NOT USED: LV mass (no wall mass in the model), and the passive /
+booster split (no conduit and booster phases — item 25a).
+
 ## Luu 2022 TABLES 3 & 4 — the age- AND sex-stratified ventricular values (item 25)
 J Cardiovasc Magn Reson 24(1):2. PMID 34980185, PMC8722350, DOI 10.1186/s12968-021-00819-z
 **TABLES 3 AND 4 READ IN FULL 2026-08-27.** Same cohort as the Table 2 entry above (n=3206,

@@ -146,10 +146,39 @@ import pytest
 from model.circulation import SimParams, run_simulation
 from model.compartments import IDX
 from model.gravity import GravityEnvironment
-from model.patient import build_patient_params
+from model.patient import build_patient_params, apply_cardiac
 from model.heart import LV_EMAX, RV_EMAX
 from model.pharmacology import combined_drug_factors
 from model.slow_dynamics import CAPILLARY_PRESSURE_FRACTION
+
+
+# ===========================================================================
+# ALL VALIDATION IS DONE ON MALE PATIENTS. This is deliberate (Jesper,
+# 2026-08-27) and it is a property of the reference material, not a preference.
+#
+# The named human-volunteer studies that drive posture, drug and haemodynamic
+# validation here are male or male-only cohorts: Sejersen 2022 (10 healthy
+# males), Verdini 2019 (17 males), Abboud & Eckstein 1968 (11 supine men),
+# Lister 1963 (unbled healthy men). The CMR chamber tables are mixed — Luu 2022
+# is 65 % female — but the model's chambers were derived from their MALE columns
+# (backlog item 24), so male is the reference the whole suite is calibrated to.
+#
+# `build_patient_params` therefore defaults to sex="male", and every test in this
+# file leaves it at the default. A female patient is supported (backlog item 32)
+# but is NOT the comparison target for any literature scenario here, because
+# comparing a female model against a male cohort would introduce exactly the
+# cohort mismatch this project keeps catching in other people's numbers.
+#
+# ONE SCENARIO IS THE EXCEPTION AND IT IS WORTH KNOWING ABOUT.
+# test_norepi_vs_phenyl_co_preservation_ngan_kee2015 compares against Ngan Kee
+# 2015 — n=104, spinal anaesthesia for CAESAREAN SECTION, so 100 % female and
+# 100 % term-pregnant. Term pregnancy carries ~40 % expanded blood volume,
+# reduced systemic vascular resistance, and aortocaval compression. It is the
+# least transferable cohort in the suite, and it is also the one test currently
+# failing. That does not excuse the failure — but anyone investigating it should
+# start by asking whether a non-pregnant male reference patient can be expected
+# to reproduce it at all.
+# ===========================================================================
 
 
 SMOKE_DURATION = 30.0  # seconds — long enough for steady state
@@ -181,11 +210,15 @@ def run_scenario(height_cm, weight_kg, map_mmhg=None, hr_bpm=70,
     studies used awake, spontaneously-breathing volunteers. Pass
     ventilation_mode='none' for anaesthetised/apnoeic scenarios.
     """
-    comps, cardiac = build_patient_params(height_cm, weight_kg, map_mmhg=map_mmhg, hr_bpm=hr_bpm)
+    comps, cardiac = build_patient_params(height_cm, weight_kg, map_mmhg=map_mmhg,
+                                          hr_bpm=hr_bpm)
     params = SimParams(compartments=comps)
+    # apply_cardiac applies EVERY factor the cardiac dict carries. This used to
+    # be a hand-written list setting only lv_emax and rv_emax, which is the same
+    # failure mode that silently dropped p_stiffen for months — a field list that
+    # stops matching what produces it.
+    apply_cardiac(params, cardiac)
     params.hr_bpm             = hr_bpm
-    params.lv_emax            = LV_EMAX * cardiac.get("lv_emax_factor", 1.0)
-    params.rv_emax            = RV_EMAX * cardiac.get("rv_emax_factor", 1.0)
     params.tilt_start_deg     = tilt_deg
     params.tilt_end_deg       = tilt_deg
     params.tilt_onset_s       = tilt_onset
@@ -1832,3 +1865,95 @@ def test_ra_fills_during_spontaneous_inspiration_ferguson1989():
         f"Check that 'right_atrium' is in THORACIC_COMPARTMENTS and that the IVC "
         f"is NOT (the gradient depends on the boundary sitting at ivc->RA)."
     )
+
+
+# ===========================================================================
+# 20. Patient sex — backlog item 32
+#     [L1] Luu JM et al. (2022) J Cardiovasc Magn Reson 24:2. PMID 34980185
+#     [G1] Gao Y et al. (2022) Int J Cardiol 352:180-187. PMID 35124105
+# ===========================================================================
+
+def test_male_patient_is_bit_for_bit_the_reference():
+    """Adding sex must not change a single male number.
+
+    The reference parameter set IS male — every chamber was derived from the
+    male columns of [L1] and [G1] during the 2026-08-24 rebuild. So sex="male"
+    has to be the exact identity, or the whole validation suite silently moves
+    underneath a feature that was supposed to add an option, not change one.
+
+    This is the guard that lets `sex` exist at all. Asserted on the compartments
+    AND on every cardiac factor, because either could drift independently.
+    """
+    from model.patient import SEX_CHAMBER_FACTORS
+
+    default_comps, default_card = build_patient_params(175, 70)
+    male_comps, male_card = build_patient_params(175, 70, sex="male")
+
+    for a, b in zip(default_comps, male_comps):
+        assert a.name == b.name
+        assert a.unstressed_volume == b.unstressed_volume, (
+            f"{a.name} V0 moved when sex='male' was passed explicitly")
+        assert a.init_volume == b.init_volume, f"{a.name} init_volume moved"
+        assert a.compliance == b.compliance, f"{a.name} compliance moved"
+
+    for k, v in male_card.items():
+        if k.endswith("_factor"):
+            assert v == 1.0, f"male cardiac factor {k} is {v}, must be exactly 1.0"
+
+    for chamber, f in SEX_CHAMBER_FACTORS["male"].items():
+        assert f["volume"] == 1.0 and f["emax"] == 1.0, (
+            f"male {chamber} factors must be exactly 1.0, got {f}")
+
+
+def test_female_chamber_volumes_match_luu_and_gao():
+    """[L1][G1] A female patient must have the measured female chamber volumes.
+
+    The sex difference SURVIVES BSA indexing — that is the whole reason this
+    exists. These are ratios of already-indexed values, so body size is out.
+    Compared at fixed height and weight so only sex differs.
+
+    Targets, indexed to BSA: LVEDV 65 [L1], RVEDV 72 [L1], RAVmax 32.7 [G1],
+    against male 74, 86 and 34.9.
+
+    THE LEFT ATRIUM IS DELIBERATELY NOT ASSERTED. It is the one chamber that is
+    LARGER in women indexed to BSA (38.4 vs 35.7 [G1]), and the model cannot
+    currently produce that: measured transmission of an assigned LA volume
+    factor is NEGATIVE — assigning a larger LA made the chamber smaller —
+    because with the mitral valve at 0.01 and the pulmonary-vein junction at
+    0.02 the pulmonary veins, LA and LV are nearly continuous, so LA volume is a
+    share of one pooled volume. Backlog items 23 and 25a. Recorded rather than
+    asserted, so the gap is visible without being silently accepted.
+    """
+    from model.patient import bsa_mosteller
+
+    h, w = 170.0, 70.0
+    bsa = bsa_mosteller(h, w)
+
+    def chambers(sex):
+        comps, card = build_patient_params(h, w, sex=sex)
+        p = SimParams(compartments=comps)
+        apply_cardiac(p, card)
+        p.ventilation_mode = "none"
+        r = run_simulation(p, duration_s=45.0, dt=DT)
+        V = r["volumes"][int(len(r["t"]) * 0.6):]
+        return {n: V[:, IDX[n]].max() / bsa
+                for n in ("left_ventricle", "right_ventricle", "right_atrium")}
+
+    m, f = chambers("male"), chambers("female")
+
+    # Direction first — calibration-independent, and the point of the feature.
+    for name in ("left_ventricle", "right_ventricle", "right_atrium"):
+        assert f[name] < m[name], (
+            f"female {name} {f[name]:.1f} not smaller than male {m[name]:.1f} "
+            f"mL/m2 — every one of these three is smaller in women per [L1][G1]")
+
+    # Then the magnitudes, against the measured female columns.
+    assert 60.0 <= f["left_ventricle"] <= 71.0, (
+        f"female LVEDV {f['left_ventricle']:.1f} mL/m2 outside 60-71; "
+        f"[L1] female 65 ± 11, male 74")
+    assert 66.0 <= f["right_ventricle"] <= 80.0, (
+        f"female RVEDV {f['right_ventricle']:.1f} mL/m2 outside 66-80; "
+        f"[L1] female 72 ± 13, male 86")
+    assert 27.0 <= f["right_atrium"] <= 38.0, (
+        f"female RAVmax {f['right_atrium']:.1f} mL/m2 outside 27-38; "
+        f"[G1] female 32.7 ± 8.2, male 34.9")
