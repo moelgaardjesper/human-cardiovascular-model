@@ -69,6 +69,71 @@ LAEF BOOSTER RISES — the atrium compensating for stiffer ventricular filling, 
 physiology (backlog 25).
 
 ---
+---
+## Luu 2022 TABLES 3 & 4 — the age- AND sex-stratified ventricular values (item 25)
+J Cardiovasc Magn Reson 24(1):2. PMID 34980185, PMC8722350, DOI 10.1186/s12968-021-00819-z
+**TABLES 3 AND 4 READ IN FULL 2026-08-27.** Same cohort as the Table 2 entry above (n=3206,
+CVD and risk factors excluded, anatomically correct contouring with papillary muscle and
+trabeculae counted as mass). PMC full text strips these tables — they are only in the PDF.
+Mean +/- SD, indexed to BSA. Normal ranges (95 % prediction intervals) are in the source.
+
+**MALES (n=1126)** — 35-44 (n=141) / 45-54 (n=408) / 55-64 (n=383) / 65-74 (n=194)
+| variable | 35-44 | 45-54 | 55-64 | 65-74 |
+|---|---|---|---|---|
+| LVEF % | 61 ± 6 | 62 ± 6 | 62 ± 6 | 62 ± 6 |
+| LVSV mL/m2 | 47 ± 8 | 46 ± 8 | 46 ± 8 | 43 ± 8 |
+| LVEDV mL/m2 | 77 ± 13 | 75 ± 13 | 74 ± 13 | 69 ± 13 |
+| LVESV mL/m2 | 30 ± 8 | 29 ± 7 | 28 ± 7 | 26 ± 7 |
+| LV mass g/m2 | 61 ± 11 | 61 ± 10 | 62 ± 10 | 58 ± 9 |
+| LV mass/volume g/mL | 0.81 ± 0.13 | 0.83 ± 0.15 | 0.85 ± 0.15 | 0.86 ± 0.20 |
+| RVEF % | 51 ± 6 | 53 ± 6 | 53 ± 6 | 54 ± 6 |
+| RVSV mL/m2 | 46 ± 9 | 46 ± 8 | 46 ± 8 | 43 ± 8 |
+| RVEDV mL/m2 | 91 ± 18 | 88 ± 16 | 86 ± 17 | 80 ± 15 |
+| RVESV mL/m2 | 45 ± 12 | 42 ± 10 | 41 ± 11 | 37 ± 10 |
+| LA min mL/m2 | 19 ± 6 | 20 ± 6 | 22 ± 8 | 21 ± 8 |
+| LA max mL/m2 | 36 ± 9 | 38 ± 10 | 40 ± 10 | 38 ± 11 |
+
+**FEMALES (n=2080)** — 35-44 (n=228) / 45-54 (n=744) / 55-64 (n=795) / 65-74 (n=313)
+| variable | 35-44 | 45-54 | 55-64 | 65-74 |
+|---|---|---|---|---|
+| LVEF % | 64 ± 5 | 64 ± 5 | 64 ± 6 | 65 ± 6 |
+| LVSV mL/m2 | 45 ± 7 | 43 ± 7 | 41 ± 7 | 40 ± 6 |
+| LVEDV mL/m2 | 70 ± 11 | 67 ± 10 | 64 ± 10 | 62 ± 9 |
+| LVESV mL/m2 | 25 ± 6 | 24 ± 6 | 23 ± 6 | 21 ± 5 |
+| LV mass g/m2 | 48 ± 7 | 47 ± 8 | 48 ± 7 | 46 ± 8 |
+| LV mass/volume g/mL | 0.69 ± 0.11 | 0.72 ± 0.12 | 0.76 ± 0.14 | 0.76 ± 0.14 |
+| RVEF % | 56 ± 6 | 58 ± 6 | 58 ± 7 | 59 ± 6 |
+| RVSV mL/m2 | 44 ± 7 | 43 ± 7 | 41 ± 7 | 39 ± 6 |
+| RVEDV mL/m2 | 79 ± 13 | 74 ± 13 | 71 ± 13 | 67 ± 11 |
+| RVESV mL/m2 | 35 ± 8 | 32 ± 8 | 30 ± 8 | 28 ± 7 |
+| LA min mL/m2 | 17 ± 5 | 18 ± 6 | 19 ± 6 | 21 ± 7 |
+| LA max mL/m2 | 34 ± 8 | 37 ± 9 | 37 ± 9 | 38 ± 9 |
+
+**TWO LABELLING ERRORS IN THE PUBLISHED TABLES. Read this before transcribing them again.**
+1. Table 4 lists **two rows both labelled "RVESV"**. The first (44/43/41/39) is RVSV: it
+   tracks female LVSV (45/43/41/40) almost exactly, as a stroke volume must, and mirrors the
+   male RVSV row. The second (35/32/30/28) is the real RVESV. Corrected above.
+2. The columns printed as **"LA SV"** and **"LA EF (%)"** do not mean what they say.
+   "LA SV" (46-47 mL/m2 in men) equals LVSV, i.e. it is the VENTRICULAR stroke volume.
+   "LA EF (%)" is numerically identical to (LA max - LA min): 36 - 19 = 17 for men 35-44,
+   and the cell reads 17. So it is an LA stroke VOLUME in mL/m2, printed as a percentage.
+   **Do not use Luu's "LA EF" as an ejection fraction.** A genuine LAEF from their own max
+   and min is 17/36 = 47 %, which is the right order against Gao's LAEF total of ~60 %
+   (different cohort, different method). Both columns are therefore omitted above.
+
+**THE AGE AND SEX TRENDS, which is what item 25 needs.**
+- Every indexed VOLUME falls with age in both sexes: LVEDV 77 -> 69 (men) and 70 -> 62
+  (women); RVEDV 91 -> 80 and 79 -> 67. Stroke volumes fall with them.
+- EJECTION FRACTIONS rise or hold: LVEF flat in men (61-62, p = 0.1985 in the paper) but
+  rising in women (64 -> 65); RVEF rises in both (51 -> 54 men, 56 -> 59 women).
+- MASS-TO-VOLUME RATIO rises with age in both (0.81 -> 0.86 men, 0.69 -> 0.76 women) —
+  concentric remodelling, the chamber getting smaller faster than the wall thins.
+- SEX is a larger effect than age for most of these. Male LVEDV exceeds female by ~10 mL/m2
+  at every decade, and female LVEF exceeds male by 2-3 points at every decade. A model with
+  one reference patient cannot represent either axis.
+USED: nothing yet — items 25a/25b and the new sex item. NOT USED: LV mass (the model has no
+wall mass), the per-ethnicity tables (S4-S6), and values indexed to height.
+
 ## Gao 2022 TABLE 3 — the age-stratified biatrial reference values (backlog item 25)
 Int J Cardiol 352:180-187. PMID 35124105, DOI 10.1016/j.ijcard.2022.01.071
 **TABLE 3 READ IN FULL 2026-08-27.** Same cohort as the Table 2 entry above: n=408 healthy
