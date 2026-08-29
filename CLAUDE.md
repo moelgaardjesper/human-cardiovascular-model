@@ -52,7 +52,7 @@ model/
   respiration.py    Intrathoracic pressure (spontaneous / mechanical), RSA
   slow_dynamics.py  Minutes-to-hours mechanisms on a separate coarse clock:
                     venous stress relaxation, transcapillary refill, (planned)
-                    RAAS/ADH and baroreflex resetting. Default OFF
+                    RAAS/ADH and (planned) baroreflex resetting. Default ON since `66b6231`
   perfusion.py      Derived-output sub-models: cerebral (CPP/ICP), coronary (Buckberg).
                     Pure outputs — no coupling back into the ODE
   pharmacology.py   Hill-equation PD for NE, phenylephrine, vasopressin, epinephrine,
@@ -185,7 +185,9 @@ different and did not support the calibration it was cited for.
 
 ### Slow dynamics — three rules
 
-`model/slow_dynamics.py` is gated by `SimParams.slow_dynamics_enabled` (default `False`)
+`model/slow_dynamics.py` is gated by `SimParams.slow_dynamics_enabled` (default **`True`** since
+`66b6231`, "slow dynamics on by default" — this file said `False` in two places until
+2026-08-28, which mattered because the rules below are premised on what a DEFAULT run does)
 plus per-mechanism switches.
 
 - **Everything is in deviation form** from a resting reference captured at `SETTLE_S`, taken

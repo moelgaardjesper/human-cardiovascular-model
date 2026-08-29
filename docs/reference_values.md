@@ -435,6 +435,63 @@ This is the ABDOMEN->THORAX coupling coefficient (~0.5). The model needs the rev
 direction (thorax->abdomen during a machine breath); this bounds it but does not give it.
 SWINE DATA. NOT YET USED.
 
+---
+# WANTED — sources the model needs and I could not retrieve (2026-08-28)
+
+Ranked by what they unblock. Each says what NUMBER is needed, not just a topic, because a
+paper that does not contain the number is worse than no paper (see RETRACTIONS R2 and R3).
+
+## 1. Thorax-to-abdomen pressure transmission during positive-pressure ventilation
+**Unblocks item 27, which is the most clinically dangerous open gap** — the model flags a
+normovolaemic patient as fluid-responsive (PPV 24.7 % against Michard's < 13 %).
+NEEDED: the ratio of the RESPIRATORY SWING in abdominal pressure to that in pleural
+pressure, during mechanical ventilation, in humans. In practice that means a study
+recording OESOPHAGEAL and GASTRIC (or bladder) pressure SIMULTANEOUSLY in ventilated
+patients, reporting both swings or their ratio.
+WHAT I HAVE: the reverse direction only — Cortes-Puentes 2013 (PMID 23863222), swine, where
+applied intra-abdominal pressure raises plateau airway pressure by ~50 %. That bounds it
+but is not it. Takata's zone conditions (PMID 2076989) give the STRUCTURE and a ~1 mmHg
+closing pressure, but in dogs.
+DO NOT let me pick a coefficient without this. One chosen to land PPV under 13 % would be
+tuning to the endpoint.
+
+## 2. The FIRST 24-72 HOURS of head-down bed rest
+**Unblocks the bed-rest arm of item 33** — long-duration runs need a gradeable target.
+NEEDED: plasma volume, central venous pressure and stroke volume against time over the
+first one to three days of -6 deg head-down tilt. Hourly or twice-daily sampling.
+WHAT I HAVE: Spaak 2004 (PMID 15501923, DOI 10.1152/japplphysiol.01332.2003) — 120 days of
+-6 deg HDT, n=6, with upright resting SV -24 +/- 9 % at day 60, supine exercise SV -5 +/- 8 %
+at day 60 and -18 +/- 4 % at day 113, HR +18 +/- 4 % at day 60, MAP unchanged. Good paper,
+WRONG TIMESCALE — its earliest timepoint is day 60 and we need hours to days. Recorded
+anyway; it would be the target if the model ever runs for months.
+The one bed-rest paper already in the validation log (PMID 15838970) was EXCLUDED as a
+deconditioning confound. For a multi-day ADAPTATION test, deconditioning is the phenomenon
+rather than the confound, so that exclusion may be worth revisiting.
+
+## 3. Baroreflex resetting time course in humans
+**Unblocks Phase 4 of slow_dynamics**, which is planned but has NO sourced target at all.
+NEEDED: how fast the baroreflex operating point shifts toward a sustained new pressure —
+a time constant, or a percentage reset at stated times over minutes to days.
+This also matters for the long runs: the model's reflex does NOT reset, so a multi-hour run
+currently holds sustained reflex activation where a real one adapts.
+
+## 4. Right atrial pressure in HEALTHY AWAKE supine adults
+**Unblocks item 31.** Searched 2026-08-26 and 2026-08-28, not found, and possibly does not
+exist — you do not catheterise healthy volunteers.
+NEEDED: a measured distribution, not an assigned value. Rudski 2010's normal RAP of 3 mmHg
+(range 0-5) is ASSIGNED from IVC appearance to compute pulmonary pressures; the guideline
+itself says IVC collapse does not reliably reflect RA pressure. Every other RAP number in
+this ledger is from sedated, ventilated or catheter-lab subjects.
+A healthy-volunteer study with central access for another reason would do it.
+
+## 5. Noradrenaline's chronotropic and right-ventricular effects
+**Would firm up two unsourced numbers in pharmacology.py.** The chronotropic ceiling is set
+at +10 % and the RV inotropic effect at 0.7 of the LV effect. Both are modelling choices
+with no source. The 0.7 is flagged as such in the test, and the sign error it replaced cost
+the noradrenaline validation test (see validation_log.md 2026-08-28).
+NEEDED: dose-response for heart rate and for RV contractility, in humans, over the clinical
+range 0.01-0.5 mcg/kg/min.
+
 ## Leads noted, not yet read
 - D'Angelo E et al. 1992, J Appl Physiol 73(5):1736-42, PMID 1474045,
   DOI 10.1152/jappl.1992.73.5.1736 — 8 anaesthetised paralysed supine NORMAL humans,

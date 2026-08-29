@@ -741,6 +741,8 @@ def run_simulation(
     duration_s: float = 60.0,
     dt: float = 0.001,
     use_baroreflex: bool = True,
+    output_every: int = 1,
+    hires_windows: list[tuple[float, float]] | None = None,
 ) -> dict:
     """
     Integrate the ODE system and return time-series haemodynamic outputs.
@@ -787,23 +789,65 @@ def run_simulation(
     t_eval = np.arange(0.0, duration_s, dt)
     n = len(t_eval)
 
+    # ---- OUTPUT DOWNSAMPLING (backlog item 33) --------------------------------
+    # Storing every 1 ms sample costs 26 GB for a 24 h run, which does not fit in
+    # memory. `output_every` stores one sample per block of that many steps.
+    #
+    # Each stored sample is the block MEAN, not every Nth value. That distinction
+    # is load-bearing: heart rate is about 1.17 Hz, so decimating to 1 Hz would
+    # ALIAS the cardiac cycle and put a beat-frequency artefact into every trend.
+    # Averaging is decimation with the anti-aliasing filter built in, and it is
+    # also what a trend over hours should show.
+    #
+    # output_every=1 is the identity and every stored value is bit-for-bit what it
+    # was before this existed.
+    if output_every < 1:
+        raise ValueError(f"output_every must be >= 1, got {output_every}")
+    n_out = (n + output_every - 1) // output_every
+    _blk = np.zeros(n_out)                       # samples accumulated per block
+    for _i in range(n):
+        _blk[_i // output_every] += 1.0
+
+    # ---- HIGH-RESOLUTION SLICES ----------------------------------------------
+    # Downsampling destroys exactly the information this project has repeatedly
+    # needed: numerical drift shows as a change in waveform MORPHOLOGY, and
+    # "is this sampled mid-systole or end-systole" is invisible in a trend. Keep
+    # full-dt windows alongside the trend. 30 s holds ~5 breaths and ~35 beats.
+    _hires_ranges = []
+    if hires_windows:
+        for (a, b) in hires_windows:
+            i0, i1 = max(0, int(a / dt)), min(n, int(b / dt))
+            if i1 > i0:
+                _hires_ranges.append((i0, i1))
+    _hires_n = sum(i1 - i0 for i0, i1 in _hires_ranges)
+    _hires_t = np.zeros(_hires_n)
+    _hires_ao = np.zeros(_hires_n)
+    _hires_cvp = np.zeros(_hires_n)
+    _hires_vol = np.zeros((_hires_n, len(comp)))
+    _hires_map = {}                              # step -> row in the hires arrays
+    _row = 0
+    for i0, i1 in _hires_ranges:
+        for _i in range(i0, i1):
+            _hires_map[_i] = _row
+            _row += 1
+
     # Storage
-    aortic_p    = np.zeros(n)
-    cvp_ts      = np.zeros(n)
-    la_p_ts     = np.zeros(n)
-    co_ts       = np.zeros(n)
-    hr_ts       = np.zeros(n)
-    dbp_ts          = np.zeros(n)
-    sbp_ts          = np.zeros(n)
-    brachial_sbp_ts = np.zeros(n)
-    brachial_dbp_ts = np.zeros(n)
-    lvedp_ts    = np.zeros(n)
-    cpp_ts      = np.zeros(n)
-    cop_ts      = np.zeros(n)
-    buckberg_ts = np.zeros(n)
-    ankle_p_ts    = np.zeros(n)
-    brachial_p_ts = np.zeros(n)
-    volumes_ts  = np.zeros((n, len(comp)))
+    aortic_p    = np.zeros(n_out)
+    cvp_ts      = np.zeros(n_out)
+    la_p_ts     = np.zeros(n_out)
+    co_ts       = np.zeros(n_out)
+    hr_ts       = np.zeros(n_out)
+    dbp_ts          = np.zeros(n_out)
+    sbp_ts          = np.zeros(n_out)
+    brachial_sbp_ts = np.zeros(n_out)
+    brachial_dbp_ts = np.zeros(n_out)
+    lvedp_ts    = np.zeros(n_out)
+    cpp_ts      = np.zeros(n_out)
+    cop_ts      = np.zeros(n_out)
+    buckberg_ts = np.zeros(n_out)
+    ankle_p_ts    = np.zeros(n_out)
+    brachial_p_ts = np.zeros(n_out)
+    volumes_ts  = np.zeros((n_out, len(comp)))
 
     # Slow-dynamics diagnostics. Allocated only when the mechanism is active, so
     # an ordinary run pays nothing for them and its result dict is unchanged.
@@ -811,10 +855,10 @@ def run_simulation(
     # volume and haematocrit (Lister 1963 measures both), which blood volume
     # alone cannot supply once red cells are leaving with the bleed.
     if slow_enabled:
-        plasma_vol_ts   = np.zeros(n)
-        haematocrit_ts  = np.zeros(n)
-        interstitial_ts = np.zeros(n)
-        oncotic_ts      = np.zeros(n)
+        plasma_vol_ts   = np.zeros(n_out)
+        haematocrit_ts  = np.zeros(n_out)
+        interstitial_ts = np.zeros(n_out)
+        oncotic_ts      = np.zeros(n_out)
 
     # We step manually so baroreflex can update each step
     V = V0.copy()
@@ -836,7 +880,7 @@ def run_simulation(
     _prev_V_lv   = V[i["left_ventricle"]]
     _beat_ejected = 0.0
     _last_t_beat  = 0.0
-    sv_ts         = np.zeros(n)
+    sv_ts         = np.zeros(n_out)
     _sv_current   = 70.0
 
     # HR / E_max from previous step (1-step lag) for consistent monitoring.
@@ -851,6 +895,7 @@ def run_simulation(
     _monitor_phase = 0.0
 
     for step, t in enumerate(t_eval):
+        _oi = step // output_every       # output block index (see output_every above)
         c_ao = comp[i["aorta"]]
         c_ra = comp[i["right_atrium"]]
         c_la = comp[i["left_atrium"]]
@@ -872,7 +917,7 @@ def run_simulation(
         _prev_V_lv = curr_V_lv
 
         # CO (instantaneous rate): ejection rate * 60/1000 for L/min
-        co_ts[step] = dV_ejected / dt * 60.0 / 1000.0
+        co_ts[_oi] += dV_ejected / dt * 60.0 / 1000.0
 
         # SV: sum ejected volume over one actual HR-based beat
         T_beat = 60.0 / _hr_monitor
@@ -880,7 +925,7 @@ def run_simulation(
             _sv_current   = _beat_ejected
             _beat_ejected = 0.0
             _last_t_beat  = t
-        sv_ts[step] = _sv_current
+        sv_ts[_oi] += _sv_current
 
         # CVP: end-diastolic RA trough (pass to baroreflex too, not instantaneous p_ra)
         _cvp_win.append(p_ra)
@@ -936,12 +981,14 @@ def run_simulation(
         c_bc  = comp[i["brachiocephalic"]]
         p_lba = _vascular_pressure(V[i["lower_body_art"]], c_lba.unstressed_volume, c_lba.compliance)
         p_bc  = _vascular_pressure(V[i["brachiocephalic"]], c_bc.unstressed_volume, c_bc.compliance)
-        ankle_p_ts[step]    = p_lba - hydrostatic_delta_mmhg(c_lba.height_m, tilt_now, params.gravity)
-        brachial_p_ts[step] = p_bc  - hydrostatic_delta_mmhg(c_bc.height_m,  tilt_now, params.gravity)
-        _brachial_dbp_win.append(brachial_p_ts[step])
-        _brachial_sbp_win.append(brachial_p_ts[step])
-        brachial_sbp_ts[step] = max(_brachial_sbp_win)
-        brachial_dbp_ts[step] = min(_brachial_dbp_win)
+        _p_ankle = p_lba - hydrostatic_delta_mmhg(c_lba.height_m, tilt_now, params.gravity)
+        _p_brach = p_bc  - hydrostatic_delta_mmhg(c_bc.height_m,  tilt_now, params.gravity)
+        ankle_p_ts[_oi]    += _p_ankle
+        brachial_p_ts[_oi] += _p_brach
+        _brachial_dbp_win.append(_p_brach)
+        _brachial_sbp_win.append(_p_brach)
+        brachial_sbp_ts[_oi] += max(_brachial_sbp_win)
+        brachial_dbp_ts[_oi] += min(_brachial_dbp_win)
 
         # Positional ITP offset for CVP and LA-pressure reporting.
         # The baroreflex uses transmural CVP (p_cvp_edi) — wall-stretch drives
@@ -952,17 +999,25 @@ def run_simulation(
         # (mechanical); the current transmural CVP already approximates this.
         itp_pos_now = positional_itp_mmhg(tilt_now)
 
-        aortic_p[step]    = p_ao
-        cvp_ts[step]      = p_cvp_edi + itp_pos_now
-        la_p_ts[step]     = p_la + itp_pos_now
-        hr_ts[step]       = hr_eff
-        dbp_ts[step]      = p_dbp
-        sbp_ts[step]      = p_sbp
-        lvedp_ts[step]    = p_lvedp
-        cpp_ts[step]      = cerebral_perfusion_pressure(p_ao, tilt_now, params.gravity)
-        cop_ts[step]      = coronary_perfusion_pressure(p_dbp, p_lvedp)
-        buckberg_ts[step] = buckberg_index(p_dbp, p_lvedp, hr_eff, p_sbp)
-        volumes_ts[step]  = V.copy()
+        aortic_p[_oi]    += p_ao
+        cvp_ts[_oi]      += p_cvp_edi + itp_pos_now
+        la_p_ts[_oi]     += p_la + itp_pos_now
+        hr_ts[_oi]       += hr_eff
+        dbp_ts[_oi]      += p_dbp
+        sbp_ts[_oi]      += p_sbp
+        lvedp_ts[_oi]    += p_lvedp
+        cpp_ts[_oi]      += cerebral_perfusion_pressure(p_ao, tilt_now, params.gravity)
+        cop_ts[_oi]      += coronary_perfusion_pressure(p_dbp, p_lvedp)
+        buckberg_ts[_oi] += buckberg_index(p_dbp, p_lvedp, hr_eff, p_sbp)
+        volumes_ts[_oi]  += V
+
+        # Full-dt capture inside the requested windows (backlog item 33).
+        _hr_row = _hires_map.get(step)
+        if _hr_row is not None:
+            _hires_t[_hr_row] = t
+            _hires_ao[_hr_row] = p_ao
+            _hires_cvp[_hr_row] = p_cvp_edi + itp_pos_now
+            _hires_vol[_hr_row] = V
 
         if slow_enabled:
             _rcv = slow_state.red_cell_volume_ml
@@ -971,17 +1026,17 @@ def run_simulation(
                 # red cell volume is still zero. Emit NaN rather than a number
                 # that looks plausible (plasma volume would read as whole blood
                 # volume, haematocrit as 0).
-                plasma_vol_ts[step]   = np.nan
-                haematocrit_ts[step]  = np.nan
-                interstitial_ts[step] = np.nan
-                oncotic_ts[step]      = np.nan
+                plasma_vol_ts[_oi]   += np.nan
+                haematocrit_ts[_oi]  += np.nan
+                interstitial_ts[_oi] += np.nan
+                oncotic_ts[_oi]      += np.nan
             else:
                 _bv = V.sum()
                 _pv = max(_bv - _rcv, 1.0)
-                plasma_vol_ts[step]   = _pv
-                haematocrit_ts[step]  = _rcv / max(_bv, 1.0)
-                interstitial_ts[step] = slow_state.interstitial_volume_ml
-                oncotic_ts[step]      = oncotic_pressure_mmhg(
+                plasma_vol_ts[_oi]   += _pv
+                haematocrit_ts[_oi]  += _rcv / max(_bv, 1.0)
+                interstitial_ts[_oi] += slow_state.interstitial_volume_ml
+                oncotic_ts[_oi]      += oncotic_pressure_mmhg(
                     slow_state.plasma_protein_g, _pv)
 
         # Euler step. When slow dynamics are active, ask _odes to hand back the
@@ -1022,7 +1077,26 @@ def run_simulation(
     # Replicating the edge values instead keeps the smoothed series unbiased at
     # both ends, which is also the physically sensible assumption (the signal
     # continues at its boundary value rather than dropping to zero).
-    beat_win = max(1, int(3.0 / dt))
+    # ---- normalise the block accumulators to means -----------------------------
+    # Every series above was accumulated with += over its block; divide to get the
+    # mean. With output_every=1 every block holds one sample and this is a no-op,
+    # which is what makes that case bit-for-bit identical to the old behaviour.
+    for _arr in (aortic_p, cvp_ts, la_p_ts, co_ts, hr_ts, sv_ts, dbp_ts, sbp_ts,
+                 brachial_sbp_ts, brachial_dbp_ts, lvedp_ts, cpp_ts, cop_ts,
+                 buckberg_ts, ankle_p_ts, brachial_p_ts):
+        _arr /= _blk
+    volumes_ts /= _blk[:, None]
+    if slow_enabled:
+        for _arr in (plasma_vol_ts, haematocrit_ts, interstitial_ts, oncotic_ts):
+            _arr /= _blk
+
+    # Output timebase: the CENTRE of each block, not its leading edge.
+    t_out = (np.arange(n_out) + 0.5 * (_blk - 1.0)) * dt * 1.0
+    t_out = np.array([(i * output_every + 0.5 * (_blk[i] - 1.0)) * dt
+                      for i in range(n_out)])
+
+    # The 3-second smoothing window is in OUTPUT samples, not raw steps.
+    beat_win = max(1, int(3.0 / (dt * output_every)))
     map_ts = _smooth_edges(aortic_p, beat_win)
     co_ts  = _smooth_edges(co_ts,    beat_win)
 
@@ -1043,7 +1117,7 @@ def run_simulation(
 
     return {
         **slow_out,
-        "t":           t_eval,
+        "t":           t_out,
         "aortic_p":    aortic_p,
         "map":         map_ts,
         "cvp":         cvp_ts,
@@ -1063,4 +1137,14 @@ def run_simulation(
         "brachial_dbp": brachial_dbp_ts,
         "ppv":         ppv_ts,
         "volumes":     volumes_ts,
+        # Full-dt slices, empty unless hires_windows was given. See item 33: a
+        # trend cannot show waveform morphology, and morphology is how numerical
+        # drift and mid-systole/end-systole sampling errors become visible.
+        "hires": {
+            "t":        _hires_t,
+            "aortic_p": _hires_ao,
+            "cvp":      _hires_cvp,
+            "volumes":  _hires_vol,
+            "windows":  [(i0 * dt, i1 * dt) for i0, i1 in _hires_ranges],
+        },
     }

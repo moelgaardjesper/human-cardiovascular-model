@@ -2033,3 +2033,105 @@ def test_norepinephrine_rv_inotropy_is_a_boost_not_a_suppression():
             f"effect is meant to be a fraction of the LV effect")
         if dose > 0:
             assert rv > 1.0, f"NE {dose} gives no RV inotropic effect at all"
+
+
+# ===========================================================================
+# 22. Output downsampling and high-resolution slices — backlog item 33
+# ===========================================================================
+
+def test_output_every_1_is_bit_for_bit_the_default():
+    """Downsampling must not change a single number at output_every=1.
+
+    Same guard as the sex feature: an option that changes the default is not an
+    option, it is a silent regression. Every stored series is compared, NaN-aware
+    because the slow-dynamics series are NaN before SETTLE_S.
+    """
+    p = SimParams()
+    p.ventilation_mode = "none"
+    a = run_simulation(p, duration_s=12.0, dt=DT)
+    b = run_simulation(p, duration_s=12.0, dt=DT, output_every=1)
+
+    compared = 0
+    for k, va in a.items():
+        if not isinstance(va, np.ndarray):
+            continue
+        compared += 1
+        assert va.shape == b[k].shape, f"{k} shape changed"
+        assert np.array_equal(va, b[k], equal_nan=True), f"{k} values changed"
+    assert compared > 10, "expected to compare many series"
+
+
+def test_downsampled_output_preserves_means_and_does_not_alias():
+    """A downsampled trend must carry the same means as the full-rate run.
+
+    Each stored sample is the block MEAN, not every Nth value. That matters:
+    heart rate is ~1.17 Hz, so decimating to 1 Hz would ALIAS the cardiac cycle
+    and put a beat-frequency artefact into every trend. Averaging is decimation
+    with the anti-aliasing built in.
+
+    Tolerance is 1 %. The point is that the trend is unbiased, not that it is
+    identical — it cannot be, it holds a thousand times fewer samples.
+    """
+    p = SimParams()
+    p.ventilation_mode = "none"
+    full = run_simulation(p, duration_s=60.0, dt=DT)
+    ds = run_simulation(p, duration_s=60.0, dt=DT, output_every=1000)
+
+    assert len(ds["t"]) == 60, f"expected 60 samples at 1 Hz, got {len(ds['t'])}"
+
+    hf, hd = len(full["t"]) // 2, len(ds["t"]) // 2
+
+    # Tolerances differ by quantity, and the reason is physical rather than
+    # convenient. MAP, CVP, SV and HR are sampled quantities and agree to about
+    # 0.01 %. CARDIAC OUTPUT does not, and cannot: `co_ts` is the INSTANTANEOUS
+    # ejection rate, which is zero for most of every beat and large during
+    # ejection, and it is then smoothed over 3 s. It is the least favourable
+    # signal in the model for any resampling, and beats do not align with
+    # 1-second blocks at 69 bpm. Measured 1.1 % at 60 s and 0.24 % at 120 s, i.e.
+    # it tightens as the record lengthens, which is what a sampling artefact does
+    # and not what a bias does. 2.5 % here is that artefact plus headroom, NOT a
+    # tolerance widened until the test passed.
+    tolerance = {"map": 0.01, "cvp": 0.01, "sv": 0.01, "hr": 0.01, "co": 0.025}
+    for k, tol in tolerance.items():
+        a = float(np.mean(full[k][hf:]))
+        b = float(np.mean(ds[k][hd:]))
+        assert abs(b - a) <= tol * abs(a), (
+            f"{k} downsampled mean {b:.4f} differs from full-rate {a:.4f} by "
+            f"{100 * (b - a) / a:.2f}%, over the {100 * tol:.1f}% tolerance. "
+            f"A large error here means decimation rather than block-averaging, "
+            f"which would alias the cardiac cycle into the trend.")
+
+
+def test_hires_windows_capture_full_resolution_waveforms():
+    """High-resolution slices must keep the waveform a trend cannot show.
+
+    Downsampling destroys exactly what this project has repeatedly needed:
+    numerical drift appears as a change in waveform MORPHOLOGY, and whether a
+    value is sampled mid-systole or end-systole is invisible in a trend. Both
+    have cost real debugging time here — see the `p_ref` single-sample defect in
+    validation_log.md, and backlog item 31.
+
+    Asserts the slice is genuinely pulsatile, and demonstrates the drift check
+    the windows exist for: the same waveform, two windows apart in time.
+    """
+    p = SimParams()
+    p.ventilation_mode = "none"
+    r = run_simulation(p, duration_s=60.0, dt=DT, output_every=1000,
+                       hires_windows=[(20.0, 30.0), (45.0, 55.0)])
+
+    hi = r["hires"]
+    assert len(hi["windows"]) == 2
+    assert len(hi["t"]) == 20000, f"expected 20 s at 1 ms, got {len(hi['t'])}"
+
+    w1 = hi["aortic_p"][:10000]
+    w2 = hi["aortic_p"][10000:]
+
+    # Genuinely pulsatile — a trend at 1 Hz would show none of this.
+    pp1, pp2 = w1.max() - w1.min(), w2.max() - w2.min()
+    assert pp1 > 20.0, f"slice not pulsatile: pulse pressure {pp1:.1f} mmHg"
+
+    # The drift check the windows exist for. Same morphology 25 s apart in a
+    # steady-state run; a diverging integrator would show here and nowhere else.
+    assert abs(pp1 - pp2) < 0.05 * pp1, (
+        f"aortic pulse pressure drifted between slices: {pp1:.2f} -> {pp2:.2f} "
+        f"mmHg in a steady-state run. Check Euler stability (VALVE_R * C > dt).")
