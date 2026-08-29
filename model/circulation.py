@@ -743,6 +743,8 @@ def run_simulation(
     use_baroreflex: bool = True,
     output_every: int = 1,
     hires_windows: list[tuple[float, float]] | None = None,
+    output_path: str | None = None,
+    flush_every: int = 1000,
 ) -> dict:
     """
     Integrate the ODE system and return time-series haemodynamic outputs.
@@ -819,6 +821,7 @@ def run_simulation(
             i0, i1 = max(0, int(a / dt)), min(n, int(b / dt))
             if i1 > i0:
                 _hires_ranges.append((i0, i1))
+    _hires_ranges_s = [(i0 * dt, i1 * dt) for i0, i1 in _hires_ranges]
     _hires_n = sum(i1 - i0 for i0, i1 in _hires_ranges)
     _hires_t = np.zeros(_hires_n)
     _hires_ao = np.zeros(_hires_n)
@@ -830,6 +833,54 @@ def run_simulation(
         for _i in range(i0, i1):
             _hires_map[_i] = _row
             _row += 1
+
+    # ---- DISK OUTPUT (backlog item 33) ---------------------------------------
+    # `output_path` writes the downsampled trend to a directory of .npy files as
+    # the run proceeds, via np.lib.format.open_memmap. Two reasons, and only the
+    # second is about memory:
+    #
+    #  1. CRASH RESILIENCE. A 24 h run takes about 9 h of wall clock. Held only in
+    #     RAM, a failure at hour 8 loses everything. Rows are written as each block
+    #     completes and flushed periodically, so whatever ran is on disk and
+    #     readable — a truncated .npy still loads, it just has trailing zeros.
+    #  2. The run becomes re-analysable later without repeating those 9 hours.
+    #
+    # memmap rather than a pickle or npz because it needs no extra dependency, is
+    # written incrementally rather than all at the end, and loads back with a
+    # plain np.load(..., mmap_mode="r").
+    _disk = None
+    if output_path is not None:
+        import json
+        import os as _os
+        _os.makedirs(output_path, exist_ok=True)
+        _cols = ["t", "aortic_p", "map", "cvp", "la_pressure", "co", "hr", "sv",
+                 "dbp", "sbp", "lvedp", "cpp", "cop", "buckberg",
+                 "ankle_p", "brachial_p", "brachial_sbp", "brachial_dbp"]
+        _disk = {
+            "trend": np.lib.format.open_memmap(
+                _os.path.join(output_path, "trend.npy"), mode="w+",
+                dtype=np.float64, shape=(n_out, len(_cols))),
+            "volumes": np.lib.format.open_memmap(
+                _os.path.join(output_path, "volumes.npy"), mode="w+",
+                dtype=np.float64, shape=(n_out, len(comp))),
+            "cols": _cols,
+        }
+        with open(_os.path.join(output_path, "meta.json"), "w") as _f:
+            json.dump({
+                "columns": _cols,
+                "compartments": [c.name for c in comp],
+                "dt": dt, "duration_s": duration_s,
+                "output_every": output_every,
+                "n_out": n_out,
+                "hires_windows": [[a, b] for a, b in _hires_ranges_s],
+                "note": "trend.npy is (n_out, len(columns)); each row is the MEAN "
+                        "over its block of output_every steps, not a decimated "
+                        "sample. Rows after a crash are zero. The map, co, cpp, "
+                        "cop and buckberg columns are derived after the run and "
+                        "written once at the end, so in a CRASHED run map is "
+                        "empty and co/cpp/cop/buckberg are unsmoothed block "
+                        "means; everything else is correct up to n_written.",
+            }, _f, indent=2)
 
     # Storage
     aortic_p    = np.zeros(n_out)
@@ -1011,6 +1062,25 @@ def run_simulation(
         buckberg_ts[_oi] += buckberg_index(p_dbp, p_lvedp, hr_eff, p_sbp)
         volumes_ts[_oi]  += V
 
+        # ---- incremental disk write, when this output block completes -------
+        # Written here rather than after the loop so a crash leaves the finished
+        # rows on disk. See output_path above.
+        if _disk is not None and (step % output_every == output_every - 1
+                                  or step == n - 1):
+            _c = _blk[_oi]
+            _disk["trend"][_oi] = (
+                (_oi * output_every + 0.5 * (_c - 1.0)) * dt,
+                aortic_p[_oi] / _c, 0.0, cvp_ts[_oi] / _c, la_p_ts[_oi] / _c,
+                co_ts[_oi] / _c, hr_ts[_oi] / _c, sv_ts[_oi] / _c,
+                dbp_ts[_oi] / _c, sbp_ts[_oi] / _c, lvedp_ts[_oi] / _c,
+                cpp_ts[_oi] / _c, cop_ts[_oi] / _c, buckberg_ts[_oi] / _c,
+                ankle_p_ts[_oi] / _c, brachial_p_ts[_oi] / _c,
+                brachial_sbp_ts[_oi] / _c, brachial_dbp_ts[_oi] / _c)
+            _disk["volumes"][_oi] = volumes_ts[_oi] / _c
+            if _oi % flush_every == 0:
+                _disk["trend"].flush()
+                _disk["volumes"].flush()
+
         # Full-dt capture inside the requested windows (backlog item 33).
         _hr_row = _hires_map.get(step)
         if _hr_row is not None:
@@ -1077,6 +1147,15 @@ def run_simulation(
     # Replicating the edge values instead keeps the smoothed series unbiased at
     # both ends, which is also the physically sensible assumption (the signal
     # continues at its boundary value rather than dropping to zero).
+    if _disk is not None:
+        _disk["trend"].flush()
+        _disk["volumes"].flush()
+        if _hires_n:
+            import os as _os
+            for _nm, _a in (("hires_t", _hires_t), ("hires_aortic_p", _hires_ao),
+                            ("hires_cvp", _hires_cvp), ("hires_volumes", _hires_vol)):
+                np.save(_os.path.join(output_path, _nm + ".npy"), _a)
+
     # ---- normalise the block accumulators to means -----------------------------
     # Every series above was accumulated with += over its block; divide to get the
     # mean. With output_every=1 every block holds one sample and this is a no-op,
@@ -1107,6 +1186,24 @@ def run_simulation(
         if params.ventilation_mode == 'mechanical'
         else np.zeros(n)
     )
+
+    # ---- finalise the disk copy ------------------------------------------------
+    # Five columns are derived AFTER the loop by _smooth_edges: map is built from
+    # aortic_p, and co/cpp/cop/buckberg are smoothed over a 3 s window. The
+    # incremental writes above cannot know them, so they are written once here.
+    #
+    # The incremental rows are still what gives crash resilience — they hold the
+    # raw block means. A run that dies mid-way therefore has correct aortic_p,
+    # cvp, hr, sv and volumes, an EMPTY map column, and UNSMOOTHED co/cpp/cop/
+    # buckberg. meta.json says so, and `complete` in load_run reports it.
+    if _disk is not None:
+        _final = {"map": map_ts, "co": co_ts,
+                  "cpp": _smooth_edges(cpp_ts, beat_win),
+                  "cop": _smooth_edges(cop_ts, beat_win),
+                  "buckberg": _smooth_edges(buckberg_ts, beat_win)}
+        for _name, _arr in _final.items():
+            _disk["trend"][:, _disk["cols"].index(_name)] = _arr
+        _disk["trend"].flush()
 
     slow_out = {} if not slow_enabled else {
         "plasma_volume":       plasma_vol_ts,
@@ -1148,3 +1245,43 @@ def run_simulation(
             "windows":  [(i0 * dt, i1 * dt) for i0, i1 in _hires_ranges],
         },
     }
+
+
+def load_run(path: str) -> dict:
+    """Load a run written by `run_simulation(..., output_path=path)`.
+
+    Returns the same keys as run_simulation, so analysis code does not care
+    whether a run came from memory or from disk.
+
+    Arrays are memory-mapped, so a 26 MB trend costs nothing to open and a much
+    larger one is paged rather than loaded. A run that crashed part-way still
+    loads: the .npy header carries the full allocated shape, and rows that never
+    completed are zero. `n_written` is the count of rows that actually got a
+    non-zero timestamp, which is how far the run reached.
+    """
+    import json
+    import os
+
+    with open(os.path.join(path, "meta.json")) as f:
+        meta = json.load(f)
+
+    trend = np.load(os.path.join(path, "trend.npy"), mmap_mode="r")
+    volumes = np.load(os.path.join(path, "volumes.npy"), mmap_mode="r")
+    out = {c: trend[:, i] for i, c in enumerate(meta["columns"])}
+    out["volumes"] = volumes
+    out["meta"] = meta
+
+    # How far did it get? Row 0 legitimately has t = 0, so count from row 1.
+    nz = np.flatnonzero(trend[1:, 0])
+    out["n_written"] = int(nz[-1] + 2) if len(nz) else 1
+    out["complete"] = out["n_written"] == meta["n_out"]
+
+    hires = {}
+    for nm in ("t", "aortic_p", "cvp", "volumes"):
+        fp = os.path.join(path, f"hires_{nm}.npy")
+        if os.path.exists(fp):
+            hires[nm] = np.load(fp, mmap_mode="r")
+    hires["windows"] = [tuple(w) for w in meta.get("hires_windows", [])]
+    out["hires"] = hires
+    return out
+

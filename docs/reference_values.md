@@ -448,9 +448,22 @@ NEEDED: the ratio of the RESPIRATORY SWING in abdominal pressure to that in pleu
 pressure, during mechanical ventilation, in humans. In practice that means a study
 recording OESOPHAGEAL and GASTRIC (or bladder) pressure SIMULTANEOUSLY in ventilated
 patients, reporting both swings or their ratio.
-WHAT I HAVE: the reverse direction only — Cortes-Puentes 2013 (PMID 23863222), swine, where
-applied intra-abdominal pressure raises plateau airway pressure by ~50 %. That bounds it
-but is not it. Takata's zone conditions (PMID 2076989) give the STRUCTURE and a ~1 mmHg
+**THE REQUEST MUST SAY "PASSIVE" — my first version did not, and that cost a paper.**
+Akoumianaki 2024 (below) has exactly the pairing I asked for, 76 patients with simultaneous
+oesophageal and gastric pressure, and it still cannot answer the question, because every
+patient has spontaneous breathing activity. Its ΔPgas is the patient's own EXPIRATORY MUSCLE
+contraction, not pressure transmitted from the thorax. What is needed is a PARALYSED or
+fully passive patient on controlled ventilation, where the only thing moving the abdomen is
+the diaphragm being pushed down by the ventilator.
+WHAT I HAVE, all reverse-direction or static:
+  Shaji (2026-08-29) — HUMANS, n=42: driving pressure +0.72 cmH2O per unit IAP. The best
+    bound available, and it moved the swine 0.50 to a human 0.72.
+  Cortes-Puentes 2013 (PMID 23863222) — swine, plateau airway pressure +~50 % of applied IAP.
+  Sindi 2014 — n=43 PARALYSED patients: the STATIC Pabd-Pes correlation is weak (0.79
+    univariate, collapsing to 0.10 and non-significant once BMI is included). A static
+    coupling term is not supported; the swing is a different quantity and was not measurable
+    in that study because every patient got the same insufflation pressure.
+What is still missing is the SWING ratio in the THORAX -> ABDOMEN direction. Takata's zone conditions (PMID 2076989) give the STRUCTURE and a ~1 mmHg
 closing pressure, but in dogs.
 DO NOT let me pick a coefficient without this. One chosen to land PPV under 13 % would be
 tuning to the endpoint.
@@ -491,6 +504,86 @@ with no source. The 0.7 is flagged as such in the test, and the sign error it re
 the noradrenaline validation test (see validation_log.md 2026-08-28).
 NEEDED: dose-response for heart rate and for RV contractility, in humans, over the clinical
 range 0.01-0.5 mcg/kg/min.
+
+## Sindi A et al. 2014 — oesophageal vs abdominal pressure, PARALYSED patients
+Respir Care 59(4):491-496. **READ 2026-08-29.** n=43, elective laparoscopic surgery,
+intubated AND PARALYSED — the passive condition item 27 requires. Age 53.2 +/- 14.6,
+BMI 33.7 +/- 10.5 (range 13.7-60.5), PEEP 5-7 cmH2O in 19 patients and 0 in the rest.
+Recorded Pes 9.5 +/- 4.7 cmH2O.
+
+| relationship (baseline, before insufflation) | coefficient (95 % CI) | R2 | p |
+|---|---|---|---|
+| Pabd -> Pes, univariate | **0.79 (0.36-1.21)** | 0.24 | 0.001 |
+| BMI -> Pes, univariate | 0.29 (0.19-0.40) | 0.41 | <0.001 |
+| Pabd -> Pes, MULTIVARIABLE | **0.10 (-0.46 to 0.65)** | | **0.73 (NS)** |
+| BMI -> Pes, multivariable | 0.27 (0.11-0.43) | 0.40 | 0.001 |
+
+**THE STATIC COUPLING IS WEAK AND BMI CONFOUNDS IT.** The univariate Pabd-Pes correlation
+of 0.79 collapses to 0.10 and loses significance once BMI is in the model, while BMI stays
+highly significant. Their conclusion is that abdominal pressure has "limited value" as a
+surrogate for oesophageal pressure. So a naive static coupling of the form
+Pabd = k * Ppleural is NOT supported.
+**IT STILL DOES NOT GIVE ITEM 27'S COEFFICIENT, and the reason is specific:** item 27 needs
+the coupling of the RESPIRATORY SWING, not of the static baseline, and those are different
+quantities — a static offset can couple weakly while the tidal swing transmits well. Sindi
+tried to measure the change: "Due to unexpected uniformity of abdominal inflation pressures
+(generally 20.4 cmH2O) during surgery, data were not amenable to assessment of correlation
+between CHANGES in abdominal and esophageal pressures after inflation." Every patient got
+the same insufflation pressure, so there was no variation to regress against.
+USED: as a CAUTION against a static coupling term. Not for a coefficient.
+
+## Shaji U et al. — intra-abdominal pressure and ventilatory mechanics, HUMANS
+J Anaesthesiol Clin Pharmacol. **READ 2026-08-29.** n=42, laparoscopic cholecystectomy,
+prospective cohort. Timepoints T1-T3 at identical ventilator settings across rising IAP,
+then PEEP raised to 8 (T4) and 11 cmH2O (T5) at IAP 14 mmHg.
+
+| relationship | value | r | p |
+|---|---|---|---|
+| **driving pressure per unit IAP** | **+0.72 cmH2O** | 0.73 | <0.001 |
+| mechanical power per unit IAP | +0.19 | 0.71 | <0.001 |
+Effect sizes 0.89 and 0.90. Airway resistance rose and respiratory compliance fell from
+T1 to T3, both reversing at T4-T5. Raising PEEP from 5 to 11 increased mechanical power
+while driving pressure fell.
+
+**THIS IS THE BEST HUMAN NUMBER YET FOR THE ABDOMEN-TO-THORAX DIRECTION.** At constant
+tidal volume, a driving-pressure rise of 0.72 per unit IAP means the chest wall absorbs
+~72 % of the added abdominal pressure. It upgrades Cortes-Puentes 2013 (PMID 23863222),
+which gave ~50 % in SWINE, to a human value: **0.72 vs 0.50, same direction, humans stiffer.**
+STILL THE REVERSE DIRECTION. Item 27 needs THORAX -> ABDOMEN (the ventilator raises pleural
+pressure, the diaphragm descends, the abdomen follows), and this is ABDOMEN -> THORAX
+(insufflation pushes the diaphragm up). The two are not guaranteed symmetric — they put
+different compliances in series — so this BOUNDS the coefficient rather than supplying it.
+USED: not yet. It is the tightest bound available and should be quoted whenever item 27's
+coefficient is finally chosen.
+
+## Akoumianaki E et al. 2024 — gastric pressure and active expiration
+Anesthesiology 141:541-53. **READ 2026-08-29. Does NOT answer item 27 — see why.**
+n=76 invasively ventilated patients on ASSISTED ventilation with spontaneous breathing
+activity, retrospective, with simultaneous oesophageal (Peso) and gastric (Pgas) pressure.
+58 of the 76 showed active expiration, defined as ΔPgas >= 1.0 cmH2O during expiratory flow
+without a corresponding change in diaphragmatic pressure.
+
+| quantity | value (median, IQR) |
+|---|---|
+| ΔPgas, active-expiration subgroup (n=58) | **3.4 cmH2O (2.4-5.3)** |
+| ΔPeso, whole cohort | 10.0 cmH2O (7.4-13.7) |
+| ΔPeso, active vs passive expiration groups | 10.7 (8.2-14.6) vs 8.4 (5.8-12.0), p<0.05 |
+| ΔPdi | 8.4 cmH2O (5.4-11.2) |
+| tidal volume | 468 (417-545) vs 497 (443-615) mL |
+| duration of active-expiration recordings | 27.2 min (17.9-48.3) |
+Among the 58, active expiration produced distortions mimicking ineffective efforts,
+autotriggering and multiple triggering; prolonged cycles with biphasic inspiratory flow
+raised mechanical inflation time by 54 % (44-70) and tidal volume by 25 % (8-35).
+
+**WHY IT DOES NOT GIVE ITEM 27'S COEFFICIENT.** The paper's own definitions:
+ΔPeso is the "inspiratory DECREASE in esophageal pressure" and ΔPgas the "expiratory
+INCREASE in gastric pressure". They are different PHASES of the breath and both are
+generated by the PATIENT'S OWN MUSCLES. Their ratio is expiratory effort over inspiratory
+effort, not thorax-to-abdomen transmission. Item 27 needs a passive patient in whom the
+ventilator raises pleural pressure and the abdomen follows; here the abdomen leads.
+USED: nothing. Recorded because the numbers are worth having if the model ever represents
+expiratory muscle activity, and because it sharpened the WANTED request above.
+
 
 ## Leads noted, not yet read
 - D'Angelo E et al. 1992, J Appl Physiol 73(5):1736-42, PMID 1474045,

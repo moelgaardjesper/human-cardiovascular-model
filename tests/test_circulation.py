@@ -2135,3 +2135,52 @@ def test_hires_windows_capture_full_resolution_waveforms():
     assert abs(pp1 - pp2) < 0.05 * pp1, (
         f"aortic pulse pressure drifted between slices: {pp1:.2f} -> {pp2:.2f} "
         f"mmHg in a steady-state run. Check Euler stability (VALVE_R * C > dt).")
+
+
+def test_disk_output_round_trips_and_survives_a_crash(tmp_path):
+    """A run written to disk must load back identically, and a truncated one
+    must still load.
+
+    Two separate claims, and the second is the point of writing incrementally.
+    A 24 h run takes about 9 h of wall clock; held only in RAM, a failure at
+    hour 8 loses all of it. Rows are written as each output block completes, so
+    whatever ran is on disk.
+    """
+    from model.circulation import load_run
+
+    p = SimParams()
+    p.ventilation_mode = "none"
+    d = str(tmp_path / "run")
+    mem = run_simulation(p, duration_s=30.0, dt=DT, output_every=1000,
+                         hires_windows=[(10.0, 20.0)], output_path=d)
+    disk = load_run(d)
+
+    assert disk["complete"], "a run that finished must report complete"
+    assert disk["n_written"] == disk["meta"]["n_out"] == 30
+
+    for k in ("t", "aortic_p", "map", "cvp", "la_pressure", "co", "hr", "sv",
+              "dbp", "sbp", "lvedp", "cpp", "cop", "buckberg",
+              "ankle_p", "brachial_p", "volumes"):
+        assert np.allclose(np.asarray(mem[k]), np.asarray(disk[k])), (
+            f"{k} did not round-trip through disk")
+
+    # High-resolution slices persist too, at full dt.
+    assert disk["hires"]["aortic_p"].shape == (10000,)
+    assert disk["hires"]["volumes"].shape == (10000, 23)
+    assert disk["hires"]["windows"] == [(10.0, 20.0)]
+
+    # CRASH SIMULATION: zero the tail of the trend, as an interrupted run would
+    # leave it, and confirm the file still loads and reports how far it got.
+    trend_path = tmp_path / "run" / "trend.npy"
+    arr = np.load(str(trend_path), mmap_mode="r+")
+    arr[20:] = 0.0
+    arr.flush()
+    del arr
+
+    crashed = load_run(d)
+    assert not crashed["complete"], "a truncated run must not report complete"
+    assert crashed["n_written"] == 20, (
+        f"expected 20 rows written, got {crashed['n_written']}")
+    assert np.allclose(np.asarray(crashed["aortic_p"])[:20],
+                       np.asarray(mem["aortic_p"])[:20]), (
+        "the rows that were written before the crash must still be correct")
