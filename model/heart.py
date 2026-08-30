@@ -156,5 +156,40 @@ RA_EMIN = 0.20   # mmHg/mL  right atrium diastolic elastance
 LA_EMAX = 0.45   # mmHg/mL  left atrium
 LA_EMIN = 0.28   # mmHg/mL
 
-# Atrial activation is offset by ~60% of the cardiac cycle from ventricular
-ATRIAL_PHASE_OFFSET = 0.60  # fraction of T
+# ---------------------------------------------------------------------------
+# ATRIOVENTRICULAR DELAY — the PR interval, as a TIME rather than a fraction
+# ---------------------------------------------------------------------------
+# Atrial contraction precedes ventricular contraction by the PR interval. In
+# this model, cardiac phase 0 is the onset of VENTRICULAR activation and the
+# atrial activation curve starts at its own phase 0, so the offset between them
+# IS the PR interval expressed as a fraction of the cardiac period.
+#
+# WHAT WAS HERE BEFORE, AND WHY IT WAS WRONG. `ATRIAL_PHASE_OFFSET = 0.60`,
+# from the initial commit, unsourced, with no test constraining it. A fixed
+# 0.60 of the cycle at the reference 70 bpm is a PR interval of 514 ms — more
+# than double the upper limit of normal, and into complete-heart-block
+# territory. Measured against the volume traces it put the atrial kick in
+# MID-DIASTOLE, so the atrium was contracting while the mitral valve was shut
+# and it was still filling from the pulmonary veins. LA volume ROSE from 40 to
+# 88 mL while atrial activation climbed from 0 to 0.93.
+#
+# Normal PR interval is 120-200 ms in adults; 160 ms is the mid-normal value
+# and is what is used here.
+ATRIAL_PR_INTERVAL_S = 0.16
+
+# PR is a fixed TIME, not a fixed fraction of the cycle. That distinction
+# matters here because heart rate moves substantially in the scenarios this
+# model is validated on — baroreflex, tilt, haemorrhage, vasopressors — and a
+# fixed fraction would slide the atrial kick out of end-diastole exactly when
+# the reflex is doing the most work. At 70 bpm the offset is 0.187; at 150 bpm
+# a fixed 0.187 would imply a PR of only 75 ms.
+#
+# Real PR does shorten a little as rate rises, but far less than cycle length
+# does, so holding it constant is much closer than holding the fraction
+# constant. The clamp keeps the atrial kick from colliding with ventricular
+# systole at extreme tachycardia, which is itself physiological — at high
+# enough rates atrial and ventricular events do merge.
+def atrial_phase_offset(hr_bpm: float) -> float:
+    """Atrial activation offset (fraction of the cardiac cycle) at this rate."""
+    period_s = 60.0 / max(1e-6, hr_bpm)
+    return min(0.45, ATRIAL_PR_INTERVAL_S / period_s)

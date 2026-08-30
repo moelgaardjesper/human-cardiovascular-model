@@ -1187,3 +1187,160 @@ r = -0.61. Best equation: mean RAP = 23.3 - 0.2*IVCCI - 0.026*DT (r = 0.80, R2 =
 IVCCI >45 % best predicts RAP <=8; IVCCI <35 % with DT <150 ms best predicts RAP >=15.
 CARDIAC-DISEASE cohort, so not a normal reference — recorded because it is the invasive
 validation behind the echo method, and it shows how wide real RAP spread is.
+
+## Atrial contribution to LV filling — the target 25a actually needs (2026-08-31)
+
+Found by PubMed search while scoping the mitral / pulmonary-venous coupling. **This is the
+quantity that maps onto Gao's passive/booster split, and the ledger had nothing on it.**
+
+### Alhogbani T, Strohm O, Friedrich MG 2012 — CMR, the primary target
+J Magn Reson Imaging 37(4):860-864. PMID 23097384, DOI 10.1002/jmri.23881.
+n=120 normal subjects, 50 % female, steady-state free precession CMR volumetry, short-axis
+and rotational long-axis views. **Atrial contraction contribution (ACC) = LV filling volume
+from left atrial contraction, divided by LV stroke volume.**
+
+| Age band | ACC (% of LV stroke volume) |
+|---|---|
+| < 40 years | **15 +/- 5 %** |
+| 40-55 years | **28 +/- 8 %** |
+| > 55 years | **38 +/- 5 %** |
+
+Overall range 10-40 %, strongly age-dependent. Their age-adjusted rule: ACC % divided by
+age gives 0.4-0.7 at any age in normals — so at the model's reference age of 55 that is
+**22-38.5 %**.
+**SAME MODALITY AS GAO (CMR), and a VOLUME fraction, so it is directly comparable to the
+model** — unlike E/A, which is a ratio of peak VELOCITIES and does not translate cleanly
+into volumes.
+
+### Faggiano P et al. 1989 — Doppler, normal controls, volume fractions of filling
+J Hum Hypertens 3(3):149-156. PMID 2769673. n=25 age-matched normal subjects (control arm
+of a hypertension study), transmitral blood flow by Doppler.
+
+| Quantity | Normal controls |
+|---|---|
+| Peak E velocity | 0.62 +/- 0.1 m/s |
+| Peak A velocity | 0.49 +/- 0.1 m/s |
+| **E/A ratio (derived)** | **~1.27** |
+| **E area, % of total diastolic area** | **56 +/- 5 %** |
+| **A area, % of total diastolic area** | **26 +/- 5 %** |
+| Deceleration half-time | 80 +/- 12 ms |
+
+E area + A area = 82 %, so **diastasis accounts for the remaining ~18 %** of filling. That
+three-way split — 56 % early, 26 % atrial, 18 % diastasis — is the shape the model should
+reproduce. Their hypertensive arms are recorded for completeness: E area falls to 48 +/- 5
+(no LVH) and 43 +/- 6 (LVH), A area rises to 41 +/- 4 and 47 +/- 7, DHT lengthens 80 -> 90
+-> 105 ms. NOT USED as a target — the model has no hypertensive phenotype — but it is the
+direction diastolic dysfunction moves, and item 25b will want it.
+
+### Mohan JC et al. 1994 — Doppler, young controls
+Indian Heart J 46(3):129-132. PMID 7821932. n=15 matched controls (control arm of a mitral
+valvuloplasty study, so YOUNG). Atrial contribution **12.5 +/- 3.3 %** of total filling
+volume. Consistent with Alhogbani's < 40 band of 15 +/- 5 %.
+Also useful as a bound on the MITRAL RESISTANCE question: in severe mitral stenosis
+(valve area 0.78 +/- 0.12 cm2) the atrial contribution FELL to 8 +/- 2.8 %, and rose back
+to 12.5 +/- 3.8 % after valvuloplasty opened the valve to 1.72 +/- 0.4 cm2. So raising
+mitral resistance LOWERS the atrial contribution — which is the opposite of what the model
+needs, and is direct evidence that mitral resistance is the WRONG LEVER for the model's
+low booster fraction.
+
+### THE THREE SOURCES AGREE, AND THEY SETTLE THE AGE GRADIENT
+| Age | ACC | Source |
+|---|---|---|
+| young (< 40) | 12.5-15 % | Mohan, Alhogbani |
+| 40-55 | 26-28 % | Alhogbani, Faggiano |
+| > 55 | 38 % | Alhogbani |
+Three independent cohorts and two modalities. This is a firmer target than most numbers in
+this ledger, and it is exactly the quantity item 25b (age) will need later — the atrial
+contribution roughly TRIPLES from young adult to elderly, which is the same physiology as
+Gao's LAEF booster rising with age while passive falls.
+
+**MODEL COMPARISON, AND THE UNIT TRAP.** The model's LA booster EF is 14.3 %, but that is
+(VpreA - Vmin)/VpreA — a fraction of ATRIAL volume. ACC is a fraction of LV STROKE VOLUME.
+They are different denominators and must not be compared directly. The model's booster moves
+5.8 mL against a stroke volume of ~86 mL, so its ACC is of order 7 %, against a target of
+22-38.5 % at the reference age of 55. **Measure ACC properly from mitral flow before using
+this — do not compare the two fractions as if they were the same quantity.**
+
+### Caballero L et al. 2015 — NORRE, the definitive reference ranges
+Eur Heart J Cardiovasc Imaging 16(9):1031-1041. PMID 25896355, DOI 10.1093/ehjci/jev083.
+n=449 healthy volunteers (198 men, 251 women), mean age 45.8 +/- 13.7, EACVI-approved
+acquisition protocol. Age- and sex-stratified Doppler reference ranges.
+ABSTRACT ONLY so far. It states the trends — E wave and e' higher in the young and falling
+with age, E/e' rising with age, most diastolic parameters similar between sexes — but the
+per-decade E and A tables are in the paper, not the abstract.
+**WANTED: the NORRE Doppler tables**, which would give sex- and decade-stratified E and A
+for the male reference this project validates on. Companion paper for 3D LV volumes is
+Bernard 2017, PMID 28329230, DOI 10.1093/ehjci/jew284 (LV EDV upper limit 97 mL/m2 in men,
+ESV 42, EF lower limit 50 %) — worth having for item 25b alongside Luu.
+
+## Caballero L et al. 2015 — NORRE Doppler reference ranges, FULL TEXT READ 2026-08-31
+Eur Heart J Cardiovasc Imaging 16(9):1031-1041. PMID 25896355, DOI 10.1093/ehjci/jev083.
+PDF supplied by Jesper; copy in `docs/papers/caballero_2015_norre_doppler_reference_ranges.pdf`.
+n=449 healthy volunteers (198 men, 251 women), mean age 45.8 +/- 13.7, EACVI-approved
+acquisition and measurement protocol, 22 collaborating institutions.
+**This project validates on MALE patients — the male columns are the ones to use.**
+
+### Table 3 — transmitral Doppler by age and sex (male columns)
+| Parameter | 20-40 y | 40-60 y | >= 60 y | age correlation (men) |
+|---|---|---|---|---|
+| E wave velocity (m/s) | 0.79 +/- 0.14 | 0.72 +/- 0.16 | 0.67 +/- 0.15 | r = -0.31, p < 0.001 |
+| A wave velocity (m/s) | 0.50 +/- 0.13 | 0.61 +/- 0.15 | 0.73 +/- 0.16 | r = +0.49, p < 0.001 |
+| **E/A ratio** | **1.69 +/- 0.52** | **1.22 +/- 0.31** | **0.96 +/- 0.27** | r = -0.61, p < 0.001 |
+| E deceleration time (ms) | 179.8 +/- 46.4 | 186.6 +/- 52.8 | 217.5 +/- 69.7 | r = +0.23, p = 0.001 |
+Whole cohort, both sexes: E 0.76 +/- 0.17, A 0.60 +/- 0.17, E/A 1.37 +/- 0.51
+(95 % CI 0.64-2.74), DT 188.0 +/- 49.4 ms. A wave, DT and E/A show no sex difference;
+E wave is higher in women (0.79 vs 0.74, p = 0.002).
+**The model's reference age is 55, so the target band is the male 40-60 column: E/A 1.22.**
+
+### Tissue Doppler, and the number that matters for filling pressure
+Whole cohort: septal e' 10.3 +/- 3.0, lateral e' 13.5 +/- 4.0, average e' 11.9 +/- 3.1 cm/s.
+e' falls steeply with age (septal 12.1 -> 9.8 -> 7.6 cm/s across the three bands).
+| E/e' | whole cohort |
+|---|---|
+| Septal | 7.9 +/- 2.4 |
+| Lateral | 6.1 +/- 2.1 |
+| Average septal + lateral | 6.8 +/- 2.1 |
+| **Average of five sites** | **6.6 +/- 2.0** |
+No sex difference at any site.
+
+### Table 4 — proportions exceeding thresholds (NOT means)
+LA volume > 34 mL/m2 in 15.1 % of the healthy global cohort and > 37 mL/m2 in 8.9 %
+(single-plane area-length, four-chamber); by other methods 9.1-20.7 % and 5.4-12.6 %.
+sPAP > 36 mmHg in 1/294 (0.3 %); sPAP > 45 mmHg in 0/294.
+
+### CROSS-CHECKS AGAINST WHAT THE LEDGER ALREADY HELD
+1. **E/A agrees with Faggiano.** NORRE male 40-60 gives 1.22 +/- 0.31; Faggiano's normal
+   controls give E 0.62 / A 0.49 = ~1.27. Independent cohorts, 26 years apart.
+2. **The AGE DIRECTION agrees with Gao and Alhogbani, which is the important one.** A wave
+   rises (0.50 -> 0.61 -> 0.73 m/s) while E falls, so E/A drops 1.69 -> 1.22 -> 0.96. That
+   is the same physiology as Gao's LAEF booster RISING and LAEF passive FALLING with age,
+   and as Alhogbani's atrial contribution tripling from 15 % to 38 %. **Four independent
+   sources, three modalities, one consistent story: the ageing atrium takes over more of
+   ventricular filling.** This is now the best-supported age trend in the ledger and it is
+   what item 25b will be built on.
+3. **LA volume: NORRE aligns with the ECHO sources, not the CMR one.** Only 15.1 % of
+   healthy subjects exceed 34 mL/m2, so the normal echo LA volume sits well below that —
+   consistent with Figliozzi's 3D echo 25.18 mL/m2 and NOT with Gao's CMR 36.9 +/- 7.7.
+   This is a THIRD source confirming the modality split already flagged under item 23.
+   **The model's LAVmax of 50.5 mL/m2 is above the threshold that only 9 % of healthy
+   people exceed, by either modality.**
+4. **sPAP.** Essentially no healthy subject exceeds 36 mmHg systolic. Not a direct
+   constraint on the model's MEAN PA of 20.60, but it is consistent with the mean PA
+   ceiling of 20 the pulmonary test asserts.
+
+### THE PCWP TARGET IN `test_pulmonary_pressures_are_physiological` IS TOO LOW
+The test's 5-6 mmHg wedge figure comes from [P1] StatPearls, which the test file itself
+flags as tertiary with the note that "anything load-bearing should be traced to a primary
+measurement". It is load-bearing, and it is at the bottom of the usual clinical range.
+Applying Nagueh's relation (PCWP = 1.24 * E/e' + 1.9) to NORRE's measured values in 449
+healthy volunteers:
+| E/e' | implied PCWP |
+|---|---|
+| septal 7.9 | 11.7 mmHg |
+| average 6.6 | 10.1 mmHg |
+Standard clinical normal PCWP is **6-12 mmHg**, not 5-6. **So the model's 12.4 mmHg is
+mildly high — at or just above the upper limit — NOT "more than double" as recorded earlier
+on 2026-08-31 while scoping the coupling.** That earlier statement was wrong and is
+withdrawn. The PCWP discrepancy is a weak signal for the mitral coupling work, not a strong
+one; LAVmax (50.5 vs a 34-37 ceiling) and the atrial contribution (~7 % vs 22-38.5 %) are
+the strong ones.

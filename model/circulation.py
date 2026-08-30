@@ -36,7 +36,7 @@ from .heart import (
     elastance_from_phase, frank_starling_emax,
     LV_EMAX, LV_EMIN, RV_EMAX, RV_EMIN,
     RA_EMAX, RA_EMIN, LA_EMAX, LA_EMIN,
-    ATRIAL_PHASE_OFFSET,
+    atrial_phase_offset,
 )
 from .gravity import hydrostatic_delta_mmhg, GravityEnvironment, smooth_tilt_profile, positional_itp_mmhg
 from .baroreflex import BaroreflexController
@@ -419,7 +419,8 @@ def _cardiac_pressure(vol: float, v0: float, e: float) -> float:
 # ---------------------------------------------------------------------------
 
 def _odes(t: float, V: np.ndarray, params: SimParams, baro: BaroreflexController | None,
-          cardiac_phase: float, p_out: np.ndarray | None = None, slow=None):
+          cardiac_phase: float, p_out: np.ndarray | None = None, slow=None,
+          hr_now: float | None = None):
     """
     Compute dV/dt for the 23-compartment system.
 
@@ -465,8 +466,12 @@ def _odes(t: float, V: np.ndarray, params: SimParams, baro: BaroreflexController
     E_lv = elastance_from_phase(t_n_v, lv_emax_eff, params.lv_emin)
     E_rv = elastance_from_phase(t_n_v, rv_emax_eff, params.rv_emin)
 
-    # Atria fire ~60% of cycle before ventricles (offset in phase)
-    t_n_a = (cardiac_phase + ATRIAL_PHASE_OFFSET) % 1.0
+    # Atria fire one PR interval before the ventricles. The offset is derived
+    # from a fixed PR TIME at the current rate, not a fixed fraction of the
+    # cycle — see atrial_phase_offset() in heart.py.
+    t_n_a = (cardiac_phase
+             + atrial_phase_offset(hr_now if hr_now is not None
+                                   else params.hr_bpm)) % 1.0
     E_la = elastance_from_phase(t_n_a, params.la_emax, params.la_emin)
     E_ra = elastance_from_phase(t_n_a, params.ra_emax, params.ra_emin)
 
@@ -1080,7 +1085,9 @@ def run_simulation(
 
         # Use E_ra/E_la from PREVIOUS step's monitor phase for consistent
         # pressure monitoring. (ODE will use the CURRENT baro state computed below.)
-        t_n_a_monitor = (_monitor_phase + ATRIAL_PHASE_OFFSET) % 1.0
+        # _hr_monitor is the PREVIOUS step's rate, which is the one that goes
+        # with _monitor_phase. hr_now is not assigned until later in this loop.
+        t_n_a_monitor = (_monitor_phase + atrial_phase_offset(_hr_monitor)) % 1.0
         E_ra_now = elastance_from_phase(t_n_a_monitor, params.ra_emax, params.ra_emin)
         E_la_now = elastance_from_phase(t_n_a_monitor, params.la_emax, params.la_emin)
 
@@ -1240,7 +1247,8 @@ def run_simulation(
         # compartment pressures it already computed (no recomputation), then
         # advance the slow state on its own coarse clock — update_slow_state()
         # returns immediately unless SLOW_DT of simulated time has elapsed.
-        dV = _odes(t, V, params, baro, _cardiac_phase, _p_scratch, slow_state)
+        dV = _odes(t, V, params, baro, _cardiac_phase, _p_scratch, slow_state,
+                   hr_now=hr_now)
         V  = V + dV * dt
 
         if slow_enabled:

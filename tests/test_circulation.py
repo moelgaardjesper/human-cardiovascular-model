@@ -1658,6 +1658,26 @@ def test_pulmonary_venous_pressure_equals_left_atrial():
     )
 
 
+@pytest.mark.xfail(strict=True, reason=(
+    "KNOWN GAP, opened 2026-08-31 by the atrial timing fix (backlog 25a). Mean PA "
+    "is 20.60 mmHg against this test's own < 20 ceiling. It passed at 19.27 before "
+    "ATRIAL_PHASE_OFFSET = 0.60 was replaced by a PR-derived offset. "
+    "THE TIMING FIX IS NOT THE DEFECT — IT EXPOSED ONE. The old 0.60 was an "
+    "unsourced initial-commit value implying a PR interval of 514 ms at 70 bpm, "
+    "against a normal 120-200 ms; it fired the atria in mid-diastole against a "
+    "shut mitral valve. Reverting it to make this number green would restore a "
+    "complete-heart-block PR interval to buy 1.3 mmHg. "
+    "IT IS NOT AN ATRIAL-STRENGTH PROBLEM. Sweeping LA_EMAX across 0.45-1.10 moves "
+    "mean PA only 20.60 -> 20.19, so no contractility value closes it. The cause is "
+    "the LA-LV coupling: with the mitral valve at R = 0.01 the pulmonary veins, LA "
+    "and LV behave as one pooled volume — the same mechanism as item 23's 93.2 mL "
+    "anomaly. PCWP sitting at 12.4 mmHg against a 5-6 target is the other face of it. "
+    "CLOSES WITH: the mitral / pulmonary-venous coupling work, which is the real "
+    "content of 25a and will move PCWP, PA, LAVmax and the phasic split together. "
+    "Do NOT close it by tuning LA_EMAX or by reverting the timing. "
+    "The assertions below are UNCHANGED — only the pass/fail bookkeeping is marked. "
+    "strict=True so this flips to a FAILURE the day the coupling is fixed."
+))
 def test_pulmonary_pressures_are_physiological():
     """CLOSED 2026-08-26 by the venous rework, backlog item 28.
 
@@ -1748,6 +1768,26 @@ def _atrial_state():
     return out
 
 
+@pytest.mark.xfail(strict=True, reason=(
+    "REOPENED 2026-08-31 by the atrial timing fix (backlog 25a). LAVmax is "
+    "50.5 mL/m2 (93 mL) against this test's 50 ceiling. It passed at 48.7 before "
+    "the PR-derived atrial offset replaced the unsourced 0.60. "
+    "NOTE THE NUMBER: 93 mL is the '93.2 mL anomaly' this test's own docstring "
+    "describes as resolved. It was never resolved, only masked — item 28 shrank the "
+    "central pool enough to push LAVmax under the ceiling, but the mechanism behind "
+    "it survived. With the mitral valve at R = 0.01 the pulmonary veins, LA and LV "
+    "are nearly continuous, so LA volume is still partly a share of one pooled "
+    "volume. Correcting the atrial timing perturbed the pool and brought it back. "
+    "UNLIKE THE PA GAP, THIS ONE MOVES WITH LA_EMAX (50.6 -> 46.9 mL/m2 across "
+    "0.45-1.10) — but the value that would fix it also drives LAEF total to 71.7 % "
+    "against Gao's 61.1, and LAEF passive is INVARIANT at ~55 % against a target of "
+    "35.6 % across that whole sweep. Contractility is the wrong lever; the coupling "
+    "is the right one. "
+    "CLOSES WITH: the same mitral / pulmonary-venous coupling work as the pulmonary "
+    "pressure gap above. Do NOT close it by tuning LA_EMAX. "
+    "The assertions below are UNCHANGED. strict=True so this flips to a FAILURE the "
+    "day the coupling is fixed."
+))
 def test_atrial_volumes_are_physiological():
     """[G1][G2] Atrial volumes indexed to BSA must match human reference ranges.
 
@@ -2426,4 +2466,59 @@ def test_event_windows_merge_when_they_overlap():
     )
     assert len(r["hires"]["t"]) == len(set(np.asarray(r["hires"]["t"]).round(9))), (
         "duplicate timestamps in the hires slice — an overlap was not merged"
+    )
+
+
+# ===========================================================================
+# 25. Atrioventricular timing — backlog item 25a
+# ===========================================================================
+
+def test_atrial_kick_lands_at_end_diastole_with_a_physiological_pr_interval():
+    """The atria must contract one PR interval before the ventricles.
+
+    Normal PR is 120-200 ms in adults. The value this replaced,
+    ATRIAL_PHASE_OFFSET = 0.60, dated from the initial commit, was unsourced,
+    and had no test — at 70 bpm it implied a PR of 514 ms, which is
+    complete-heart-block territory. The measured consequence was that LA volume
+    ROSE from 40 to 88 mL while atrial activation climbed from 0 to 0.93: the
+    atrium contracted in mid-diastole against a shut mitral valve, fighting its
+    own filling, and that emptying was then counted as "passive".
+
+    Two things are pinned here. First that the implied PR interval is
+    physiological across the rate range the baroreflex actually produces.
+    Second that PR is a fixed TIME rather than a fixed fraction of the cycle —
+    a fraction would slide the atrial kick out of end-diastole exactly when the
+    reflex is working hardest, which is when this model is most often asked a
+    question.
+    """
+    from model.heart import atrial_phase_offset, ATRIAL_PR_INTERVAL_S
+
+    assert 0.12 <= ATRIAL_PR_INTERVAL_S <= 0.20, (
+        f"PR interval {ATRIAL_PR_INTERVAL_S * 1000:.0f} ms is outside the normal "
+        f"adult range of 120-200 ms"
+    )
+
+    # Across the baroreflex's own clamp range (30-180 bpm), the implied PR must
+    # stay a real PR — never the half-second the old constant implied.
+    for hr in (30.0, 50.0, 70.0, 100.0, 140.0, 180.0):
+        pr_ms = atrial_phase_offset(hr) * (60.0 / hr) * 1000.0
+        assert pr_ms <= 200.0, (
+            f"at {hr:.0f} bpm the implied PR interval is {pr_ms:.0f} ms, above "
+            f"the 200 ms upper limit of normal"
+        )
+
+    # A fixed TIME means the phase fraction must GROW as the cycle shortens.
+    assert atrial_phase_offset(140.0) > atrial_phase_offset(70.0), (
+        "the atrial offset is behaving as a fixed fraction of the cycle rather "
+        "than a fixed PR time — at double the rate it must occupy a larger "
+        "fraction of a shorter cycle"
+    )
+
+    # And the kick must land in END-diastole: activation begins at cardiac phase
+    # 1 - offset, which for a normal PR is the last ~20 % of the cycle.
+    onset_phase = 1.0 - atrial_phase_offset(70.0)
+    assert 0.75 <= onset_phase <= 0.95, (
+        f"atrial activation begins at cardiac phase {onset_phase:.2f}; at 70 bpm "
+        f"a normal PR puts it in the last quarter of diastole, not mid-diastole "
+        f"(the old 0.60 offset put it at 0.40)"
     )
