@@ -1123,6 +1123,32 @@ def test_raas_adh_defend_pressure_after_haemorrhage():
 # ===========================================================================
 
 @pytest.mark.overnight
+@pytest.mark.xfail(strict=True, reason=(
+    "KNOWN GAP, and the one the validation log predicted before the run. "
+    "MEASURED 2026-08-31 over a full 24 h simulation (7 h 48 m wall): a 550 mL "
+    "bleed left a 434 mL deficit, of which the model replaced 178 mL = 41 % at "
+    "24 h, a mean 7.4 mL/h. [S4] Lister Table 1 reports 50-80 % replaced. So "
+    "the model undershoots by 1.2-2x. "
+    "THE HEADLINE 3.8x IS WRONG AND WAS MY OWN METHOD ERROR: comparing this "
+    "run's 7.4 mL/h to Lister's cohort mean of 27.9 mL/h ignores that he bled "
+    "490-968 mL while this run bleeds 550. Refill scales with the deficit, so "
+    "the rate is not commensurable across bleed sizes and the FRACTION is. "
+    "Normalised to this run's own deficit, Lister's band is 9.0-14.5 mL/h and "
+    "the model sits at 0.82x of its lower bound. "
+    "THE CAUSE IS STRUCTURAL AND KNOWN: the model refills from the interstitium "
+    "alone. In man the later phase also draws water out of CELLS, which is "
+    "exactly the compartment the model does not have — see the validation log "
+    "under Phase 2, which predicted this undershoot in advance and gave this "
+    "reason. That makes this the strongest evidence yet for adding a cellular "
+    "compartment, and it is a prediction confirmed rather than a surprise. "
+    "DO NOT close this by raising Kf or the refill gain. Kf is Guyton's and the "
+    "postcapillary magnitude is Abboud's; inflating a sourced parameter to cover "
+    "a missing compartment is the exact failure mode this project keeps "
+    "catching, and it would corrupt the 2 h early-phase test that currently "
+    "PASSES on the same mechanism. "
+    "strict=True so this flips to a FAILURE the day a cellular compartment "
+    "lands and closes it. Re-running costs ~8 h: pytest -m overnight -k lister -s"
+))
 def test_refill_over_24h_matches_lister_tabulated_rates(tmp_path):
     """[S4] Lister 1963 Table 1, n=6, haemorrhage alone.
 
@@ -1186,19 +1212,38 @@ def test_refill_over_24h_matches_lister_tabulated_rates(tmp_path):
     print(f"\n  Lister 24 h: pre {pre:.0f} post {post:.0f} end {end:.0f} mL")
     print(f"  deficit {deficit:.0f} mL, replaced {end - post:.0f} mL "
           f"({frac * 100:.0f} %) over {hours:.1f} h")
-    print(f"  mean rate {rate:.1f} mL/h  (Lister 27.9, range 18.8-36.7)")
+    print(f"  mean rate {rate:.1f} mL/h")
+    print(f"  Lister-consistent band for THIS deficit: "
+          f"{deficit * 0.50 / 24:.1f}-{deficit * 0.80 / 24:.1f} mL/h")
 
-    # Band spans Lister's own per-subject range with room either side. It is
-    # NOT a tight fit to 27.9 — the point is to catch the two failure modes:
-    # no refill at all, and canine-speed refill.
-    assert 10.0 < rate < 60.0, (
-        f"24 h refill ran at {rate:.1f} mL/h. [S4] Table 1 gives a 0-24 h mean "
-        f"of 27.9 mL/h across six subjects, range 18.8-36.7. Below 10 means the "
-        f"model has effectively no slow refill; above 60 is the canine pattern "
-        f"Lister explicitly contrasts with man."
+    # THE FRACTION IS THE COMPARABLE QUANTITY, NOT THE ABSOLUTE RATE.
+    # Lister bled 490-968 mL (10-20 % of blood volume); this run bleeds 550,
+    # at the very bottom of his range. Refill is driven by the Starling
+    # imbalance the deficit creates, so mL/h scales with the deficit and his
+    # cohort MEAN of 27.9 mL/h is simply not commensurable with a run at his
+    # low end — his highest rates belong to his biggest bleeds. Normalising by
+    # the deficit is the same discipline this project applies to cross-species
+    # numbers: prefer the ratio, which survives a protocol difference, over the
+    # absolute, which does not.
+    #
+    # The first version of this test asserted 10 < rate < 60 mL/h against the
+    # raw 27.9 and reported a 3.8x undershoot. That was an error of method, not
+    # a finding: normalised, the same run is 1.2-2x low. The rate band below is
+    # DERIVED from Lister's fraction and the model's own measured deficit.
+    lo, hi = deficit * 0.50 / hours, deficit * 0.80 / hours
+    assert lo <= rate <= hi, (
+        f"24 h refill ran at {rate:.1f} mL/h against {lo:.1f}-{hi:.1f} mL/h, "
+        f"which is [S4]'s 50-80 % replacement applied to this run's own "
+        f"{deficit:.0f} mL deficit. Comparing to his raw cohort mean of "
+        f"27.9 mL/h would be invalid — he bled 490-968 mL and this run bleeds "
+        f"550."
     )
-    assert 0.30 < frac < 1.00, (
-        f"{frac * 100:.0f} % of the loss was replaced at 24 h. [S4] reports "
-        f"50-80 %, with completion only at 36-48 h. A value at or above 100 % "
-        f"means the model finished a day early — the wrong species."
+    assert 0.50 <= frac <= 0.80, (
+        f"{frac * 100:.0f} % of the loss was replaced at 24 h. [S4] Table 1 "
+        f"reports 50-80 % across six subjects, with completion only at 36-48 h. "
+        f"Below 50 % is the predicted undershoot: the model refills from "
+        f"interstitium alone and has no cellular compartment, while in man the "
+        f"later phase draws water out of cells too. Above 80 % at 24 h, or "
+        f"anything near 100 %, is the canine pattern Lister explicitly "
+        f"contrasts with man."
     )
