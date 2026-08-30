@@ -6,7 +6,7 @@
 
 ## Overview
 
-This simulator predicts haemodynamic responses to clinical interventions in real time. It is designed for intraoperative use — where understanding how a patient's cardiovascular system responds to posture, vasopressors, or altered gravity can guide clinical decision-making. Inputs scale from the minimal (blood pressure + BMI) to full intracardiac monitoring, so the model works with whatever data is available at the bedside.
+This simulator predicts haemodynamic responses to clinical interventions in real time. It is designed for intraoperative use — where understanding how a patient's cardiovascular system responds to posture, vasopressors, or altered gravity can guide clinical decision-making. Inputs scale from the minimal (blood pressure, height, weight and sex) to full intracardiac monitoring, so the model works with whatever data is available at the bedside.
 
 The model is a **work in progress**. Validation has been iterative: after each implementation step, outputs were compared against published physiological measurements. Known limitations are documented openly (see [Limitations](#limitations)), and the ones still open are carried as strict `xfail` tests so a gap cannot close silently.
 

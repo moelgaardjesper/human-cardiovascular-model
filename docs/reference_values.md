@@ -463,10 +463,61 @@ WHAT I HAVE, all reverse-direction or static:
     univariate, collapsing to 0.10 and non-significant once BMI is included). A static
     coupling term is not supported; the swing is a different quantity and was not measurable
     in that study because every patient got the same insufflation pressure.
-What is still missing is the SWING ratio in the THORAX -> ABDOMEN direction. Takata's zone conditions (PMID 2076989) give the STRUCTURE and a ~1 mmHg
-closing pressure, but in dogs.
+**ANSWERED AND CLOSED 2026-08-30. ITEM 27 IS NO LONGER BLOCKED ON A SOURCE.**
+Both papers were obtained and read in full: **Heijnen 2016** (PMID 26732769) for the tidal
+swing in humans, and **van den Berg, Jansen & Pinsky 2002** (PMID 11842062,
+DOI 10.1152/japplphysiol.00487.2001) for the mechanism and endpoint in 42 sedated and
+PARALYSED humans. Full entries in the ledger body. Working coefficient: **~0.21 of the
+PLEURAL swing** for thorax -> abdomen in a tidal, normovolaemic setting, with van den Berg's
+dPabd/dPra of 0.73 as evidence the mechanism can hold cardiac output flat when the abdomen
+is full.
+
+**WHAT WOULD STILL IMPROVE IT, in priority order — none blocking:**
+  1. **The volume-dependence of dPabd/dPra.** van den Berg measured it in deliberately
+     hypervolaemic patients and says so. Nobody has measured how it weakens as volume falls,
+     and that is precisely the discrimination PPV depends on. This is now the most valuable
+     unmeasured quantity for item 27.
+  2. **Verzilli** (n=30 ARDS: 30 % transmission at normal IAP, 57 % at IAP >= 12 mmHg) and
+     **Gattinoni 1998** (10 % pulmonary vs 14 % extrapulmonary ARDS), both cited by Heijnen,
+     to fill in the spread and test whether the method really explains it.
+  3. A tidal-swing measurement in PARALYSED normovolaemic patients would settle Heijnen vs
+     van den Berg outright.
+
+**Original request, kept for the record:**
+Heijnen 2016, PMID 26732769, DOI 10.1177/0885066615625180, J Intensive Care Med
+32(3):218-222, "Low Transmission of Airway Pressures to the Abdomen in Mechanically
+Ventilated Patients With or Without Acute Respiratory Failure and Intra-Abdominal
+Hypertension". n=18 ventilated patients, intravesical pressure at 5-second inspiratory and
+expiratory holds, transmission reported as **~8 %**. Full entry with all numbers is in the
+body of this ledger.
+**NEEDED NOW: the FULL TEXT, to answer exactly two questions.** Not in PMC; likely paywalled.
+  (a) Is the 8 % referenced to AIRWAY pressure (as the title says) or PLEURAL pressure (as
+      the abstract says)? Pleural-referenced it becomes ~21 %. The model needs pleural.
+  (b) Were the patients paralysed or merely sedated? Akoumianaki failed this test.
+Secondary want: the same measurement with an OESOPHAGEAL balloon rather than a bladder
+catheter, which would remove question (a) entirely.
+Takata's zone conditions (PMID 2076989) give the STRUCTURE and a ~1 mmHg closing pressure,
+but in dogs.
 DO NOT let me pick a coefficient without this. One chosen to land PPV under 13 % would be
 tuning to the endpoint.
+
+**ON THE EXPECTED SIGN — I WROTE THIS TWICE ON 2026-08-30 AND THE SECOND READING STANDS.**
+First reading, from Heijnen's 8 % plus Diaz's piglets: the abdominal swing is small and
+raising abdominal pressure raises PPV, so item 27 probably cannot bring PPV down.
+Second reading, after finding van den Berg 2002 an hour later: **that was too pessimistic,
+and it was built on the weaker evidence.** van den Berg raises airway pressure to 20 cmH2O
+in 42 PARALYSED humans and finds cardiac output and RV end-diastolic volume UNCHANGED,
+because 73 % of the rise in right atrial pressure is matched by a rise in abdominal
+pressure. That is item 27's hypothesis confirmed at the endpoint, in the right species and
+the right passive state, measuring the thing we actually care about rather than a
+transmission coefficient.
+Why the first reading was weak: Diaz is piglets under sustained tonic IAH, not a tidal
+swing, and its finding that PPV rises with IAH is about a pathological abdomen, not a
+normal one. Heijnen's 8 % is airway-referenced (~21 % pleural) and disagrees with van den
+Berg by five-fold for reasons not yet resolved.
+**Current position: item 27 remains the right mechanism and MAY well bring PPV down. Build
+it because it is correct; do not tune the coefficient to land under 13 %.** The two
+candidate coefficients differ five-fold, so settling Heijnen vs van den Berg comes first.
 
 ## 2. The FIRST 24-72 HOURS of head-down bed rest
 **Unblocks the bed-rest arm of item 33** — long-duration runs need a gradeable target.
@@ -530,6 +581,287 @@ tried to measure the change: "Due to unexpected uniformity of abdominal inflatio
 (generally 20.4 cmH2O) during surgery, data were not amenable to assessment of correlation
 between CHANGES in abdominal and esophageal pressures after inflation." Every patient got
 the same insufflation pressure, so there was no variation to regress against.
+**WHAT THE MODEL CAN USE TODAY — the BMI row, not the abdominal one.** The model has no
+BMI channel at all: height and weight collapse to BSA, and BSA scales everything, so body
+shape does nothing (backlog item 34). The 0.27 cmH2O per BMI unit is a directly usable
+static offset on intrathoracic pressure: BMI 20 -> 30 is +1.98 mmHg, which is larger than
+the model's whole spontaneous ITP swing of 0.74 mmHg. Fumagalli 2019 fixes the structure —
+obese patients have NORMAL chest-wall elastance and HIGH pleural pressure — so this belongs
+as an offset on the ITP level, not as a change to PLEURAL_TRANSMISSION (0.376, Pelosi 1995).
+Anchor caveat: the cohort mean BMI is 33.7 and the patients are paralysed, so the slope is
+measured in obesity and should not be extrapolated down to BMI 18, and R^2 0.40 means it is
+a population trend rather than a per-patient prediction.
+
+## Heijnen BGADH et al. 2016 — THORAX -> ABDOMEN transmission, the number item 27 asked for
+J Intensive Care Med 32(3):218-222. PMID 26732769, DOI 10.1177/0885066615625180.
+Found 2026-08-30 by PubMed search. **FULL TEXT READ 2026-08-30** (Jesper supplied the PDF;
+copy in `docs/papers/heijnen_2016_thorax_abdomen_transmission.pdf`). This is the study design
+WANTED item 1 specified. n=18 mechanically ventilated patients: 9 within 3 h of uncomplicated
+cardiac surgery, 9 within 12 h of acute respiratory failure (lung injury score > 1.5; 6 of 9
+had ARDS). Supine. Intravesical pressure via Foley manometer, measured three times at
+3-minute intervals and averaged (reproducibility 1.8 %), at the end of 5-second inspiratory
+and expiratory HOLD manoeuvres. Patients after abdominal trauma or surgery were excluded.
+
+**THE DENOMINATOR IS AIRWAY PRESSURE. THE TITLE WAS RIGHT AND THE ABSTRACT WAS LOOSE.**
+Methods, verbatim: the transmission index is "the ratio of a change in abdominal pressure
+(end-inspiratory IAP minus end-expiratory IAP) to the change in intrathoracic pressure,
+**that is, Pplat minus PEEP**". Plateau minus PEEP is AIRWAY DRIVING PRESSURE, not pleural
+pressure. So the 8 % is per unit AIRWAY pressure and must be converted before use.
+
+| | Group 1 (cardiac surgery, n=9) | Group 2 (ARF, n=9) | P |
+|---|---|---|---|
+| End-inspiratory plateau pressure, cmH2O | 16.9 (1.8) | 29.1 (6.3) | <.001 |
+| PEEP, cmH2O | 6.0 (1.3) | 12.9 (6.4) | .35 |
+| End-inspiratory IAP, cmH2O | 12.7 (3.3) | 14.3 (3.9) | 1.0 |
+| End-expiratory IAP, cmH2O | 11.7 (3.4) | 13.2 (3.9) | 1.0 |
+| "Total" IAP over the cycle, cmH2O | 12.0 (3.4) | 13.5 (3.9) | 1.0 |
+| **Transmission index, % of AIRWAY** | **8.9 (5.0)** | **7.1 (7.9)** | .35 |
+| "True" IAP, cmH2O | 11.1 (3.4) | 12.3 (4.1) | 1.0 |
+| Tidal volume, mL/kg | 7.5 (1.4) | 5.7 (1.4) | .35 |
+| Total respiratory compliance, mL/cmH2O | 52.0 (7.2) | 28.8 (8.6) | .003 |
+| Lung injury score | 0.72 (0.34) | 1.99 (0.74) | <.001 |
+| Age, years | 66.3 (8.5) | 60.6 (10.0) | 1.0 |
+| **Body mass index, kg/m2** | **26.4 (3.2)** | **26.9 (3.7)** | 1.0 |
+
+By IAP stratum (Table 3): IAP >= 12 mmHg (n=5) TI 8.7 (4.1); IAP < 12 mmHg (n=13) TI 7.7
+(4.8), P = 1.0. Transmission does NOT depend on baseline IAP, respiratory compliance, or
+ventilator settings across the range studied.
+
+**CONVERSION TO THE PLEURAL REFERENCE THE MODEL NEEDS**, using Pelosi's 0.376
+(dPpl = 0.376 * dPaw, already in `respiration.py`):
+| Group | dPaw | dIAP | TI vs airway | dPpl | **TI vs PLEURAL** |
+|---|---|---|---|---|---|
+| 1 | 10.9 | 1.0 | 9.2 % | 4.10 | **24.4 %** |
+| 2 | 16.2 | 1.1 | 6.8 % | 6.09 | **18.1 %** |
+| pooled | | | ~8 % | | **~21 %** |
+**USE ~0.21 FOR THORAX -> ABDOMEN, NOT 0.08.** The model's ITP is already a pleural
+pressure, so feeding it the airway-referenced 8 % would understate the coupling by 2.6x.
+
+**CAVEAT — SEDATED, NOT PARALYSED.** "Patients were ventilated in a pressure-controlled
+mode under sedation and analgesia with propofol or midazolam and fentanyl". No neuromuscular
+blockade is reported. This is much closer to passive than Akoumianaki (pressure-controlled
+mode, 5-second holds that an actively breathing patient would disturb, and group 1 within
+3 h of cardiac surgery), but spontaneous effort is not formally excluded. Treat 0.21 as the
+best available human estimate with that qualification attached, not as a measured passive
+value.
+
+**THE SDs ARE LARGE RELATIVE TO THE MEANS: 8.9 (5.0) and 7.1 (7.9).** Group 2's interval
+includes zero. n=18 total. This is a "proof-of-principle study" by the authors' own
+description. The coefficient is small AND noisy; do not present it as precise.
+
+**THE LITERATURE ON THIS RANGES FROM 0 % TO 57 %, AND THE METHOD EXPLAINS THE SPREAD.**
+Values Heijnen tabulates from prior work, all AIRWAY-referenced:
+| Source | Value | Preparation |
+|---|---|---|
+| Sussman 1991, n=15 post-laparotomy | PEEP to 15 cmH2O did not affect IAP | humans |
+| Jakob 2010 | PEEP to 10 cmH2O not transmitted | pigs |
+| Gattinoni 1998 | ~10 % (pulmonary ARDS, n=12), 14 % (extrapulmonary, n=9) | humans |
+| Verzilli, n=30 ARDS | 30 % (normal IAP), **57 %** (IAP >= 12 mmHg) | humans |
+| Heijnen 2016 | ~8 % | humans |
+Heijnen's explanation, and it decides which number this model should use: earlier authors
+**stepped PEEP up** and measured the resulting IAP change, whereas Heijnen used
+**end-inspiratory holds at unchanged ventilator settings**. A sustained PEEP step and a
+within-breath tidal swing are different perturbations. **The model needs the within-breath
+swing, so Heijnen's method is the correct one for item 27** — Verzilli's 57 % answers a
+different question. Heijnen notes transmission "may be linear in the range studied" but did
+not vary settings to confirm it.
+
+**THE ASYMMETRY IS THE REAL FINDING, and it is physiologically sensible.**
+Transmission is NOT reciprocal, and the two directions must be separate coefficients:
+| Direction | Value | Source |
+|---|---|---|
+| abdomen -> thorax | ~50 % | Regli 2019 review; Cortes-Puentes swine |
+| abdomen -> thorax | 72 % (driving pressure per unit IAP) | Shaji, humans, n=42 |
+| thorax -> abdomen | ~8 % of airway, or ~21 % of pleural | Heijnen, humans, n=18 |
+Why: raising abdominal pressure pushes the diaphragm up into a COMPRESSIBLE lung, so much
+of it arrives. Raising thoracic pressure pushes the diaphragm down onto a nearly
+incompressible fluid-filled abdomen with a COMPLIANT wall, which simply displaces outward,
+so little pressure builds. Never model this with one shared coefficient.
+
+## van den Berg PCM, Jansen JRC, Pinsky MR 2002 — ITEM 27'S MECHANISM, MEASURED DIRECTLY
+J Appl Physiol 92(3):1223-1231. PMID 11842062, DOI 10.1152/japplphysiol.00487.2001.
+Found 2026-08-30 from Heijnen's reference 10. **This is the closest study to item 27 that
+exists, and it is in SEDATED AND PARALYSED humans.** Their stated hypothesis is item 27
+verbatim: "PEEP-induced diaphragmatic descent increases abdominal pressure... we
+hypothesized that an increase in Paw induced by PEEP would minimally alter venous return
+because the associated increase in Pra would be partially offset by a concomitant increase
+in Pabd."
+
+n=42 patients in ICU after coronary artery bypass surgery, haemodynamically stable and
+fluid-resuscitated. Airway pressure raised progressively in 2-4 cmH2O steps from 0 to
+20 cmH2O in sequential **25-second inspiratory-hold manoeuvres**. RV cardiac output and RV
+ejection fraction by thermodilution at 5 s into each hold; RV end-diastolic and stroke
+volume derived; Pra from the pulmonary artery catheter; Pabd estimated as bladder pressure.
+
+**FULL TEXT READ 2026-08-30** (Jesper supplied the PDF; copy in
+`docs/papers/van_den_berg_2002_positive_pressure_venous_return.pdf`).
+
+| Quantity | Value | Note |
+|---|---|---|
+| **dPabd / dPra** | **0.73 +/- 0.36** | "not significantly different from unity"; both in mmHg, so UNIT-CLEAN |
+| dPra / dPaw | 0.32 +/- 0.2 | mean of per-subject regression slopes |
+| **dPabd / dPaw** | **0.20 +/- 0.1** | DIRECTLY MEASURED, not chained |
+| dCOtd / dPra | 0.05 +/- 0.15 L/min/mmHg | not significantly different from 0 |
+| RV end-diastolic volume at 20 cmH2O | **+18.3 +/- 24 %** | "slight but significant" INCREASE |
+| Heart rate, maximal change 0 -> 20 cmH2O | -4.9 +/- 9 % | |
+| Pra at 0 Paw -> at maximal Paw | 8.12 +/- 3.4 -> 15.42 +/- 3.0 mmHg | |
+| Paw range achieved | 0 -> 19.01 +/- 2.7 cmH2O | |
+| Maximal inflated volume | 1750 mL (range 1250-2250), 16 mL/kg | limited by thorax drain |
+| Total compliance (lung + thorax) | 85 mL/cmH2O (62-112) = 1.1 mL/kg/cmH2O | NORMAL |
+| Tricuspid insufficiency, Paw-dependent | NONE, by TEE at 0 and 20 cmH2O and by Pra waveform in all 42 | |
+
+**CORRECTION TO MY OWN ENTRY OF AN HOUR EARLIER.** From the abstract I chained
+dPabd/dPaw = 0.32 / 0.73 = 0.44 and recorded that. **The paper measures it directly as
+0.20 +/- 0.1.** The chain was invalid: all three figures are means of PER-SUBJECT ratios,
+and the mean of a ratio is not the ratio of means (0.20/0.32 = 0.63, not the 0.73 they
+report, and the authors do not remark on it). **Use 0.20. This is the fifth
+derived-versus-measured slip in this project — always prefer the number the paper actually
+measured.**
+
+**UNITS ARE MIXED AND IT MATTERS.** Table 1 reports Pra and Pabd in mmHg; Paw is in cmH2O.
+Checking against the raw endpoints: dPra = 7.30 mmHg for dPaw = 19.01 cmH2O gives 0.384 in
+mixed units and 0.522 if Paw is converted first. The reported 0.32 is far closer to the
+mixed-unit value, so **the ratios against Paw are almost certainly mmHg per cmH2O**. In
+consistent units they become dPra/dPaw = 0.44 and **dPabd/dPaw = 0.27**. This is an
+inference from internal consistency, not a statement in the paper — treat it as such.
+**dPabd/dPra = 0.73 is immune to all of this** (both quantities in mmHg), which is one more
+reason to prefer it.
+
+**THE HEADLINE RESULT IS THE ENDPOINT ITSELF, NOT A COEFFICIENT.** Raising airway pressure
+to 20 cmH2O raised Pra from 8.1 to 15.4 mmHg and yet cardiac output did not change, and RV
+end-diastolic volume rose slightly. The authors attribute this to "an in-phase-associated
+pressurization of the abdominal compartment associated with compression of the liver and
+squeezing of the lungs". **For this model the usable statement is: 70 % or more of any rise
+in right atrial pressure is matched by a rise in abdominal pressure, so the gradient for
+venous return is nearly preserved.** That is item 27's mechanism, quantified, in paralysed
+humans, measured at the endpoint we care about.
+
+**THE LIMITATION THAT MATTERS MOST FOR OUR PPV PROBLEM — READ BEFORE BUILDING ITEM 27.**
+The authors state it themselves: "We measured COtd in fluid-filled, **probably
+hypervolemic**, patients", and they chose that deliberately ("To maximize any potential
+effect of Pabd on Pms"). **The mechanism was measured in the condition most favourable to
+it.** A full splanchnic reservoir is what makes diaphragmatic descent able to sustain venous
+return; a hypovolaemic abdomen has much less blood to squeeze. Our PPV target is the
+NORMOVOLAEMIC patient, so 0.73 is very likely an UPPER bound for our case, and the
+volume-dependence of this mechanism is itself unmeasured here. Do not assume it transfers
+to the normovolaemic model unchanged.
+
+Two further mechanisms the authors raise, neither quantified, both plausible additions
+later: hepatic compression by the descending diaphragm augmenting hepatic venous outflow
+(Matuschak), and a fall in resistance to venous return from redistribution of drainage away
+from the portal circuit. They also note that in almost none of their patients could an
+estimate of Pms be made from the data using Guyton's model.
+
+**RECONCILED WITH HEIJNEN — NOW ~3x APART, NOT 5x, AND THE REASONS ARE IDENTIFIABLE.**
+Heijnen 0.08 (dimensionless: he converts bladder mmHg to cmH2O explicitly) versus van den
+Berg 0.20 mixed-unit = ~0.27 dimensionless.
+  - **Perturbation size and duration.** van den Berg drives Paw to ~19 cmH2O and holds 25 s
+    with 1750 mL inflated; Heijnen uses 5 s holds at unchanged tidal settings
+    (dPaw 11-16 cmH2O). A large sustained inflation recruits diaphragmatic descent that a
+    tidal breath does not.
+  - **Fluid state.** van den Berg's patients are deliberately volume-loaded; Heijnen's are
+    not. A full abdomen transmits better than a slack one.
+  - **Paralysis.** van den Berg's are paralysed, Heijnen's only sedated. Residual
+    diaphragmatic tone opposes descent and would lower apparent transmission.
+DO NOT average them. **For a TIDAL swing in a normovolaemic patient — which is the PPV
+question — Heijnen's preparation is the closer match and 0.08 airway / ~0.21 pleural is the
+more defensible starting point. van den Berg's 0.73 dPabd/dPra is the better evidence that
+the MECHANISM is real and that it can hold cardiac output flat.** Those two statements are
+compatible: the mechanism is genuine, and its magnitude in our target condition is at the
+low end.
+
+### van den Berg Table 1 — baseline apnoeic haemodynamics, n=42 post-CABG, mean +/- SD
+Directly useful as a human reference set, and note these are VENTILATED POST-OPERATIVE
+patients, not healthy awake adults (so this does NOT settle item 31).
+| Quantity | Value |
+|---|---|
+| Mean arterial pressure | 75 +/- 15 mmHg |
+| Mean pulmonary arterial pressure | 21 +/- 5 mmHg |
+| **Right atrial pressure** | **9 +/- 4 mmHg** |
+| **Abdominal pressure (bladder)** | **9 +/- 6 mmHg** |
+| Cardiac output (thermodilution) | 5.74 +/- 1.52 L/min |
+| **RV ejection fraction** | **0.41 +/- 0.09** |
+| Cardiac index | 2.93 +/- 0.70 L/min/m2 |
+| Stroke volume index | 36 +/- 10 mL/m2 |
+| **RV end-diastolic volume index** | **88 +/- 21 mL/m2** |
+| **RV end-systolic volume index** | **51 +/- 18 mL/m2** |
+| Pulmonary arterial occlusion pressure | 10 +/- 1 mmHg |
+Age 59 yr (range 40-74), weight 78 kg (range 52-110). Anaesthetised with high-dose fentanyl
+(50 ug/kg), some on dopamine < 5 ug/kg/min and nitroglycerine.
+**RVEF 0.41 is LOW against healthy values and RV EDVI 88 is high — these are post-CABG
+hearts, so use this table for the ABDOMINAL and Pra numbers and treat the RV volumes as a
+diseased-cohort cross-check, not a normal target.** Baseline Pabd of 9 +/- 6 mmHg in supine
+ventilated patients is a directly usable resting value.
+
+## Loring SH et al. 2009 — simultaneous oesophageal, gastric and bladder pressure
+J Appl Physiol 108(3):515-522. PMID 20019160, DOI 10.1152/japplphysiol.00835.2009.
+n=48 acute lung injury patients. The best available STATIC three-way comparison. Abstract
+only; PMC full text is empty.
+
+| Quantity | Mean +/- SD (cmH2O) |
+|---|---|
+| End-expiratory oesophageal pressure Pes | 18.6 +/- 4.7 |
+| End-expiratory gastric pressure Pga | 18.4 +/- 5.6 |
+| End-expiratory bladder pressure Pblad | 19.3 +/- 7.8 |
+| Transpulmonary pressure, end exhalation | -2.8 +/- 4.9 |
+| Transpulmonary pressure, end inflation | 8.3 +/- 6.2 |
+
+Pes correlates with Pga (p=0.0004) and Pblad (p=0.0104), and is UNRELATED to chest wall
+compliance. Pes-Pga differences match expected gravitational gradients.
+**NOTE THE STATIC LEVELS ARE NEARLY EQUAL (18.6 / 18.4 / 19.3) WHILE THE SWING TRANSMITS AT
+~8 %.** That pairing is the cleanest evidence that the static offset and the tidal swing are
+different quantities — the same point Sindi forced, now with all three pressures at once.
+NEGATIVE end-expiratory transpulmonary pressure in ALI is also worth remembering: it means
+airway closure at end exhalation is normal in these patients, not an artefact.
+
+## Regli A, Pelosi P, Malbrain MLNG 2019 — review, ventilation in intra-abdominal hypertension
+Ann Intensive Care 9(1):52. PMID 31025221, DOI 10.1186/s13613-019-0522-y. Open access.
+Review, not primary data. Quoted for one line: **"Abdominal-thoracic pressure transmission
+is around 50 %."** Consistent with Cortes-Puentes' swine 50 % and brackets Shaji's human
+72 %. Also: IAH is present on admission in 1 in 4 to 1 in 3 ICU patients, and half develop
+it within the first ICU week. IAH is defined as IAP > 12 mmHg.
+
+## Diaz F et al. 2015 — PPV and SVV under intra-abdominal hypertension, by tidal volume
+BMC Anesthesiol 15:127. PMID 26395001, DOI 10.1186/s12871-015-0105-x. Open access.
+12 anaesthetised, mechanically ventilated PIGLETS. Hypovolaemia excluded first with two
+fluid boluses. IAH induced by intraperitoneal colloid until respiratory system compliance
+halved. **SPECIES: pig — see the animal-vs-human rule; use the RATIOS, not the absolutes.**
+
+| VT (mL/kg) | PPV baseline | PPV during IAH | SVV baseline | SVV during IAH |
+|---|---|---|---|---|
+| 6  | 3 % (2-4.25)   | 6 % (4.75-7)      | 3 % (3-4)   | 5 % (4-6.25)   |
+| 12 | 5 % (4-6)      | 13.5 % (10.25-15.5) | 5 % (4-6)   | 11 % (8.75-17) |
+| 18 | 7 % (5.5-8.5)  | 24 % (13.5-30.25) | 5 % (4-7.5) | 15 % (8.75-19.5) |
+
+**TWO RESULTS THAT BEAR DIRECTLY ON ITEM 27.**
+  1. Raising abdominal pressure RAISES PPV, and the rise is bigger at bigger tidal volume.
+     PPV also rises steeply with VT alone at baseline (3 -> 5 -> 7 %).
+  2. Under IAH, NEITHER PPV NOR SVV could identify the fluid responders at any tidal volume,
+     even though a third of the animals responded. The authors' conclusion is that these
+     indices depend on intrathoracic AND intra-abdominal pressure as well as volaemia.
+
+## Valenza F et al. 2004 — negative extra-abdominal pressure, PARALYSED pigs
+Intensive Care Med 31(1):105-111. PMID 15517159, DOI 10.1007/s00134-004-2483-2.
+8 sedated and PARALYSED pigs (19.6 +/- 3.4 kg), with airway, oesophageal, gastric and
+central venous pressure recorded SIMULTANEOUSLY. Right passive state and right
+instrumentation; wrong species and the intervention is applied around the abdomen.
+
+| Quantity | Value |
+|---|---|
+| NEXAP applied | -20 cmH2O |
+| Gastric pressure fall | 1.97 +/- 2.26 mmHg |
+| Oesophageal pressure fall | 1.21 +/- 0.67 mmHg |
+| Implied abdomen -> thorax ratio | 1.21 / 1.97 = **0.61** |
+| Intrathoracic blood volume | 358 +/- 47 -> 314 +/- 47 mL (-44 mL, -12.3 %) |
+| ITBV fall vs CVP fall | R^2 = 0.820 |
+| Chest wall elastance during IAH | 0.067 +/- 0.023 -> 0.056 +/- 0.021 cmH2O/mL |
+| Peritoneal pressure when raised | 24.7 +/- 5.5 mmHg |
+
+The 0.61 sits between Cortes-Puentes' 0.50 and Shaji's 0.72, from a third species and a
+third method, which is mild support for the abdomen -> thorax direction being roughly
+one-half to three-quarters. The ITBV-CVP coupling (44 mL of thoracic blood per ~2 mmHg of
+abdominal pressure change, R^2 0.82) is a separate and directly model-relevant number: it
+is a measured volume shift for a measured pressure change in a passive preparation.
 USED: as a CAUTION against a static coupling term. Not for a coefficient.
 
 ## Shaji U et al. — intra-abdominal pressure and ventilatory mechanics, HUMANS

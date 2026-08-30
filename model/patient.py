@@ -6,11 +6,17 @@ individual patient inputs using allometric relationships.
 
 Tiers
 -----
-1 (minimal)    MAP + BMI/height  → blood volume scaling, resistance from estimated CO
+1 (minimal)    MAP + height + weight → blood volume scaling, resistance from estimated CO
 2 (intermediate) + cardiac output + ABI → direct arterial resistance fit
 3 (advanced)   + CVP + PCWP + PAP → full intracardiac calibration
 
 BSA formula: Mosteller (1987): BSA = sqrt(height_cm * weight_kg / 3600)
+
+Body habitus enters through BSA and nothing else. Height and weight are collapsed
+to BSA immediately, and every compartment scales by bsa / BSA_REF. Two patients with
+the same BSA get the same model whatever their BMI. BMI is derivable from the inputs
+but is not used — see backlog item 34, which carries the measured slope (Sindi 2014:
+oesophageal pressure +0.27 cmH2O per BMI unit) for when the term goes in.
 """
 
 from dataclasses import replace
