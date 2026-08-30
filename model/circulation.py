@@ -41,7 +41,10 @@ from .heart import (
 from .gravity import hydrostatic_delta_mmhg, GravityEnvironment, smooth_tilt_profile, positional_itp_mmhg
 from .baroreflex import BaroreflexController
 from .pharmacology import combined_drug_factors, NEUTRAL_FACTORS
-from .respiration import intrathoracic_pressure, respiratory_sinus_arrhythmia
+from .respiration import (
+    intrathoracic_pressure, respiratory_sinus_arrhythmia,
+    ABDOMINAL_TRANSMISSION,
+)
 from .slow_dynamics import (init_slow_state, update_slow_state,
                             oncotic_pressure_mmhg, neurohumoral_svr_factor)
 
@@ -135,6 +138,34 @@ THORACIC_COMPARTMENTS = (
 )
 _THORACIC_IDX = tuple(IDX[name] for name in THORACIC_COMPARTMENTS)
 
+# Compartments that lie inside the ABDOMINAL cavity. Like
+# THORACIC_COMPARTMENTS this is ANATOMY, NOT A KNOB, and the same argument
+# applies: abdominal pressure is a uniform external pressure, so around a closed
+# elastic system it produces no internal flow. Membership fixes WHERE THE
+# BOUNDARIES ARE, and the boundaries are the diaphragm (the IVC crossing into
+# the chest) and the pelvic brim (the iliac vessels leaving for the legs).
+# A compartment wrongly included or left out invents a pressure step at an
+# internal junction.
+#
+#   abdominal_aorta   retroperitoneal, diaphragm to the iliac bifurcation
+#   renal_art/vein    retroperitoneal
+#   splanchnic_art    mesenteric
+#   splanchnic_vein   portal and mesenteric — the mobilizable reservoir, and the
+#                     compartment through which this mechanism does its work
+#   ivc               runs from the iliac confluence to the diaphragm at T8. The
+#                     intrathoracic segment above the diaphragm is ~1 cm and is
+#                     not separately represented, so the compartment is abdominal
+#
+# The leg veins (thigh, calf, foot) and lower_body_art are BELOW the pelvic
+# brim and are excluded — they are the reason the abdominal pressure produces
+# net flow at all, because they sit outside the pressurised cavity.
+# upper_body_* and svc are above the diaphragm.
+ABDOMINAL_COMPARTMENTS = (
+    "abdominal_aorta", "renal_art", "renal_vein",
+    "splanchnic_art", "splanchnic_vein", "ivc",
+)
+_ABDOMINAL_IDX = tuple(IDX[name] for name in ABDOMINAL_COMPARTMENTS)
+
 
 # ---------------------------------------------------------------------------
 # Simulation parameters dataclass
@@ -199,6 +230,13 @@ class SimParams:
         self.pip_cmh2o        = 20.0     # cmH₂O — peak inspiratory pressure
         self.ie_ratio         = 0.33     # inspiratory fraction (0.33 = 1:2 I:E)
 
+        # Abdominal pressure driven by the same diaphragm descent that raises
+        # pleural pressure (backlog item 27). Mechanical ventilation only — see
+        # ABDOMINAL_TRANSMISSION in respiration.py for why the spontaneous case
+        # has the opposite sign and is deliberately not modelled. Its own switch
+        # so the mechanism can be validated in isolation.
+        self.abdominal_coupling_enabled = True
+
         # Hemorrhage — constant-rate blood volume loss over [start, start+duration].
         # Removed proportionally from the systemic venous reservoir (see
         # VENOUS_RESERVOIR), the compartments holding most circulating volume.
@@ -259,6 +297,60 @@ class SimParams:
         # against slow dynamics therefore *requires* starting it after settling.
         self.drug_start_s = 0.0
         self.drug_stop_s  = float("inf")
+
+
+def perturbation_times(params, duration_s: float) -> list[float]:
+    """Every moment in this run where something is done TO the patient.
+
+    Backlog item 33. A long run is downsampled, and downsampling is a
+    block mean — which is exactly wrong at a perturbation, because the
+    interesting thing there is a fast transient and the mean smears it. The fix
+    is to keep full-dt data AROUND THE EVENT rather than on a clock tick, and
+    for that the events have to be derived from the params rather than typed in
+    by the caller. Typing them in is how they drift out of step with the
+    scenario: the whole point of an event window is that it stays attached to
+    the event when the scenario is edited.
+
+    Both the ONSET and the OFFSET of every timed intervention are returned.
+    Stopping a vasopressor or finishing a bolus produces its own transient, and
+    the offsets are the ones a caller is most likely to forget.
+
+    Only events that actually happen are returned — a zero-duration haemorrhage
+    or a tilt that does not move contributes nothing — so passing
+    `hires_around_events` to a resting run costs nothing.
+    """
+    times: list[float] = []
+
+    def _add(t):
+        if t is not None and 0.0 <= t <= duration_s and t not in times:
+            times.append(float(t))
+
+    # Posture. tilt_duration_s is the ramp, so the onset and the end of the ramp
+    # are different events; a tilt that does not change angle is not an event.
+    if params.tilt_end_deg != params.tilt_start_deg:
+        _add(params.tilt_onset_s)
+        _add(params.tilt_onset_s + params.tilt_duration_s)
+
+    if getattr(params, "hemorrhage_duration_s", 0.0) > 0 and \
+            getattr(params, "hemorrhage_rate_mlmin", 0.0) != 0:
+        _add(params.hemorrhage_start_s)
+        _add(params.hemorrhage_start_s + params.hemorrhage_duration_s)
+
+    if getattr(params, "fluid_bolus_duration_s", 0.0) > 0 and \
+            getattr(params, "fluid_bolus_ml", 0.0) != 0:
+        _add(params.fluid_bolus_start_s)
+        _add(params.fluid_bolus_start_s + params.fluid_bolus_duration_s)
+
+    # Drugs. drug_start_s defaults to 0.0 and drug_stop_s to +inf, so the timing
+    # fields alone cannot tell an undrugged run from a drugged one — the test is
+    # whether drug_factors actually deviates from neutral. _add drops drug_stop_s
+    # when it is +inf because it fails the <= duration_s bound.
+    _factors = getattr(params, "drug_factors", None)
+    if _factors and any(_factors.get(k, v) != v for k, v in NEUTRAL_FACTORS.items()):
+        _add(params.drug_start_s)
+        _add(params.drug_stop_s)
+
+    return sorted(times)
 
 
 def _drug_factors_at(params, t):
@@ -448,11 +540,11 @@ def _odes(t: float, V: np.ndarray, params: SimParams, baro: BaroreflexController
     #       that Trendelenburg ΔCO/ΔSV is modest (+0.33 L/min, +8 mL) ✓
     #   Intra-thoracic flows: ITP cancels between both thoracic sides ✓
     #
-    # Aorta is deliberately excluded from the ITP set — see note in the
-    # spontaneous-breathing code path: including aorta causes unphysical
-    # retrograde peripheral arterial flow when ITP is negative. Without
-    # aorta, LV→aorta retains the ITP offset (LV thoracic, aorta not),
-    # giving correct pulsus inspiratorius / PPV/SVV mechanics ✓
+    # NOTE: an earlier version of this comment said the aorta was deliberately
+    # EXCLUDED from the ITP set. That has been false since 2026-08-25 — the
+    # aorta, brachiocephalic, SVC and coronary were all added, because leaving
+    # them out put the whole pleural swing across the aortic valve and scaled it
+    # with 1/VALVE_R. See the THORACIC_COMPARTMENTS note in CLAUDE.md.
     # -----------------------------------------------------------------------
     itp_resp = (
         intrathoracic_pressure(
@@ -467,6 +559,28 @@ def _odes(t: float, V: np.ndarray, params: SimParams, baro: BaroreflexController
     if itp_total != 0.0:
         for _ti in _THORACIC_IDX:
             P[_ti] += itp_total
+
+    # -----------------------------------------------------------------------
+    # Abdominal pressure — the other half of the same diaphragm (item 27)
+    # -----------------------------------------------------------------------
+    # The ventilator pushes the diaphragm DOWN, which raises pleural pressure
+    # AND pressurises the abdomen. Modelling only the thoracic half leaves the
+    # venous-return gradient falling by the full pleural swing, when in a real
+    # ventilated patient much of that fall is cancelled by the abdominal
+    # reservoir being squeezed at the same time. van den Berg 2002 measured the
+    # consequence directly: airway pressure to 19 cmH2O raised right atrial
+    # pressure from 8.1 to 15.4 mmHg and cardiac output did not change.
+    #
+    # itp_resp ONLY, never itp_total. The positional term is Trendelenburg,
+    # whose abdominal pressure comes from abdominal contents shifting cephalad
+    # under gravity — a different mechanism, with no sourced coefficient, and
+    # certainly not this one. See ABDOMINAL_TRANSMISSION in respiration.py for
+    # why this is also restricted to mechanical ventilation.
+    if params.abdominal_coupling_enabled and itp_resp != 0.0 \
+            and params.ventilation_mode == 'mechanical':
+        p_abd = ABDOMINAL_TRANSMISSION * itp_resp
+        for _ai in _ABDOMINAL_IDX:
+            P[_ai] += p_abd
 
     def hdp(idx_name: str) -> float:
         """Hydrostatic delta (mmHg) for this compartment at current tilt."""
@@ -743,6 +857,7 @@ def run_simulation(
     use_baroreflex: bool = True,
     output_every: int = 1,
     hires_windows: list[tuple[float, float]] | None = None,
+    hires_around_events: tuple[float, float] | None = None,
     output_path: str | None = None,
     flush_every: int = 1000,
 ) -> dict:
@@ -815,12 +930,24 @@ def run_simulation(
     # needed: numerical drift shows as a change in waveform MORPHOLOGY, and
     # "is this sampled mid-systole or end-systole" is invisible in a trend. Keep
     # full-dt windows alongside the trend. 30 s holds ~5 breaths and ~35 beats.
+    _windows = list(hires_windows) if hires_windows else []
+    if hires_around_events is not None:
+        _lead, _lag = hires_around_events
+        _windows += [(e - _lead, e + _lag)
+                     for e in perturbation_times(params, duration_s)]
+    # Sort and merge overlaps, so two events close together produce one window
+    # rather than duplicate rows for the same step.
+    _merged = []
+    for a, b in sorted((max(0.0, a), b) for a, b in _windows):
+        if _merged and a <= _merged[-1][1]:
+            _merged[-1] = (_merged[-1][0], max(_merged[-1][1], b))
+        else:
+            _merged.append((a, b))
     _hires_ranges = []
-    if hires_windows:
-        for (a, b) in hires_windows:
-            i0, i1 = max(0, int(a / dt)), min(n, int(b / dt))
-            if i1 > i0:
-                _hires_ranges.append((i0, i1))
+    for (a, b) in _merged:
+        i0, i1 = max(0, int(a / dt)), min(n, int(b / dt))
+        if i1 > i0:
+            _hires_ranges.append((i0, i1))
     _hires_ranges_s = [(i0 * dt, i1 * dt) for i0, i1 in _hires_ranges]
     _hires_n = sum(i1 - i0 for i0, i1 in _hires_ranges)
     _hires_t = np.zeros(_hires_n)

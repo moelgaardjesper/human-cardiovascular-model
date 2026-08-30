@@ -1106,3 +1106,99 @@ def test_raas_adh_defend_pressure_after_haemorrhage():
 # ===========================================================================
 # Phase 4 validation tests land below, each marked @pytest.mark.slow.
 # ===========================================================================
+
+
+# ===========================================================================
+# OVERNIGHT — 24 h refill against Lister's tabulated human rates
+#
+# The 2 h test above guards the EARLY phase and the species discriminator.
+# It cannot reach Lister's firmest numbers, which are 24 h quantities: a mean
+# rate of 27.9 mL/h over 0-24 h and 50-80 % of the loss replaced at 24 h.
+# Those are the tabulated values in his Table 1, not figures read off a scan,
+# so they are the strongest target this project has for the slow timescale.
+#
+# ~24 h simulated, ~11 h of wall clock. Marked `overnight` and deselected by
+# default AND by -m slow. Run it deliberately:
+#     pytest -m overnight -k lister_24h -s
+# ===========================================================================
+
+@pytest.mark.overnight
+def test_refill_over_24h_matches_lister_tabulated_rates(tmp_path):
+    """[S4] Lister 1963 Table 1, n=6, haemorrhage alone.
+
+    Protocol reproduced: 550 mL (~10 % of blood volume) drawn over 15 min,
+    essentially non-hypotensive in his subjects, then observed for 24 h.
+
+    Targets:
+      - mean refill rate over 0-24 h: 27.9 mL/h (range 18.8-36.7)
+      - fraction of the loss replaced at 24 h: 50-80 %
+      - NOT complete: completion is at 36-48 h in man
+
+    THE VALIDATION LOG PREDICTS THIS WILL UNDERSHOOT, because the model has no
+    cellular compartment — refill draws on interstitium alone, and in man the
+    later phase pulls water out of cells too. The assertions below are
+    deliberately written to RECORD what happens rather than to be passed by
+    tuning: the rate band is wide, and if the model undershoots, the failure
+    message carries the measured number so the gap is quantified rather than
+    hidden. Do not narrow the band to make it green, and do not widen it to
+    accept a value it currently fails.
+
+    Writes to disk as it runs (backlog item 33) so an 11 h run that dies at
+    hour 9 still leaves 9 h of analysable data.
+    """
+    SETTLE_S, BLEED_ML, BLEED_S = 120.0, 550.0, 900.0
+    t_end_bleed = SETTLE_S + BLEED_S
+    D = t_end_bleed + 24.0 * 3600.0
+
+    p = SimParams()
+    p.ventilation_mode = "none"
+    p.baroreflex_enabled = True
+    p.slow_dynamics_enabled = True
+    p.hemorrhage_rate_mlmin = BLEED_ML / (BLEED_S / 60.0)
+    p.hemorrhage_start_s = SETTLE_S
+    p.hemorrhage_duration_s = BLEED_S
+
+    r = run_simulation(
+        p, duration_s=D, dt=DT,
+        output_every=1000,                       # 1 Hz trend: 87k samples
+        hires_around_events=(60.0, 300.0),       # full dt around the bleed
+        output_path=str(tmp_path / "lister24h"),
+    )
+
+    t = np.asarray(r["t"])
+    vol = np.asarray(r["volumes"]).sum(axis=1)
+
+    def bv(at_s, w=60.0):
+        m = (t >= at_s - w / 2) & (t <= at_s + w / 2)
+        return float(vol[m].mean())
+
+    pre  = bv(SETTLE_S - 10.0)
+    post = bv(t_end_bleed + 30.0)
+    end  = bv(D - 60.0)
+
+    deficit = pre - post
+    assert deficit > 350.0, f"bleed did not remove enough volume: {deficit:.0f} mL"
+
+    hours = (D - 60.0 - t_end_bleed) / 3600.0
+    rate = (end - post) / hours
+    frac = (end - post) / deficit
+
+    print(f"\n  Lister 24 h: pre {pre:.0f} post {post:.0f} end {end:.0f} mL")
+    print(f"  deficit {deficit:.0f} mL, replaced {end - post:.0f} mL "
+          f"({frac * 100:.0f} %) over {hours:.1f} h")
+    print(f"  mean rate {rate:.1f} mL/h  (Lister 27.9, range 18.8-36.7)")
+
+    # Band spans Lister's own per-subject range with room either side. It is
+    # NOT a tight fit to 27.9 — the point is to catch the two failure modes:
+    # no refill at all, and canine-speed refill.
+    assert 10.0 < rate < 60.0, (
+        f"24 h refill ran at {rate:.1f} mL/h. [S4] Table 1 gives a 0-24 h mean "
+        f"of 27.9 mL/h across six subjects, range 18.8-36.7. Below 10 means the "
+        f"model has effectively no slow refill; above 60 is the canine pattern "
+        f"Lister explicitly contrasts with man."
+    )
+    assert 0.30 < frac < 1.00, (
+        f"{frac * 100:.0f} % of the loss was replaced at 24 h. [S4] reports "
+        f"50-80 %, with completion only at 36-48 h. A value at or above 100 % "
+        f"means the model finished a day early — the wrong species."
+    )

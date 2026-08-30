@@ -948,27 +948,35 @@ def test_ppv_fluid_responsiveness_michard2000(ppv_scenarios):
 
 
 @pytest.mark.xfail(strict=True, reason=(
-    "KNOWN GAP, backlog item 27. Normovolaemic PPV is 24.7 % against Michard's "
-    "< 13 %, so the model still flags a normovolaemic patient as fluid-responsive "
-    "— a false transfusion trigger. The threshold is Michard's and is NOT loosened; "
-    "only the pass/fail bookkeeping is marked, so the target stays honest. "
-    "Down from 43.1 % on 2026-08-25 by two fixes: the ITP compartment set omitted "
-    "the thoracic arteries, putting the whole pleural swing across the aortic valve, "
-    "and the pleural transmission fraction carried an unsourced 0.5 against a "
-    "measured human 0.376 (Pelosi 1995; RETRACTIONS R3). "
-    "THE RESIDUAL IS A MISSING MECHANISM, NOT A CALIBRATION ERROR. The model raises "
-    "pleural pressure during a machine breath but leaves abdominal pressure at zero, "
-    "when the same diaphragm descent does both — and per Takata & Robotham the "
-    "abdominal half is what carries the volume-state discrimination (capacitor in "
-    "zone 3, collapsible Starling resistor in zone 2, so abdominal pressure AUGMENTS "
-    "venous return when full and IMPEDES it when empty). PPV tracks the model's own "
-    "stroke-volume variation 1:1 (24.7 vs 25.3 %), so nothing is amplifying — the "
-    "drive is simply too big. "
-    "Do NOT close this by choosing a thorax-to-abdomen coefficient that lands PPV "
-    "under 13 %; that coefficient has no human source yet and picking one to hit the "
-    "endpoint is the exact failure mode this project keeps catching. "
+    "KNOWN GAP, backlog item 27, but now a NARROW one. Normovolaemic PPV is "
+    "13.07 % against Michard's < 13 % — it misses by 0.07 of a percentage point. "
+    "The threshold is Michard's and is NOT loosened; only the pass/fail "
+    "bookkeeping is marked, so the target stays honest. "
+    "HISTORY, so nobody credits the wrong change: 43.1 % on 2026-08-25; to 24.7 % "
+    "by two fixes (the ITP compartment set omitted the thoracic arteries, putting "
+    "the whole pleural swing across the aortic valve; and the pleural transmission "
+    "fraction carried an unsourced 0.5 against a measured human 0.376 — Pelosi "
+    "1995, RETRACTIONS R3); to 17.23 % by the whole-heart chamber rebuild in "
+    "b37a4e9; to 13.07 % on 2026-08-30 by the abdominal pressure coupling, which "
+    "is the mechanism this xfail used to say was missing. It is no longer missing. "
+    "THE RESIDUAL IS SMALLER THAN THE UNCERTAINTY ON ITS OWN SOURCE COEFFICIENT. "
+    "ABDOMINAL_TRANSMISSION = 0.21 comes from Heijnen 2016 (PMID 26732769), whose "
+    "group means are 8.9 +/- 5.0 % and 7.1 +/- 7.9 % of airway driving pressure. "
+    "Those SDs dwarf a 0.07-point miss. The defensible statement is that the model "
+    "now sits AT Michard's threshold with a sourced coefficient, not under it. "
+    "DO NOT CLOSE THIS BY RAISING ABDOMINAL_TRANSMISSION. van den Berg 2002 "
+    "(PMID 11842062) reports dPabd/dPra = 0.73, which would almost certainly push "
+    "PPV under 13 % — and his patients were 'fluid-filled, probably hypervolemic' "
+    "by the authors' own words, chosen deliberately to MAXIMISE the effect, held at "
+    "1750 mL for 25 seconds. That is not the tidal normovolaemic condition this "
+    "test simulates. Picking the larger coefficient to hit the endpoint is the "
+    "exact failure mode this project keeps catching. "
+    "WHAT WOULD LEGITIMATELY CLOSE IT: a tidal-swing measurement in PARALYSED "
+    "normovolaemic patients (see the WANTED list in reference_values.md), or a "
+    "structural finding elsewhere in the preload path. "
     "The ordering, hypovolaemic and resuscitation assertions all PASS and are kept "
-    "live in the test above. "
+    "live in the test above; the abdominal mechanism has its own guards in "
+    "section 23. "
     "strict=True so this flips to a FAILURE the day it is fixed."
 ))
 def test_ppv_normovolaemic_below_michard_threshold(ppv_scenarios):
@@ -976,10 +984,13 @@ def test_ppv_normovolaemic_below_michard_threshold(ppv_scenarios):
     flagged as fluid-responsive.
 
     On the Starling plateau, beat-to-beat SV should barely change with cyclic
-    intrathoracic pressure, so PPV stays under 13 %. Note the premise no longer
-    holds as originally written: under PEEP 5 the LV sits at EDV ~126 mL, below
-    the edv_ref = 130 mL plateau, because the model's PEEP costs it too much
-    preload. That is the same missing mechanism.
+    intrathoracic pressure, so PPV stays under 13 %.
+
+    The original premise — that the model's PEEP costs the LV too much preload,
+    leaving EDV below the edv_ref = 130 mL plateau — was the abdominal mechanism
+    being absent. That mechanism is now present and the coupling raises cardiac
+    output (5.08 -> 5.22 L/min normovolaemic), so this docstring no longer
+    describes an unmodelled gap. What remains is the last 0.07 of a point.
     """
     s_normo = ppv_scenarios["normo"]
     assert s_normo["ppv"] < 13, (
@@ -2184,3 +2195,235 @@ def test_disk_output_round_trips_and_survives_a_crash(tmp_path):
     assert np.allclose(np.asarray(crashed["aortic_p"])[:20],
                        np.asarray(mem["aortic_p"])[:20]), (
         "the rows that were written before the crash must still be correct")
+
+
+# ===========================================================================
+# 23. Abdominal pressure coupling — backlog item 27
+#
+# THE REPO'S MOST COMMON BUG IS A DOCUMENTED MECHANISM THAT IS SILENTLY INERT.
+# The dead venous_tone_factor zeroed all venoconstriction for months with the
+# code present and reading correctly. These three tests are the guards for the
+# abdominal pathway: that it is LIVE, that it is SIGNED correctly, and that it
+# is INERT where it has no source. They are calibration-independent — they
+# compare the model against itself with the switch flipped — so they stay valid
+# if any parameter is retuned. Do not weaken them to make a calibration fit.
+# ===========================================================================
+
+def _abd_run(coupling, mode='mechanical', hemorrhage_ml=0.0, duration_s=60.0):
+    p = SimParams()
+    p.ventilation_mode   = mode
+    p.peep_cmh2o         = 5.0
+    p.pip_cmh2o          = 20.0
+    p.ie_ratio           = 0.33
+    p.resp_rate_bpm      = 14.0
+    p.baroreflex_enabled = True
+    p.abdominal_coupling_enabled = coupling
+    if hemorrhage_ml > 0:
+        p.hemorrhage_rate_mlmin = hemorrhage_ml / (20.0 / 60.0)
+        p.hemorrhage_start_s    = 2.0
+        p.hemorrhage_duration_s = 20.0
+    return run_simulation(p, duration_s=duration_s, dt=DT)
+
+
+def test_abdominal_coupling_is_live_and_lifts_splanchnic_pressure():
+    """The mechanism must actually reach the abdominal compartments.
+
+    [PMID 26732769, DOI 10.1177/0885066615625180 — Heijnen 2016]
+    [PMID 11842062, DOI 10.1152/japplphysiol.00487.2001 — van den Berg 2002]
+
+    A machine breath pushes the diaphragm down, which raises pleural pressure
+    AND pressurises the abdomen. Turning the switch on must therefore raise
+    mean splanchnic venous volume-weighted pressure. This asserts only the
+    SIGN and that the effect is non-zero — no magnitude is claimed, because the
+    coefficient is Heijnen's and is carried in respiration.py, not here.
+    """
+    on  = _abd_run(True)
+    off = _abd_run(False)
+    h = len(on["volumes"]) // 2
+
+    v_on  = np.asarray(on["volumes"])[h:, IDX["splanchnic_vein"]].mean()
+    v_off = np.asarray(off["volumes"])[h:, IDX["splanchnic_vein"]].mean()
+
+    # Squeezing the splanchnic bed moves blood OUT of it, centrally.
+    assert v_on < v_off, (
+        f"abdominal coupling did not empty the splanchnic reservoir: "
+        f"{v_off:.1f} mL off vs {v_on:.1f} mL on — the mechanism is inert or "
+        f"inverted. This is the dead-venous_tone_factor failure mode."
+    )
+    assert abs(v_on - v_off) > 0.5, (
+        f"abdominal coupling moved only {abs(v_on - v_off):.3f} mL of "
+        f"splanchnic volume — effectively inert"
+    )
+
+
+def test_abdominal_coupling_lowers_ppv_and_keeps_volume_discrimination():
+    """[PMID 11842062] Abdominal pressurisation sustains venous return.
+
+    van den Berg raised airway pressure to 19 cmH2O in 42 sedated and PARALYSED
+    patients: right atrial pressure went from 8.1 to 15.4 mmHg and cardiac
+    output did NOT change, because 70 % or more of the atrial rise was matched
+    by an abdominal rise. So switching the mechanism on must LOWER pulse
+    pressure variation and RAISE cardiac output.
+
+    The second half is the part that matters clinically: the mechanism must not
+    flatten the difference between a full and an empty patient, because that
+    difference is what PPV is FOR. Nothing here is tuned — the coefficient
+    comes from Heijnen and the discrimination is whatever the model produces.
+    """
+    on_n,  off_n = _abd_run(True), _abd_run(False)
+    on_h,  off_h = _abd_run(True, hemorrhage_ml=1000.0), _abd_run(False, hemorrhage_ml=1000.0)
+
+    def tail(r, key):
+        a = np.asarray(r[key]); return float(a[len(a) // 2:].mean())
+
+    ppv_on_n,  ppv_off_n = tail(on_n, "ppv"), tail(off_n, "ppv")
+    ppv_on_h,  ppv_off_h = tail(on_h, "ppv"), tail(off_h, "ppv")
+    co_on_n,   co_off_n  = tail(on_n, "co"),  tail(off_n, "co")
+
+    assert ppv_on_n < ppv_off_n, (
+        f"abdominal coupling did not lower normovolaemic PPV: "
+        f"{ppv_off_n:.2f}% off vs {ppv_on_n:.2f}% on"
+    )
+    assert co_on_n > co_off_n, (
+        f"abdominal coupling did not sustain venous return: CO "
+        f"{co_off_n:.3f} off vs {co_on_n:.3f} L/min on (van den Berg: CO flat "
+        f"despite Pra rising 8.1 -> 15.4 mmHg)"
+    )
+    assert ppv_on_h > ppv_on_n, (
+        f"volume-state discrimination lost with the mechanism ON: "
+        f"hypovolaemic {ppv_on_h:.2f}% vs normovolaemic {ppv_on_n:.2f}% — "
+        f"haemorrhage must still RAISE PPV"
+    )
+
+
+def test_abdominal_coupling_is_inert_without_positive_pressure():
+    """The coupling must not touch spontaneous or apnoeic runs.
+
+    Under SPONTANEOUS breathing the diaphragm contracts under its own power:
+    pleural pressure FALLS while abdominal pressure RISES. That is the opposite
+    sign, it is generated by muscle rather than transmitted through tissue, and
+    it has NO sourced coefficient — Akoumianaki 2024 has the right
+    instrumentation but every patient had spontaneous effort, so its gastric
+    swing is expiratory muscle contraction. Applying the mechanical coefficient
+    there would invent physiology. This test pins that it does not happen, and
+    will fail loudly if someone later extends the constant by flipping a sign.
+    """
+    for mode in ('spontaneous', 'none'):
+        on  = _abd_run(True,  mode=mode, duration_s=30.0)
+        off = _abd_run(False, mode=mode, duration_s=30.0)
+        assert np.allclose(np.asarray(on["aortic_p"]),
+                           np.asarray(off["aortic_p"]), rtol=0, atol=0), (
+            f"abdominal coupling changed a '{mode}' run — it must be inert "
+            f"outside mechanical ventilation, where its coefficient was measured"
+        )
+
+
+# ===========================================================================
+# 24. Event-anchored high-resolution windows — backlog item 33, part (c)
+#     (continues section 22, which covers downsampling and clock-tick slices)
+# ===========================================================================
+
+def test_perturbation_times_derives_events_and_costs_nothing_when_resting():
+    """Events come from the params, not from the caller's memory.
+
+    The whole point of an event-anchored window is that it stays attached to
+    the event when the scenario is edited. A hand-typed window silently drifts
+    out of step the first time someone moves the haemorrhage.
+    """
+    from model.circulation import perturbation_times
+
+    assert perturbation_times(SimParams(), 60.0) == [], (
+        "a resting run has no perturbations, so asking for event windows must "
+        "cost nothing"
+    )
+
+    p = SimParams()
+    p.tilt_end_deg = -20.0
+    p.tilt_onset_s, p.tilt_duration_s = 5.0, 5.0
+    p.hemorrhage_rate_mlmin = 3000.0
+    p.hemorrhage_start_s, p.hemorrhage_duration_s = 10.0, 20.0
+    p.fluid_bolus_ml = 500.0
+    p.fluid_bolus_start_s, p.fluid_bolus_duration_s = 40.0, 10.0
+
+    # Onsets AND offsets: finishing a bolus is its own transient, and the
+    # offsets are the ones a caller forgets.
+    assert perturbation_times(p, 60.0) == [5.0, 10.0, 30.0, 40.0, 50.0], (
+        "expected tilt onset/end, haemorrhage start/end and bolus start/end, "
+        "with the coincident 10.0 s appearing once"
+    )
+
+    # A tilt that does not move is not an event.
+    q = SimParams()
+    q.tilt_onset_s, q.tilt_duration_s = 5.0, 5.0
+    assert perturbation_times(q, 60.0) == []
+
+
+def test_event_windows_capture_a_transient_the_trend_smears():
+    """[backlog item 33] Downsampling is a block mean, which is exactly wrong
+    at a perturbation.
+
+    This is the test that justifies the feature: at a haemorrhage onset the
+    coarse trend averages the fast fall away, while the event-anchored window
+    keeps every dt. Asserting that the hires slice resolves a LARGER swing than
+    the trend over the same interval is calibration-independent — it compares
+    two views of one run, so it holds whatever the model is tuned to.
+    """
+    from model.circulation import perturbation_times
+
+    p = SimParams()
+    p.hemorrhage_rate_mlmin = 3000.0
+    p.hemorrhage_start_s    = 10.0
+    p.hemorrhage_duration_s = 20.0
+    r = run_simulation(p, duration_s=45.0, dt=DT, output_every=500,
+                       hires_around_events=(2.0, 4.0))
+
+    wins = r["hires"]["windows"]
+    assert wins, "event windows were requested but none were produced"
+
+    # Every derived event must sit inside a window.
+    for e in perturbation_times(p, 45.0):
+        assert any(a <= e <= b for a, b in wins), (
+            f"event at {e:.1f} s is not inside any captured window {wins}"
+        )
+
+    # Compare the two views over the first window.
+    a, b = wins[0]
+    ht = np.asarray(r["hires"]["t"])
+    hao = np.asarray(r["hires"]["aortic_p"])[(ht >= a) & (ht <= b)]
+    tt = np.asarray(r["t"])
+    tao = np.asarray(r["aortic_p"])[(tt >= a) & (tt <= b)]
+
+    assert len(hao) > len(tao) * 10, (
+        f"hires slice has {len(hao)} samples against {len(tao)} in the trend — "
+        f"it is not actually full resolution"
+    )
+    assert np.ptp(hao) > np.ptp(tao), (
+        f"the event window resolved a smaller swing ({np.ptp(hao):.2f} mmHg) than "
+        f"the downsampled trend ({np.ptp(tao):.2f} mmHg) — the block mean cannot "
+        f"exceed the raw signal it averages, so this means the window is not "
+        f"capturing the transient it is anchored to"
+    )
+
+
+def test_event_windows_merge_when_they_overlap():
+    """Two events close together must give one window, not duplicate rows.
+
+    The hires arrays are indexed by a step->row map, so an unmerged overlap
+    would write the same step twice and silently corrupt the slice length.
+    """
+    p = SimParams()
+    p.tilt_end_deg = -20.0
+    p.tilt_onset_s, p.tilt_duration_s = 5.0, 5.0     # events at 5 s and 10 s
+    r = run_simulation(p, duration_s=30.0, dt=DT, output_every=100,
+                       hires_around_events=(3.0, 3.0))
+
+    wins = r["hires"]["windows"]
+    assert len(wins) == 1, (
+        f"windows at 2-8 s and 7-13 s overlap and must merge into one, got {wins}"
+    )
+    assert wins[0][0] <= 2.0 + 1e-9 and wins[0][1] >= 13.0 - 1e-9, (
+        f"merged window {wins[0]} does not span both events"
+    )
+    assert len(r["hires"]["t"]) == len(set(np.asarray(r["hires"]["t"]).round(9))), (
+        "duplicate timestamps in the hires slice — an overlap was not merged"
+    )
