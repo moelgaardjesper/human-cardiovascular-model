@@ -2614,3 +2614,194 @@ def _valve_params():
     p.baroreflex_enabled = False
     p.slow_dynamics_enabled = False
     return p
+
+
+# ===========================================================================
+# 27. Age relations — backlog item 25b
+# ===========================================================================
+
+def test_age_relations_interpolate_and_clamp():
+    """[PMID 25896355][PMID 23097384][PMID 35124105] Sourced age tables.
+
+    The model had NO age at all while drawing targets from cohorts spanning 44
+    to 61 years, across which the sources' own tables differ by 21-36 % in the
+    very quantities item 25a is calibrating. This pins the interpolation and,
+    more importantly, the direction of each relation — a sign error here would
+    silently reverse every age-adjusted target.
+    """
+    from model.aging import (REFERENCE_AGE_YEARS, at_age, restate_at_reference_age,
+                             NORRE_EA_MEN, ALHOGBANI_ACC, GAO_LAEF_PASSIVE_MEN,
+                             GAO_LAEF_BOOSTER_MEN)
+
+    assert REFERENCE_AGE_YEARS == 55.0
+
+    # Exact at the tabulated points.
+    assert at_age(NORRE_EA_MEN, 50.0) == pytest.approx(1.22)
+    assert at_age(ALHOGBANI_ACC, 47.5) == pytest.approx(28.0)
+
+    # Clamped outside the measured span, never extrapolated.
+    assert at_age(NORRE_EA_MEN, 5.0) == pytest.approx(1.69)
+    assert at_age(NORRE_EA_MEN, 120.0) == pytest.approx(0.96)
+
+    # DIRECTIONS. The ageing atrium takes over more of ventricular filling:
+    # early filling falls, the atrial kick rises. Four sources agree, and a
+    # sign error in any of them would invert an age-adjusted target.
+    assert at_age(NORRE_EA_MEN, 30) > at_age(NORRE_EA_MEN, 68), "E/A must FALL with age"
+    assert at_age(ALHOGBANI_ACC, 32) < at_age(ALHOGBANI_ACC, 65), "ACC must RISE with age"
+    assert at_age(GAO_LAEF_PASSIVE_MEN, 25.5) > at_age(GAO_LAEF_PASSIVE_MEN, 65.5), \
+        "LAEF passive must FALL with age"
+    assert at_age(GAO_LAEF_BOOSTER_MEN, 25.5) < at_age(GAO_LAEF_BOOSTER_MEN, 65.5), \
+        "LAEF booster must RISE with age"
+
+    # Restating moves a target by the RATIO of the relation, and leaves a
+    # target already at the reference age untouched.
+    assert restate_at_reference_age(NORRE_EA_MEN, 1.22, 55.0) == pytest.approx(1.22)
+    assert restate_at_reference_age(NORRE_EA_MEN, 1.22, 45.8) < 1.22, (
+        "a target measured in a cohort YOUNGER than 55 must come DOWN when "
+        "restated at 55, because E/A falls with age"
+    )
+
+
+def test_patient_age_scales_only_the_elastic_arteries():
+    """[PMID 9236450] Age stiffens the aorta; the reference patient is untouched.
+
+    Same discipline item 32 used for sex: the reference case must be
+    BIT-FOR-BIT identical, so the entire validation suite is unaffected by the
+    feature existing. Age 55 is the reference because the chamber geometry comes
+    from Luu 2022, whose male cohort is 55.1 +/- 8.8.
+    """
+    from model.patient import build_patient_params, ELASTIC_ARTERIES
+    from model.aging import REFERENCE_AGE_YEARS
+
+    assert REFERENCE_AGE_YEARS == 55.0
+
+    base, _ = build_patient_params(175, 70, sex="male")
+    ref,  _ = build_patient_params(175, 70, sex="male", age_years=55.0)
+    for a, b in zip(base, ref):
+        assert a.compliance == b.compliance, (
+            f"{a.name}: the default must be identical to an explicit age 55")
+
+    young, _ = build_patient_params(175, 70, sex="male", age_years=25.0)
+    old,   _ = build_patient_params(175, 70, sex="male", age_years=80.0)
+
+    for c_ref, c_young, c_old in zip(ref, young, old):
+        if c_ref.name in ELASTIC_ARTERIES:
+            assert c_young.compliance > c_ref.compliance > c_old.compliance, (
+                f"{c_ref.name}: compliance must FALL with age — Franklin's pulse "
+                f"pressure widens at 0.68 mmHg/year in normotensive men"
+            )
+        else:
+            assert c_young.compliance == c_ref.compliance == c_old.compliance, (
+                f"{c_ref.name} changed with age, but only the large elastic "
+                f"arteries stiffen. The aortic-to-brachial gradient REVERSES "
+                f"with age precisely because the periphery does not."
+            )
+
+    # Magnitude, from C ~ SV/PP with Franklin's slope: 1.66 at 25, 0.75 at 80.
+    from model.compartments import IDX
+    assert young[IDX["aorta"]].compliance / ref[IDX["aorta"]].compliance == \
+        pytest.approx(1.66, abs=0.02)
+    assert old[IDX["aorta"]].compliance / ref[IDX["aorta"]].compliance == \
+        pytest.approx(0.75, abs=0.02)
+
+
+def test_age_widens_pulse_pressure_the_way_framingham_measured_it():
+    """[PMID 9236450] The endpoint, not the parameter.
+
+    Franklin: pulse pressure widens 0.68 mmHg/year in normotensive men while
+    MAP is essentially flat (0.016 mmHg/year). A stiffening conduit widens the
+    PULSE around a fixed MEAN; a rising resistance would raise the mean. This
+    asserts the model reproduces that SHAPE — PP up, MAP nearly unchanged —
+    which is the whole reason compliance rather than resistance is scaled.
+    """
+    from model.patient import build_patient_params, apply_cardiac
+
+    def run(age):
+        comps, cardiac = build_patient_params(175, 70, sex="male", age_years=age)
+        p = SimParams()
+        p.compartments = comps
+        apply_cardiac(p, cardiac)
+        p.ventilation_mode = "none"
+        p.baroreflex_enabled = False
+        p.slow_dynamics_enabled = False
+        r = run_simulation(p, duration_s=30.0, dt=DT, use_baroreflex=False)
+        h = len(r["sbp"]) // 2
+        sbp = float(np.mean(r["sbp"][h:])); dbp = float(np.mean(r["dbp"][h:]))
+        return sbp - dbp, float(np.mean(r["map"][h:]))
+
+    pp_young, map_young = run(30.0)
+    pp_ref,   map_ref   = run(55.0)
+    pp_old,   map_old   = run(80.0)
+
+    assert pp_young < pp_ref < pp_old, (
+        f"pulse pressure must widen with age: {pp_young:.1f} / {pp_ref:.1f} / "
+        f"{pp_old:.1f} mmHg at 30 / 55 / 80"
+    )
+    # MAP must move far less than PP. Franklin's ratio of slopes is
+    # 0.016/0.68 = 0.024; anything under 0.25 is the right qualitative shape
+    # and leaves room for the closed loop's own response.
+    d_pp = pp_old - pp_young
+    d_map = abs(map_old - map_young)
+    assert d_map < 0.25 * d_pp, (
+        f"MAP moved {d_map:.1f} mmHg against a pulse-pressure change of "
+        f"{d_pp:.1f}. Franklin has MAP essentially flat (0.016 mmHg/year) while "
+        f"PP widens at 0.68 — if the mean is moving this much, the model is "
+        f"behaving like rising resistance rather than a stiffening conduit"
+    )
+
+
+def test_chamber_volumes_scale_with_age_toward_luu():
+    """[PMID 34980185] Luu Tables 3/4, male: indexed volumes FALL with age.
+
+    LVEDV 77 -> 69 and RVEDV 91 -> 80 mL/m2 across 35-44 to 65-74, while
+    ejection fractions hold (LVEF) or rise (RVEF 51 -> 54). Same cohort the
+    model's chambers were built from, which is why 55 is the reference age.
+
+    The atria are deliberately NOT scaled with age — the LA's closed-loop
+    transmission is NEGATIVE, so assigning it a volume factor moves it the wrong
+    way. That is the same reason item 32 left the LA out of sex scaling, and it
+    stays blocked on 25a.
+    """
+    from model.patient import build_patient_params, apply_cardiac
+    from model.aging import chamber_age_factors
+
+    # Reference age must be the identity, so the suite is untouched.
+    f = chamber_age_factors(55.0)
+    for ch in ("left_ventricle", "right_ventricle"):
+        assert f[ch]["volume"] == pytest.approx(1.0)
+        assert f[ch]["emax"] == pytest.approx(1.0)
+    assert "left_atrium" not in f and "right_atrium" not in f, (
+        "the atria must not carry age volume factors — LA transmission is "
+        "negative and the RA has no sourced age relation in use"
+    )
+
+    # Direction: a younger ventricle is larger, an older one smaller.
+    assert (chamber_age_factors(40.0)["left_ventricle"]["volume"]
+            > 1.0 > chamber_age_factors(70.0)["left_ventricle"]["volume"])
+
+    def edv(age):
+        comps, cardiac = build_patient_params(175, 70, sex="male", age_years=age)
+        p = SimParams()
+        p.compartments = comps
+        apply_cardiac(p, cardiac)
+        p.ventilation_mode = "none"
+        p.baroreflex_enabled = False
+        p.slow_dynamics_enabled = False
+        r = run_simulation(p, duration_s=30.0, dt=DT, use_baroreflex=False)
+        V = np.asarray(r["volumes"])
+        h = len(V) // 2
+        return (V[h:, IDX["left_ventricle"]].max(),
+                V[h:, IDX["right_ventricle"]].max())
+
+    lv40, rv40 = edv(40.0)
+    lv55, rv55 = edv(55.0)
+    lv70, rv70 = edv(70.0)
+
+    assert lv40 > lv55 > lv70, (
+        f"LV end-diastolic volume must fall with age: {lv40:.1f} / {lv55:.1f} / "
+        f"{lv70:.1f} mL at 40 / 55 / 70. [PMID 34980185] LVEDV 77 -> 69 mL/m2"
+    )
+    assert rv40 > rv55 > rv70, (
+        f"RV end-diastolic volume must fall with age: {rv40:.1f} / {rv55:.1f} / "
+        f"{rv70:.1f} mL. [PMID 34980185] RVEDV 91 -> 80 mL/m2"
+    )

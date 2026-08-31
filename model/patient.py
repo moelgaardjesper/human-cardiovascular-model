@@ -21,6 +21,9 @@ oesophageal pressure +0.27 cmH2O per BMI unit) for when the term goes in.
 
 from dataclasses import replace
 
+from .aging import (REFERENCE_AGE_YEARS, arterial_compliance_factor,
+                    chamber_age_factors)
+
 import numpy as np
 from .compartments import default_compartments, Compartment, ARTERIOLAR_SEGMENTS
 
@@ -65,6 +68,8 @@ BV_REF  = 5000.0 # mL — reference total blood volume
 # MALE IS THE IDENTITY. Every male factor is exactly 1.0, so a male patient is
 # bit-for-bit what the model did before this existed — which is what keeps the
 # entire validation suite untouched. There is a regression test asserting it.
+
+
 SEX_CHAMBER_FACTORS = {
     "male": {
         "left_ventricle":  {"volume": 1.0, "emax": 1.0},
@@ -96,6 +101,32 @@ SEX_CHAMBER_FACTORS = {
         "right_atrium":    {"volume": 0.928, "emax": 1.114},
     },
 }
+
+# ---------------------------------------------------------------------------
+# PATIENT AGE — backlog item 25b. Which vessels stiffen.
+# ---------------------------------------------------------------------------
+# Age scales the compliance of the LARGE ELASTIC ARTERIES and nothing else.
+# Like THORACIC_COMPARTMENTS and ABDOMINAL_COMPARTMENTS this is ANATOMY, not a
+# knob: it is the set of vessels whose wall is elastin-dominated and whose
+# stiffening with age is what widens pulse pressure.
+#
+#   aorta, abdominal_aorta   the elastic conduit itself, and where most of
+#                            total arterial compliance lives
+#   brachiocephalic          a great vessel of the same wall type
+#
+# DELIBERATELY EXCLUDED: upper_body_art, lower_body_art, renal_art,
+# splanchnic_art. These stand for the muscular distributing and resistance
+# vessels, whose compliance contributes little to the pulse-pressure buffer and
+# which do not stiffen with age the way the aorta does. That difference is not
+# incidental — the age-related REVERSAL of the aortic-to-brachial stiffness
+# gradient exists precisely because the aorta stiffens and the periphery does
+# not. Including them would model the wrong physiology and would also make the
+# effect too large.
+#
+# Together these three carry 0.87 of the model's 1.64 mL/mmHg total arterial
+# compliance, which is the right share for a pulse-pressure buffer.
+ELASTIC_ARTERIES = ("aorta", "abdominal_aorta", "brachiocephalic")
+
 
 _CHAMBER_TO_PARAM = {
     "left_ventricle": "lv", "right_ventricle": "rv",
@@ -148,6 +179,7 @@ def scale_compartments(
     pcwp_mmhg: float | None = None,
     pap_mean_mmhg: float | None = None,
     sex: str = "male",
+    age_years: float = REFERENCE_AGE_YEARS,
 ) -> tuple[list[Compartment], dict]:
     """
     Return scaled compartment list and a dict of cardiac parameters.
@@ -174,6 +206,8 @@ def scale_compartments(
             "which is what carries the chamber physiology."
         )
     sex_factors = SEX_CHAMBER_FACTORS[sex]
+    age_factor = arterial_compliance_factor(age_years)
+    age_chamber = chamber_age_factors(age_years)
     bv_scale = bsa / BSA_REF
     scaled = []
 
@@ -187,10 +221,14 @@ def scale_compartments(
         # naming fields individually.
         # Sex applies ONLY to the four cardiac chambers, and only after BSA:
         # these are ratios of BSA-indexed values, so body size is already out.
-        sex_vol = sex_factors.get(c.name, {}).get("volume", 1.0)
+        sex_vol = (sex_factors.get(c.name, {}).get("volume", 1.0)
+                   * age_chamber.get(c.name, {}).get("volume", 1.0))
+        # Age stiffens the large elastic arteries and nothing else here.
+        # ELASTIC_ARTERIES is anatomy, not a knob — see its note below.
+        age_c = age_factor if c.name in ELASTIC_ARTERIES else 1.0
         scaled.append(replace(
             c,
-            compliance=c.compliance * bv_scale,     # compliance scales with volume
+            compliance=c.compliance * bv_scale * age_c,
             unstressed_volume=c.unstressed_volume * bv_scale * sex_vol,
             init_volume=c.init_volume * bv_scale * sex_vol,
             # resistance deliberately unscaled here; tiers 1-3 below adjust it
@@ -203,10 +241,18 @@ def scale_compartments(
     # E_min is divided by the volume factor so the chamber holds its scaled
     # volume at an UNCHANGED filling pressure (EDV = V0 + P/E_min); E_max carries
     # the ejection-fraction difference. See SEX_CHAMBER_FACTORS.
+    # Sex and age both act on these two fields and are INDEPENDENT axes: sex
+    # factors are ratios of BSA-indexed values within an age band, age factors
+    # are ratios within the male columns. They therefore MULTIPLY. Age touches
+    # only the two ventricles — see chamber_age_factors for why the atria are
+    # excluded.
     for chamber, tag in _CHAMBER_TO_PARAM.items():
         f = sex_factors.get(chamber, {})
-        cardiac[f"{tag}_emax_factor"] = f.get("emax", 1.0)
-        cardiac[f"{tag}_emin_factor"] = 1.0 / f.get("volume", 1.0)
+        a = age_chamber.get(chamber, {})
+        vol  = f.get("volume", 1.0) * a.get("volume", 1.0)
+        emax = f.get("emax", 1.0) * a.get("emax", 1.0)
+        cardiac[f"{tag}_emax_factor"] = emax
+        cardiac[f"{tag}_emin_factor"] = 1.0 / vol
 
     # Tier 1: scale SVR from MAP if cardiac output not available
     if map_mmhg is not None:
@@ -261,6 +307,7 @@ def build_patient_params(
     pcwp_mmhg: float | None = None,
     pap_mean_mmhg: float | None = None,
     sex: str = "male",
+    age_years: float = REFERENCE_AGE_YEARS,
 ) -> tuple[list[Compartment], dict]:
     """Convenience wrapper: compute BSA then scale compartments.
 
@@ -282,6 +329,7 @@ def build_patient_params(
         pcwp_mmhg=pcwp_mmhg,
         pap_mean_mmhg=pap_mean_mmhg,
         sex=sex,
+        age_years=age_years,
     )
 
 
