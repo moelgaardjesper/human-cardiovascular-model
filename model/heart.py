@@ -154,7 +154,47 @@ RA_EMAX = 0.45   # mmHg/mL  right atrium peak systolic elastance
 # (RAVmax band 20-48 mL/m2) fails at 0.097 and below.
 RA_EMIN = 0.20   # mmHg/mL  right atrium diastolic elastance
 LA_EMAX = 0.45   # mmHg/mL  left atrium
-LA_EMIN = 0.28   # mmHg/mL
+
+# LEFT ATRIAL DIASTOLIC ELASTANCE — DERIVED FROM GAO, NOT FITTED (2026-08-31).
+#
+# Was 0.28, unsourced. Gao 2022 (PMID 35124105) gives the compliance directly:
+# the left atrium accepts LAVmax - LAVmin = 68 - 26.5 = 41.5 mL while its
+# pressure rises from roughly 5 to 13 mmHg (v-wave), which is 5.19 mL/mmHg —
+# an elastance of 8/41.5 = 0.19 mmHg/mL. The model's atrium was ~1.5x too
+# stiff.
+#
+# WHY IT MATTERED, and it was not a small effect. At 0.28 the LA reached
+# 21.6 mmHg at peak volume against a real v-wave of 10-15. That over-pressure
+# filled the left ventricle completely during PASSIVE diastole: the LV hit
+# 10.1 mmHg — its full end-diastolic pressure — BEFORE the atrium contracted,
+# so the atrial kick added 1.7 mL. Measured consequences at 0.28 were LAEF
+# passive 56.6 % against Gao's 35.6, atrial contribution to LV filling 6.7 %
+# against Alhogbani's 22-38.5 (PMID 23097384), and E/A 21.5 against NORRE's
+# 1.22 (PMID 25896355). In a real heart pre-A pressure is 5-7 and the kick
+# raises it to 10-12.
+#
+# WHAT WAS RULED OUT FIRST, all recorded in the validation log: mitral
+# resistance (reaching the ACC band produces mitral stenosis — mean PA 30.8,
+# PCWP 23.0), LA_EMAX alone (moves the booster but LAEF passive is invariant),
+# LA unstressed volume (15 -> 45 mL leaves peak pressure and ACC completely
+# unchanged, because the closed loop imposes the pressure), and lv_emin
+# (hits LAEF passive exactly but drives LVEDP to 20.4 mmHg, which is failure).
+#
+# A MORE COMPLIANT 0.10 FITS MORE ENDPOINTS AND IS DELIBERATELY NOT USED. It
+# would give LAEF passive 37.8, ACC 36.1 and E/A 2.09, and would close both
+# currently-xfailed pulmonary assertions — but it is twice as compliant as
+# Gao's own volume-and-pressure data support, and it drives LAVmax to
+# 62.9 mL/m2 against Gao's 36.9 +/- 7.7. Fitting five numbers by adopting a
+# compliance the source contradicts is the failure mode this project keeps
+# catching.
+#
+# WHAT 0.19 DOES NOT FIX. LAEF passive stays near 49 % and total near 74 %.
+# The residual is a VOLUME DISTRIBUTION problem, not an atrial one: LA peak
+# pressure is imposed by the circulation, so a compliant atrium is necessarily
+# a bigger one at that pressure, and the pulmonary vessels hold 365.8 mL
+# (7.1 % of blood volume) where the literature has 450-500 mL and 9-11 %. The
+# vessels are under-filled while the atrium is over-filled. See backlog 25a.
+LA_EMIN = 0.19   # mmHg/mL
 
 # ---------------------------------------------------------------------------
 # ATRIOVENTRICULAR DELAY — the PR interval, as a TIME rather than a fraction

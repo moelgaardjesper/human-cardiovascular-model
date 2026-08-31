@@ -87,6 +87,91 @@ class Compartment:
 # to ~500 mL/s (physiological) and keeps LV-aortic ΔP ≈ 40 mmHg during ejection.
 VALVE_R = 0.01
 
+# ---------------------------------------------------------------------------
+# THE FOUR VALVES, EACH WITH ITS OWN PARAMETER (2026-08-31, for backlog 25a)
+# ---------------------------------------------------------------------------
+# Every other flow in this model follows one convention: a compartment's
+# `resistance` is its INFLOW resistance, so flow from A to B divides by
+# B.resistance (see Q_ao_brachio -> R("brachiocephalic")). The valves followed
+# it too, and that is self-consistent — but it left three problems for anyone
+# working on the left-heart coupling:
+#
+#   1. MITRAL AND AORTIC SHARED ONE NUMBER. Both divided by
+#      left_ventricle.resistance, so mitral resistance could not be changed
+#      without also changing aortic. That blocks item 25a outright.
+#   2. left_atrium.resistance AND right_atrium.resistance WERE NEVER READ.
+#      Under the inflow convention an atrium's inflow is the upstream vein's
+#      drain_resistance, so the atrial `resistance` field did nothing. Setting
+#      it looked reasonable and was silently ignored — it swallowed a whole
+#      parameter sweep on 2026-08-31 before the flat results gave it away.
+#   3. THE PULMONIC VALVE WAS 0.03 WHILE THE OTHER THREE WERE 0.01, because
+#      pulmonary_art.resistance served double duty as both the pulmonic valve
+#      and the PA inflow resistance. Whether 3x is intended is an open
+#      question — it is preserved here, not silently normalised.
+#
+# The aortic valve already deviated from the convention deliberately, with a
+# comment, because aorta.resistance is the systemic arterial resistance rather
+# than a valve. Naming all four removes the ambiguity instead of having one
+# documented exception to a rule the reader has to infer.
+#
+# VALUES ARE UNCHANGED FROM WHAT THE FLOW EQUATIONS ACTUALLY USED, so this is
+# a pure refactor — see test_valve_resistances_are_a_pure_refactor.
+TRICUSPID_R = VALVE_R      # was right_ventricle.resistance
+PULMONIC_R  = 0.03         # was pulmonary_art.resistance — NOT VALVE_R, see (3)
+MITRAL_R    = VALVE_R      # was left_ventricle.resistance
+AORTIC_R    = VALVE_R      # was left_ventricle.resistance
+
+# ---------------------------------------------------------------------------
+# ORIFICE (BERNOULLI) VALVE FLOW — optional, off by default
+# ---------------------------------------------------------------------------
+# A heart valve is an ORIFICE, not a pipe. Poiseuille flow through a tube gives
+# Q proportional to dP; flow through an orifice is inertial and gives
+# dP proportional to Q^2, i.e. Q proportional to sqrt(dP). This is why the
+# clinical gradient equation is the simplified Bernoulli dP = 4v^2, and why
+# Gorlin's formula solves for valve AREA rather than resistance:
+#
+#     A (cm2) = Q (mL/s) / (44.3 * C * sqrt(dP))     ->    Q = 44.3 * C * A * sqrt(dP)
+#
+# so the orifice coefficient is K = 44.3 * C * A, in mL/s per sqrt(mmHg).
+#
+# WHY IT MATTERS HERE. Under a linear law the ratio of two flows equals the
+# ratio of their driving pressures; under an orifice law it equals the SQUARE
+# ROOT of that ratio. The model's mitral E/A is 21.5 against NORRE's 1.22
+# precisely because early filling has a large gradient and the atrial kick a
+# small one. Square-rooting compresses that ratio toward sqrt(21.5) ~ 4.6 —
+# it blunts the E wave and spares the A wave, which is the direction the
+# left-atrial phasic function needs, and it comes from correct physiology
+# rather than from a fitted parameter.
+#
+# AREAS ARE TEXTBOOK CLINICAL RANGES AND ARE NOT PROPERLY SOURCED YET. Normal
+# mitral 4-6 cm2, aortic 3-4, tricuspid 7-9, pulmonic ~3-4. Midpoints are used.
+# Discharge coefficients are Gorlin's: 0.85 for the atrioventricular valves,
+# 1.0 for the semilunar ones. IF THIS MECHANISM IS ADOPTED, these four numbers
+# need a primary source before they can be load-bearing.
+GORLIN_CONST = 44.3        # hydraulic constant, mL/s per cm2 per sqrt(mmHg)
+
+VALVE_AREA_CM2 = {"mitral": 5.0, "aortic": 3.5, "tricuspid": 8.0, "pulmonic": 3.5}
+VALVE_CD       = {"mitral": 0.85, "aortic": 1.0, "tricuspid": 0.85, "pulmonic": 1.0}
+
+def orifice_k(valve: str) -> float:
+    """Orifice coefficient K = 44.3 * Cd * A, so that Q = K * sqrt(dP)."""
+    return GORLIN_CONST * VALVE_CD[valve] * VALVE_AREA_CM2[valve]
+
+# Regularisation. Q = K*sqrt(dP) has infinite slope at dP = 0, which with
+# forward Euler at dt = 1 ms would chatter every time a valve opens or closes.
+# The form actually used is
+#
+#     Q = K * dP / sqrt(dP + dP_c)
+#
+# which tends to K*sqrt(dP) for dP >> dP_c, becomes LINEAR with slope
+# K/sqrt(dP_c) for dP << dP_c, and is smooth with finite slope at the origin.
+# One expression, no branch, no discontinuity in value or derivative.
+# At dP_c = 0.1 mmHg the near-zero slope is ~3.2*K, giving an effective
+# resistance of ~0.0017 mmHg*s/mL for the mitral valve; against the smallest
+# diastolic chamber compliance (~5 mL/mmHg) that is R*C ~ 9 ms, comfortably
+# above the 1 ms timestep.
+VALVE_DP_REG = 0.1         # mmHg
+
 # Great-vein -> atrium resistance. NOT A VALVE. See backlog item 23.
 # Kept for the PULMONARY venoatrial junction (pulmonary_vein -> LA), which is a
 # different circulation and was not part of the 2026-08-26 systemic rework.

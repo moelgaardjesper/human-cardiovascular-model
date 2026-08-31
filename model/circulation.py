@@ -28,10 +28,15 @@ One-way valves (mitral, aortic, tricuspid, pulmonic) enforced by
 setting Q = 0 if flow would be retrograde.
 """
 
+import math
 import numpy as np
 from scipy.integrate import solve_ivp
 
-from .compartments import default_compartments, IDX
+from .compartments import (
+    default_compartments, IDX,
+    TRICUSPID_R, PULMONIC_R, MITRAL_R, AORTIC_R,
+    orifice_k, VALVE_DP_REG,
+)
 from .heart import (
     elastance_from_phase, frank_starling_emax,
     LV_EMAX, LV_EMIN, RV_EMAX, RV_EMIN,
@@ -138,6 +143,9 @@ THORACIC_COMPARTMENTS = (
 )
 _THORACIC_IDX = tuple(IDX[name] for name in THORACIC_COMPARTMENTS)
 
+_ORIFICE_K = {v: orifice_k(v) for v in ("mitral", "aortic", "tricuspid", "pulmonic")}
+_NO_ORIFICE = {v: None for v in _ORIFICE_K}
+
 # Compartments that lie inside the ABDOMINAL cavity. Like
 # THORACIC_COMPARTMENTS this is ANATOMY, NOT A KNOB, and the same argument
 # applies: abdominal pressure is a uniform external pressure, so around a closed
@@ -236,6 +244,20 @@ class SimParams:
         # has the opposite sign and is deliberately not modelled. Its own switch
         # so the mechanism can be validated in isolation.
         self.abdominal_coupling_enabled = True
+
+        # The four valves, each independently settable. Before 2026-08-31
+        # mitral and aortic shared left_ventricle.resistance and could not be
+        # varied apart, which blocked the left-heart coupling work in item 25a.
+        # See the note above the constants in compartments.py.
+        # A heart valve is an orifice, not a pipe: dP goes as Q^2, not Q. OFF by
+        # default so it changes nothing until deliberately switched on — see the
+        # ORIFICE VALVE FLOW note in compartments.py.
+        self.valve_orifice_enabled = False
+
+        self.tricuspid_r = TRICUSPID_R
+        self.pulmonic_r  = PULMONIC_R
+        self.mitral_r    = MITRAL_R
+        self.aortic_r    = AORTIC_R
 
         # Hemorrhage — constant-rate blood volume loss over [start, start+duration].
         # Removed proportionally from the systemic venous reservoir (see
@@ -412,6 +434,23 @@ def _vascular_pressure(vol: float, v0: float, compliance: float,
 
 def _cardiac_pressure(vol: float, v0: float, e: float) -> float:
     return max(0.0, e * (vol - v0))
+
+
+def _valve_flow(dp: float, r_lin: float, k_orifice: float | None) -> float:
+    """One-way valve flow for a pressure difference `dp`.
+
+    `k_orifice` None  -> the linear law this model has always used, Q = dp / R.
+    `k_orifice` set   -> Bernoulli orifice flow, Q = K * sqrt(dp), regularised
+                         as K * dp / sqrt(dp + dP_c) so the slope at dp = 0 is
+                         finite. See the note in compartments.py.
+
+    Both forms clamp at zero: these are one-way valves.
+    """
+    if dp <= 0.0:
+        return 0.0
+    if k_orifice is None:
+        return dp / r_lin
+    return k_orifice * dp / math.sqrt(dp + VALVE_DP_REG)
 
 
 # ---------------------------------------------------------------------------
@@ -698,10 +737,13 @@ def _odes(t: float, V: np.ndarray, params: SimParams, baro: BaroreflexController
     Q_svc_ra = max(0.0, (P[i["svc"]] - P[i["right_atrium"]] + hdp("svc") - hdp("right_atrium")) / R_drain("svc"))
     Q_ivc_ra = max(0.0, (P[i["ivc"]] - P[i["right_atrium"]] + hdp("ivc") - hdp("right_atrium")) / R_drain("ivc"))
 
+    # Valve law: None per valve means the linear form. See valve_orifice_enabled.
+    _k = _ORIFICE_K if params.valve_orifice_enabled else _NO_ORIFICE
+
     # Tricuspid valve (RA → RV)
-    Q_tricuspid = max(0.0, (P[i["right_atrium"]] - P[i["right_ventricle"]]) / comp[i["right_ventricle"]].resistance)
+    Q_tricuspid = _valve_flow(P[i["right_atrium"]] - P[i["right_ventricle"]], params.tricuspid_r, _k["tricuspid"])
     # Pulmonic valve (RV → PA)
-    Q_pulmonic  = max(0.0, (P[i["right_ventricle"]] - P[i["pulmonary_art"]]) / comp[i["pulmonary_art"]].resistance)
+    Q_pulmonic  = _valve_flow(P[i["right_ventricle"]] - P[i["pulmonary_art"]], params.pulmonic_r, _k["pulmonic"])
 
     # Pulmonary circulation
     Q_pa_cap    = (P[i["pulmonary_art"]] - P[i["pulmonary_cap"]]) / R("pulmonary_cap")
@@ -711,9 +753,10 @@ def _odes(t: float, V: np.ndarray, params: SimParams, baro: BaroreflexController
     # Pulmonary veins → LA: continuous, no valve. A wedge catheter reads LA pressure
     # precisely because of this.
     Q_pv_la     = max(0.0, (P[i["pulmonary_vein"]] - P[i["left_atrium"]]) / R_drain("pulmonary_vein"))
-    Q_mitral    = max(0.0, (P[i["left_atrium"]] - P[i["left_ventricle"]]) / comp[i["left_ventricle"]].resistance)
-    # Aortic valve (LV → aorta) — use valve resistance, not aortic outflow resistance
-    Q_aortic    = max(0.0, (P[i["left_ventricle"]] - P[i["aorta"]]) / comp[i["left_ventricle"]].resistance)
+    Q_mitral    = _valve_flow(P[i["left_atrium"]] - P[i["left_ventricle"]], params.mitral_r, _k["mitral"])
+    # Aortic valve (LV → aorta). Never aorta.resistance — that is the systemic
+    # arterial resistance, not a valve.
+    Q_aortic    = _valve_flow(P[i["left_ventricle"]] - P[i["aorta"]], params.aortic_r, _k["aortic"])
 
     # Coronary (aorta → coronary → right atrium)
     Q_ao_cor    = (P[i["aorta"]] - P[i["coronary"]]) / R("coronary", True)

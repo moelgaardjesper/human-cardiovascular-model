@@ -1658,27 +1658,33 @@ def test_pulmonary_venous_pressure_equals_left_atrial():
     )
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    "KNOWN GAP, opened 2026-08-31 by the atrial timing fix (backlog 25a). Mean PA "
-    "is 20.60 mmHg against this test's own < 20 ceiling. It passed at 19.27 before "
-    "ATRIAL_PHASE_OFFSET = 0.60 was replaced by a PR-derived offset. "
-    "THE TIMING FIX IS NOT THE DEFECT — IT EXPOSED ONE. The old 0.60 was an "
-    "unsourced initial-commit value implying a PR interval of 514 ms at 70 bpm, "
-    "against a normal 120-200 ms; it fired the atria in mid-diastole against a "
-    "shut mitral valve. Reverting it to make this number green would restore a "
-    "complete-heart-block PR interval to buy 1.3 mmHg. "
-    "IT IS NOT AN ATRIAL-STRENGTH PROBLEM. Sweeping LA_EMAX across 0.45-1.10 moves "
-    "mean PA only 20.60 -> 20.19, so no contractility value closes it. The cause is "
-    "the LA-LV coupling: with the mitral valve at R = 0.01 the pulmonary veins, LA "
-    "and LV behave as one pooled volume — the same mechanism as item 23's 93.2 mL "
-    "anomaly. PCWP sitting at 12.4 mmHg against a 5-6 target is the other face of it. "
-    "CLOSES WITH: the mitral / pulmonary-venous coupling work, which is the real "
-    "content of 25a and will move PCWP, PA, LAVmax and the phasic split together. "
-    "Do NOT close it by tuning LA_EMAX or by reverting the timing. "
-    "The assertions below are UNCHANGED — only the pass/fail bookkeeping is marked. "
-    "strict=True so this flips to a FAILURE the day the coupling is fixed."
-))
 def test_pulmonary_pressures_are_physiological():
+    """CLOSED 2026-08-31 by the left-atrial compliance fix. Was a strict xfail
+    for a few hours on the same day.
+
+    HISTORY, because it is a clean worked example of the ratchet doing its job.
+    The atrial timing fix (PR 514 ms -> 160 ms) pushed mean PA from 19.27 to
+    20.60 and pulmonary venous from 11.52 to 12.56, breaking two assertions in
+    this test. Reverting the timing to green them would have restored a
+    complete-heart-block PR interval to buy 1.3 mmHg, so the failure was carried
+    as a strict xfail instead, with the assertions untouched and the cause named:
+    the LA-LV coupling.
+
+    That diagnosis was right, but the specific lever named in it was wrong. The
+    xfail said "with the mitral valve at R = 0.01 the pulmonary veins, LA and LV
+    behave as one pooled volume". Sweeping mitral resistance showed it is NOT the
+    lever — reaching the atrial-contribution target that way produces mitral
+    stenosis (mean PA 30.8, PCWP 23.0). The actual defect was that the left
+    atrium was ~1.5x too STIFF: LA_EMIN 0.28 against 0.19 derived from Gao's own
+    volume-and-pressure data. At 0.28 the atrium reached 21.6 mmHg at peak
+    volume against a real v-wave of 10-15, and that over-pressure propagated
+    backwards into the pulmonary bed.
+
+    Fixing the compliance closed both assertions without either being weakened:
+    mean PA 20.60 -> 19.48, pulmonary venous 12.56 -> 11.39. strict=True is what
+    surfaced it — the test XPASSed and reported as a failure the moment the gap
+    closed, rather than sitting silently green.
+    """
     """CLOSED 2026-08-26 by the venous rework, backlog item 28.
 
     Was a strict xfail: resting pulmonary venous pressure 16.0 and left atrial
@@ -2522,3 +2528,89 @@ def test_atrial_kick_lands_at_end_diastole_with_a_physiological_pr_interval():
         f"a normal PR puts it in the last quarter of diastole, not mid-diastole "
         f"(the old 0.60 offset put it at 0.40)"
     )
+
+
+# ===========================================================================
+# 26. Valve resistances are named and independently settable — item 25a
+# ===========================================================================
+
+def test_valve_resistances_are_a_pure_refactor():
+    """Naming the four valves must not change a single number.
+
+    Before 2026-08-31 the flow equations divided by whichever compartment the
+    inflow convention pointed at: tricuspid by right_ventricle.resistance,
+    pulmonic by pulmonary_art.resistance, and BOTH mitral and aortic by
+    left_ventricle.resistance. That is self-consistent with the rest of the
+    model — a compartment's `resistance` is its inflow resistance — but it
+    meant mitral could not be varied without also varying aortic.
+
+    This pins that the named parameters carry exactly the values the old
+    expressions produced, so the refactor is provably behaviour-neutral and any
+    later change to a valve is visible as its own diff.
+    """
+    from model.compartments import (default_compartments, IDX as CIDX,
+                                    TRICUSPID_R, PULMONIC_R, MITRAL_R, AORTIC_R)
+    c = default_compartments()
+
+    assert TRICUSPID_R == c[CIDX["right_ventricle"]].resistance
+    assert PULMONIC_R == c[CIDX["pulmonary_art"]].resistance
+    assert MITRAL_R == c[CIDX["left_ventricle"]].resistance
+    assert AORTIC_R == c[CIDX["left_ventricle"]].resistance
+
+    # The pulmonic valve is 3x the other three. That is inherited, not chosen —
+    # pulmonary_art.resistance served double duty as valve and PA inflow. It is
+    # pinned here so that normalising it later is a deliberate, visible change
+    # rather than a tidy-up.
+    assert PULMONIC_R == 0.03 and MITRAL_R == 0.01, (
+        "the pulmonic/mitral asymmetry changed; if that was intended, update "
+        "this test and say why in the validation log"
+    )
+
+
+def test_mitral_and_aortic_resistance_are_independently_settable():
+    """The whole point of the refactor: mitral must move without aortic.
+
+    This is also the guard for a trap that already cost a parameter sweep.
+    `left_atrium.resistance` and `right_atrium.resistance` are NOT read by
+    anything — under the inflow convention an atrium's inflow is the upstream
+    vein's drain_resistance — so setting them looks reasonable and does
+    nothing. On 2026-08-31 a sweep of left_atrium.resistance from 0.01 to 0.08
+    returned results identical to six significant figures, which is what gave
+    it away. Anyone reaching for a mitral knob must find the live one.
+    """
+    base = run_simulation(_valve_params(), duration_s=12.0, dt=DT)
+
+    # The dead field: setting it must change nothing at all.
+    p_dead = _valve_params()
+    p_dead.compartments[IDX["left_atrium"]].resistance = 0.08
+    dead = run_simulation(p_dead, duration_s=12.0, dt=DT)
+    assert np.allclose(np.asarray(dead["aortic_p"]),
+                       np.asarray(base["aortic_p"]), rtol=0, atol=0), (
+        "left_atrium.resistance is now live — if that was intended the comment "
+        "in compartments.py and this test both need updating"
+    )
+
+    # The live knob: setting it must change the run, and must NOT be the same
+    # lever as the aortic valve.
+    p_mit = _valve_params(); p_mit.mitral_r = 0.04
+    mit = run_simulation(p_mit, duration_s=12.0, dt=DT)
+    assert not np.allclose(np.asarray(mit["aortic_p"]),
+                           np.asarray(base["aortic_p"]), rtol=0, atol=0), (
+        "params.mitral_r had no effect — the mitral valve is not wired to it"
+    )
+
+    p_ao = _valve_params(); p_ao.aortic_r = 0.04
+    ao = run_simulation(p_ao, duration_s=12.0, dt=DT)
+    assert not np.allclose(np.asarray(mit["aortic_p"]),
+                           np.asarray(ao["aortic_p"]), rtol=0, atol=0), (
+        "raising mitral_r and aortic_r produced identical runs — they are still "
+        "sharing one parameter, which is exactly what this refactor removed"
+    )
+
+
+def _valve_params():
+    p = SimParams()
+    p.ventilation_mode = "none"
+    p.baroreflex_enabled = False
+    p.slow_dynamics_enabled = False
+    return p
