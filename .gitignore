@@ -14,9 +14,20 @@ logs/
 # negation below to work.
 docs/*
 
-# ...except the reference ledger, which is published literature values only —
-# every number transcribed from a source read in full, with PMID/DOI, cohort,
-# and a note on what is and is not used by the model. It is the most reusable
-# artefact here and the only one that had no history or backup. The validation
-# log, backlog and ethics draft stay excluded.
-!docs/reference_values.md
+# THE REFERENCE LEDGER IS NO LONGER TRACKED (2026-08-31, Jesper's decision).
+# It carried an exception here on the reasoning that it was "published
+# literature values only". That was true of the numbers and false of the
+# document: it is a lab notebook that also records provisional readings,
+# premises later withdrawn, and mistakes as they happened — deliberately, since
+# that record is what stops them being repeated. Read out of context a
+# withdrawn premise looks like a claim the project is making.
+#
+# WHAT UNTRACKING DOES AND DOES NOT DO. It stops FUTURE versions being
+# published. It does NOT remove the versions already pushed to this PUBLIC
+# repository in commits 8eed20b, ba4429d and ea6d5ac — that would need history
+# rewriting, which breaks every existing clone, and was deliberately not done.
+# Nothing in the file is patient data or ethics material, so the concern is
+# presentational rather than a privacy breach.
+#
+# The file stays on disk and in use; it is simply local from here on, alongside
+# the validation log, backlog and ethics draft.
