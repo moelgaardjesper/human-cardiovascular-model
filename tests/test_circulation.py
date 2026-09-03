@@ -620,19 +620,45 @@ def test_cvp_baseline_calibration(supine_175_75):
     filling pressure and resistance to venous return are bound together by
     CVP = MSFP - CO x Rvr and cannot be moved independently.
 
-    History: carried as a strict xfail from 2026-08-25 against the old 2-4 band,
-    then widened to 2-8 earlier on 2026-08-26, then tightened to 1-6 the same
-    day once Rudski was read. Full reasoning in validation_log.md; the
-    trough-vs-mean convention question is backlog item 31.
+    BAND REVISED TO 4-10 ON 2026-09-01, AND THE OLD ONE WAS WRONG AT BOTH ENDS.
+    Everything above is superseded. Hoff 2019 (PMID 31560715, PMC6764667) supplies
+    what item 31 searched for twice and concluded "possibly does not exist": ten
+    HEALTHY, AWAKE, SUPINE volunteers with INVASIVELY measured CVP, catheterised
+    for an LBNP protocol. Resting arm, from the authors' own raw data archive:
+        mean 6.94, SD 1.75, median 7.23, individual values 4.3 to 9.8 mmHg.
+    NOT ONE of the ten fell below 4.3, so the old floor of 1 asserted almost
+    nothing and the old ceiling of 6 sat BELOW the measured mean.
+
+    THE SOURCES SPLIT BY METHOD, NOT BY SCATTER. Every INVASIVE measurement
+    clusters at 7-9: Hoff 6.94 (healthy awake), Maas 6.72 (post-op, PEEP 5),
+    van den Berg 9 +/- 4 (post-CABG), Ferguson ~7.5 (cath lab, n=1). The
+    ECHO-derived and review figures say 2-3: Rudski's 3 (range 0-5) is ASSIGNED
+    from IVC appearance to compute pulmonary pressures, and that guideline itself
+    warns "IVC collapse does not accurately reflect RA pressure";
+    Lloyd-Donald 2025 gives 2-3 in review. The catheter is the reference standard,
+    so the band follows the catheter. All eight sources stay tabulated in
+    reference_values.md.
+
+    AGE IS NOT A CONFOUNDER HERE, AND THAT WAS CHECKED RATHER THAN ASSUMED.
+    Hoff's cohort is 25 +/- 3 while this model's reference is 55, so by the
+    match-the-cohort rule the comparison should be made at 25. The model's CVP is
+    essentially age-invariant: 4.51 at 25, 4.72 at 55, 4.87 at 70 — a 0.36 mmHg
+    range. Matching the age moves the model AWAY from Hoff by 0.2 mmHg rather
+    than toward it, so the discrepancy is not an age artefact.
+
+    History: strict xfail from 2026-08-25 against a 2-4 band; widened to 2-8 on
+    2026-08-26; tightened to 1-6 the same day once Rudski was read; revised to
+    4-10 on 2026-09-01 on Hoff's measured cohort. The trough-vs-mean convention
+    question remains backlog item 31.
     """
     cvp = supine_175_75["cvp"]
-    assert 1.0 <= cvp <= 6.0, (
-        f"Supine CVP {cvp:.1f} mmHg outside 1-6 mmHg. Upper bound from Rudski "
-        f"2010 normal RAP 3 (range 0-5) plus 1 mmHg for the trough-vs-mean "
-        f"convention; lower bound is 1 rather than 0 because the model's atrial "
-        f"pressure is floored at 0 by max(0, E*(V-V0)) and >= 0 would assert "
-        f"nothing. Note the model reports a rolling MINIMUM, about 1 mmHg below "
-        f"the mean a transducer would show."
+    assert 4.0 <= cvp <= 10.0, (
+        f"Supine CVP {cvp:.1f} mmHg outside 4-10 mmHg. Band from Hoff 2019 "
+        f"(PMID 31560715), the only healthy-awake cohort with INVASIVELY "
+        f"measured CVP: 6.94 +/- 1.75 mmHg in 10 supine volunteers, individual "
+        f"values 4.3 to 9.8. Not one subject fell below 4.3. The model reports a "
+        f"rolling MINIMUM, about 1 mmHg below the mean a transducer would show, "
+        f"which is why the floor is 4 rather than Hoff's observed 4.3."
     )
 
 
@@ -2805,3 +2831,165 @@ def test_chamber_volumes_scale_with_age_toward_luu():
         f"RV end-diastolic volume must fall with age: {rv40:.1f} / {rv55:.1f} / "
         f"{rv70:.1f} mL. [PMID 34980185] RVEDV 91 -> 80 mL/m2"
     )
+
+
+def test_intraluminal_ra_pressure_is_a_catheter_trace():
+    """[PMID 31560715] The model must expose what a CVC transducer reads.
+
+    `cvp` deliberately OMITS respiratory ITP, because clinical CVP is read at
+    end-expiration — the right convention for a single reported number and the
+    wrong one for a waveform. Until `ra_intraluminal` existed, no model output
+    corresponded to a continuous catheter trace, so the respiratory swing could
+    not be compared to a measurement at all (backlog items 30 and 31).
+
+    THE DISTINCTION IS NOT COSMETIC, and mistaking one for the other produced a
+    wrong finding on 2026-09-01: the TRANSMURAL swing of 0.14 mmHg was compared
+    to Hoff's catheter-measured 3.05 and reported as "22x too small". They are
+    different physical quantities. Intraluminal = transmural + ITP.
+    """
+    def run(mode):
+        p = SimParams()
+        p.ventilation_mode = mode
+        p.resp_rate_bpm = 10.0
+        p.slow_dynamics_enabled = False
+        r = run_simulation(p, duration_s=60.0, dt=DT)
+        t = np.asarray(r["t"]); m = t >= 30.0
+        return (np.asarray(r["cvp"])[m], np.asarray(r["ra_intraluminal"])[m],
+                t[m])
+
+    # Apnoeic: no respiratory ITP, so the two must be IDENTICAL. This is the
+    # guard that the new series is not silently offset from the old one.
+    cvp, ra, _ = run("none")
+    assert np.allclose(cvp, ra, rtol=0, atol=0), (
+        "with ventilation off the intraluminal and transmural traces must be "
+        "identical — there is no respiratory ITP to differ by"
+    )
+
+    # Spontaneous: ITP is NEGATIVE, so the lumen pressure sits BELOW transmural,
+    # and the swing must be LARGER than the transmural one.
+    cvp_s, ra_s, t_s = run("spontaneous")
+    assert ra_s.mean() < cvp_s.mean(), (
+        f"spontaneous intraluminal mean {ra_s.mean():.2f} should sit BELOW "
+        f"transmural {cvp_s.mean():.2f} — pleural pressure is sub-atmospheric"
+    )
+    assert np.ptp(ra_s) > np.ptp(cvp_s), (
+        f"the catheter trace must swing MORE than the transmural pressure: "
+        f"{np.ptp(ra_s):.2f} vs {np.ptp(cvp_s):.2f} mmHg"
+    )
+
+    # And the trough must fall on INSPIRATION — the direction Ferguson 1989
+    # describes and Hoff's peak/trough data confirms (trough 4.94 on
+    # inspiration, peak 7.99 on expiration).
+    period = 60.0 / 10.0
+    phase = ((t_s - t_s[0]) % period) / period
+    insp = ra_s[phase < 0.33].mean()
+    expi = ra_s[phase >= 0.33].mean()
+    assert insp < expi, (
+        f"intraluminal RA pressure must FALL on inspiration: inspiratory mean "
+        f"{insp:.2f} vs expiratory {expi:.2f} mmHg"
+    )
+
+    # Mechanical: ITP is POSITIVE, so the sign reverses — lumen ABOVE transmural.
+    cvp_m, ra_m, _ = run("mechanical")
+    assert ra_m.mean() > cvp_m.mean(), (
+        f"under positive-pressure ventilation the intraluminal mean "
+        f"{ra_m.mean():.2f} must sit ABOVE transmural {cvp_m.mean():.2f}"
+    )
+
+
+def test_spontaneous_respiratory_swing_matches_hoff():
+    """[PMID 31560715] The respiratory swing in a CVC trace, against measurement.
+
+    Hoff 2019 measured the peak-to-trough respiratory variation in INTRALUMINAL
+    CVP in 10 healthy, awake, supine volunteers aged 25 +/- 3, catheterised for
+    an LBNP protocol: 3.05 mmHg mean (SD 1.61, per-subject means 1.00-5.05),
+    with the trough on inspiration and the peak on expiration.
+
+    WHY THIS IS AN ENDPOINT CALIBRATION AND WHY THAT IS LEGITIMATE HERE. The
+    parameter it constrains, SPONTANEOUS_ITP_SWING_CMH2O, was -1.0 as a
+    SELF-DESCRIBED WORKAROUND — the old comment said ITP "has to be kept small
+    enough that the RA self-limits... before the cascade destabilises". It was
+    never a measured pleural pressure. Replacing an unsourced cap with a value
+    anchored to a direct human measurement, through the quantity it governs, is
+    the opposite of the tune-to-the-endpoint failure mode.
+
+    The band is wide because Hoff's own per-subject spread is wide (1.00-5.05).
+    It is not a tight fit to 3.05 and should not be tightened into one.
+    """
+    from model.respiration import (SPONTANEOUS_ITP_SWING_CMH2O,
+                                   SPONTANEOUS_ITP_BASELINE_CMH2O)
+
+    p = SimParams()
+    p.ventilation_mode = "spontaneous"
+    p.resp_rate_bpm = 10.0
+    p.slow_dynamics_enabled = False
+    r = run_simulation(p, duration_s=60.0, dt=DT)
+    t = np.asarray(r["t"]); m = t >= 30.0
+    swing = float(np.ptp(np.asarray(r["ra_intraluminal"])[m]))
+
+    assert 1.5 <= swing <= 5.0, (
+        f"intraluminal RA respiratory swing {swing:.2f} mmHg outside 1.5-5.0. "
+        f"[PMID 31560715] measured 3.05 +/- 1.61 in 10 healthy awake supine "
+        f"volunteers, per-subject means 1.00-5.05 mmHg"
+    )
+
+    # THE OLD CAP MUST NOT COME BACK SILENTLY. At -1.0 cmH2O the swing was 0.86,
+    # below the band above — so this is already covered — but pinning the
+    # constant makes the intent explicit, since the cap was justified by a
+    # stability claim that re-measurement disproved (no instability anywhere
+    # from -1 to -12 cmH2O).
+    assert SPONTANEOUS_ITP_SWING_CMH2O <= -3.0, (
+        f"spontaneous ITP swing is {SPONTANEOUS_ITP_SWING_CMH2O} cmH2O. Values "
+        f"weaker than -3 cannot reproduce Hoff's measured swing; the previous "
+        f"-1.0 gave 0.86 mmHg against a measured 3.05"
+    )
+    assert SPONTANEOUS_ITP_BASELINE_CMH2O == -2.0, (
+        "baseline changed — it sets the MEAN intrathoracic pressure, a separate "
+        "and still-open gap (model mean RA 3.2 vs Hoff 6.94), and moving it "
+        "changes a different quantity from the one this test constrains"
+    )
+
+
+def test_raising_the_itp_swing_does_not_destabilise():
+    """The stability claim behind the old cap, tested rather than asserted.
+
+    The cap existed because "even a -5 mmHg ITP would flood the RA every
+    inspiratory cycle". Re-measured 2026-09-01: no instability at any swing from
+    -1 to -12 cmH2O. Whatever made that true was fixed by later work. This test
+    keeps the finding falsifiable — if a future change reintroduces the
+    instability, it fails here rather than being rediscovered as a mystery.
+    """
+    import model.circulation as circ
+    import math
+    from model.respiration import _CMHG_TO_MMHG
+
+    orig = circ.intrathoracic_pressure
+
+    def patched(swing):
+        def f(t, mode, rr, peep, pip, ie):
+            if mode == "none":
+                return 0.0
+            ph = (t % (60.0 / rr)) / (60.0 / rr)
+            v = -2.0 + swing * math.sin(math.pi * ph / ie) if ph < ie else -2.0
+            return v * _CMHG_TO_MMHG
+        return f
+
+    try:
+        for swing in (-5.0, -8.0, -12.0):
+            circ.intrathoracic_pressure = patched(swing)
+            p = SimParams()
+            p.ventilation_mode = "spontaneous"
+            p.resp_rate_bpm = 10.0
+            p.slow_dynamics_enabled = False
+            r = run_simulation(p, duration_s=30.0, dt=DT)
+            h = len(r["co"]) // 2
+            co = float(np.mean(np.asarray(r["co"])[h:]))
+            mp = float(np.mean(np.asarray(r["map"])[h:]))
+            assert np.isfinite(co) and 3.0 < co < 12.0, (
+                f"cardiac output {co:.2f} L/min at ITP swing {swing} cmH2O — the "
+                f"old stability cap may be needed again, which would be a finding"
+            )
+            assert np.isfinite(mp) and 50.0 < mp < 150.0, (
+                f"MAP {mp:.1f} mmHg at ITP swing {swing} cmH2O")
+    finally:
+        circ.intrathoracic_pressure = orig

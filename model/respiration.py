@@ -121,6 +121,53 @@ ABDOMINAL_TRANSMISSION = 0.21
 # sign; the magnitude is a different quantity and needs its own source.
 
 
+# ---------------------------------------------------------------------------
+# SPONTANEOUS BREATHING — pleural pressure baseline and swing
+# ---------------------------------------------------------------------------
+# At module level so they can be swept and asserted, rather than buried as
+# locals in a function body.
+#
+# BASELINE is the resting end-expiratory pleural pressure. Unchanged at
+# -2 cmH2O and still not independently sourced; it sets the MEAN intrathoracic
+# pressure and therefore the mean intraluminal right atrial pressure, which is
+# a separate gap — the model's mean is 3.2 mmHg against Hoff's measured 6.94.
+# That is a mean problem, not an amplitude problem, and is left alone here.
+#
+# SWING was -1.0 cmH2O and is now -3.5. THE OLD VALUE WAS AN ADMITTED WORKAROUND,
+# not a measurement: the comment it replaced said ITP "has to be kept small
+# enough that the RA self-limits via its own compliance before the cascade
+# destabilises", because "even a -5 mmHg ITP would flood the RA every
+# inspiratory cycle".
+#
+# THAT STABILITY CLAIM WAS RE-MEASURED ON 2026-09-01 AND IS FALSE. Sweeping the
+# swing from -1 to -12 cmH2O produced no instability at any value: at -5 the
+# model gives CO 6.88 and MAP 98.0; at -12, CO 7.20 and MAP 99.1, both entirely
+# stable. Whatever made the cap necessary was fixed by later work — most likely
+# the chamber rebuild, the venous rework, or the left-atrial compliance
+# correction, none of which existed when the cap was written.
+#
+# THE NEW VALUE IS CALIBRATED AGAINST A MEASURED ENDPOINT, not against a
+# pleural-pressure target. Hoff 2019 (PMID 31560715) gives the respiratory swing
+# in intraluminal CVP in 10 healthy awake supine volunteers: 3.05 mmHg
+# peak-to-peak. Measured against `ra_intraluminal`:
+#     swing -1.0 -> 0.86 mmHg     swing -3.5 -> 3.07 mmHg
+#     swing -3.0 -> 2.64          swing -5.0 -> 4.34
+# -3.5 cmH2O lands on 3.07 against the measured 3.05.
+#
+# Calibrating a parameter to an endpoint is normally the failure mode this
+# project guards against. It is legitimate HERE because the old value was not
+# sourced — it was a self-described workaround — and the new one is anchored to
+# a direct human measurement through the quantity it governs. The resulting
+# pleural swing of 2.57 mmHg peak-to-peak also sits inside the 2.2-4.4 mmHg that
+# textbooks give for quiet breathing, which is a cross-check rather than the
+# target, since that range is not sourced in this project's ledger.
+#
+# STILL WANTED: a measured dPes during quiet unloaded tidal breathing, to
+# constrain the DRIVER independently of the endpoint.
+SPONTANEOUS_ITP_BASELINE_CMH2O = -2.0
+SPONTANEOUS_ITP_SWING_CMH2O    = -3.5
+
+
 def intrathoracic_pressure(
     t: float,
     mode: str,
@@ -152,32 +199,13 @@ def intrathoracic_pressure(
     phase = (t % T) / T                    # 0–1 within one breath cycle
 
     if mode == 'spontaneous':
-        # Model constraint: the SVC→RA and IVC→RA connections are low-resistance,
-        # as large veins should be (VENOATRIAL_R = 0.02 since the valve rebuild;
-        # this comment said VALVE_R = 0.08 until 2026-08-25, which those junctions
-        # have not used since they stopped being modelled as valves). With a
-        # normal driving pressure of ~2 mmHg, even a −5 mmHg ITP would flood the
-        # RA every inspiratory cycle. The physiological limiter is not modelled,
-        # so ITP has to be kept small enough that the RA self-limits via its own
-        # compliance before the cascade destabilises.
-        #
-        # The limiter is NOT the Guyton waterfall, contrary to what this comment
-        # used to claim — see validation_log.md "PPV diagnosed" (2026-08-25) for
-        # the algebra: with the SVC inside the thoracic set, ITP cancels out of
-        # the waterfall form. What is actually missing is the respiratory swing
-        # in ABDOMINAL pressure (backlog item 27), which in a real subject moves
-        # with pleural pressure and partly cancels it on the IVC path.
-        #
-        # Calibration: baseline −2 cmH₂O, swing −1 cmH₂O (peak −3 cmH₂O =
-        # −2.2 mmHg), chosen so the RA restores equilibrium within the same
-        # breath. RSA (modelled separately) remains the main respiratory
-        # signature in HR.
-        baseline  = -2.0   # cmH₂O, resting end-expiratory
-        swing     = -1.0   # additional cmH₂O at mid-inspiration (total: −3 cmH₂O)
+        # See SPONTANEOUS_ITP_BASELINE_CMH2O / _SWING_CMH2O above.
         if phase < ie_ratio:
-            itp_cmh2o = baseline + swing * math.sin(math.pi * phase / ie_ratio)
+            itp_cmh2o = (SPONTANEOUS_ITP_BASELINE_CMH2O
+                         + SPONTANEOUS_ITP_SWING_CMH2O
+                         * math.sin(math.pi * phase / ie_ratio))
         else:
-            itp_cmh2o = baseline
+            itp_cmh2o = SPONTANEOUS_ITP_BASELINE_CMH2O
 
     elif mode == 'mechanical':
         # Airway pressure (PEEP→PIP) is attenuated by the chest wall before it

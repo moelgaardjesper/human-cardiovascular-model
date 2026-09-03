@@ -1023,43 +1023,10 @@ def run_simulation(
     # memmap rather than a pickle or npz because it needs no extra dependency, is
     # written incrementally rather than all at the end, and loads back with a
     # plain np.load(..., mmap_mode="r").
-    _disk = None
-    if output_path is not None:
-        import json
-        import os as _os
-        _os.makedirs(output_path, exist_ok=True)
-        _cols = ["t", "aortic_p", "map", "cvp", "la_pressure", "co", "hr", "sv",
-                 "dbp", "sbp", "lvedp", "cpp", "cop", "buckberg",
-                 "ankle_p", "brachial_p", "brachial_sbp", "brachial_dbp"]
-        _disk = {
-            "trend": np.lib.format.open_memmap(
-                _os.path.join(output_path, "trend.npy"), mode="w+",
-                dtype=np.float64, shape=(n_out, len(_cols))),
-            "volumes": np.lib.format.open_memmap(
-                _os.path.join(output_path, "volumes.npy"), mode="w+",
-                dtype=np.float64, shape=(n_out, len(comp))),
-            "cols": _cols,
-        }
-        with open(_os.path.join(output_path, "meta.json"), "w") as _f:
-            json.dump({
-                "columns": _cols,
-                "compartments": [c.name for c in comp],
-                "dt": dt, "duration_s": duration_s,
-                "output_every": output_every,
-                "n_out": n_out,
-                "hires_windows": [[a, b] for a, b in _hires_ranges_s],
-                "note": "trend.npy is (n_out, len(columns)); each row is the MEAN "
-                        "over its block of output_every steps, not a decimated "
-                        "sample. Rows after a crash are zero. The map, co, cpp, "
-                        "cop and buckberg columns are derived after the run and "
-                        "written once at the end, so in a CRASHED run map is "
-                        "empty and co/cpp/cop/buckberg are unsmoothed block "
-                        "means; everything else is correct up to n_written.",
-            }, _f, indent=2)
-
     # Storage
     aortic_p    = np.zeros(n_out)
     cvp_ts      = np.zeros(n_out)
+    ra_intra_ts = np.zeros(n_out)
     la_p_ts     = np.zeros(n_out)
     co_ts       = np.zeros(n_out)
     hr_ts       = np.zeros(n_out)
@@ -1119,6 +1086,56 @@ def run_simulation(
     # (t % T)/T, which is discontinuous whenever HR varies step-to-step.
     _cardiac_phase = 0.0
     _monitor_phase = 0.0
+
+    _disk = None
+    if output_path is not None:
+        import json
+        import os as _os
+        _os.makedirs(output_path, exist_ok=True)
+        # ONE list, not two. The column names and the arrays they come from are
+        # defined together so they cannot drift apart. They previously were two
+        # hand-maintained lists — a column name list and a positional tuple in
+        # the write below — and adding `ra_intraluminal` to one and not the
+        # other broke the round-trip with a shape error. Same failure mode as
+        # the hand-written field list that silently dropped `p_stiffen`, and the
+        # reason `apply_cardiac` exists. `t` is computed per row; `map` is a
+        # placeholder written after the loop because it is derived by smoothing.
+        _series = [("t", None), ("aortic_p", aortic_p), ("map", None),
+                   ("cvp", cvp_ts), ("la_pressure", la_p_ts), ("co", co_ts),
+                   ("hr", hr_ts), ("sv", sv_ts), ("dbp", dbp_ts),
+                   ("sbp", sbp_ts), ("lvedp", lvedp_ts), ("cpp", cpp_ts),
+                   ("cop", cop_ts), ("buckberg", buckberg_ts),
+                   ("ankle_p", ankle_p_ts), ("brachial_p", brachial_p_ts),
+                   ("brachial_sbp", brachial_sbp_ts),
+                   ("brachial_dbp", brachial_dbp_ts),
+                   ("ra_intraluminal", ra_intra_ts)]
+        _cols = [_nm for _nm, _ in _series]
+        _disk = {
+            "trend": np.lib.format.open_memmap(
+                _os.path.join(output_path, "trend.npy"), mode="w+",
+                dtype=np.float64, shape=(n_out, len(_cols))),
+            "volumes": np.lib.format.open_memmap(
+                _os.path.join(output_path, "volumes.npy"), mode="w+",
+                dtype=np.float64, shape=(n_out, len(comp))),
+            "cols": _cols,
+        }
+        with open(_os.path.join(output_path, "meta.json"), "w") as _f:
+            json.dump({
+                "columns": _cols,
+                "compartments": [c.name for c in comp],
+                "dt": dt, "duration_s": duration_s,
+                "output_every": output_every,
+                "n_out": n_out,
+                "hires_windows": [[a, b] for a, b in _hires_ranges_s],
+                "note": "trend.npy is (n_out, len(columns)); each row is the MEAN "
+                        "over its block of output_every steps, not a decimated "
+                        "sample. Rows after a crash are zero. The map, co, cpp, "
+                        "cop and buckberg columns are derived after the run and "
+                        "written once at the end, so in a CRASHED run map is "
+                        "empty and co/cpp/cop/buckberg are unsmoothed block "
+                        "means; everything else is correct up to n_written.",
+            }, _f, indent=2)
+
 
     for step, t in enumerate(t_eval):
         _oi = step // output_every       # output block index (see output_every above)
@@ -1218,6 +1235,13 @@ def run_simulation(
         brachial_sbp_ts[_oi] += max(_brachial_sbp_win)
         brachial_dbp_ts[_oi] += min(_brachial_dbp_win)
 
+        # Respiratory ITP at this instant, for the intraluminal RA trace below.
+        _itp_resp_now = (
+            intrathoracic_pressure(t, params.ventilation_mode, params.resp_rate_bpm,
+                                   params.peep_cmh2o, params.pip_cmh2o, params.ie_ratio)
+            if params.ventilation_mode != 'none' else 0.0
+        )
+
         # Positional ITP offset for CVP and LA-pressure reporting.
         # The baroreflex uses transmural CVP (p_cvp_edi) — wall-stretch drives
         # the reflex, not the absolute lumen pressure. Reported CVP is absolute
@@ -1229,6 +1253,22 @@ def run_simulation(
 
         aortic_p[_oi]    += p_ao
         cvp_ts[_oi]      += p_cvp_edi + itp_pos_now
+        # INTRALUMINAL right atrial pressure — what a CVC transducer actually
+        # traces, continuously, including the respiratory swing. `cvp` above
+        # deliberately omits respiratory ITP because clinical CVP is READ at
+        # end-expiration; that is the right convention for a single reported
+        # number and the wrong one for a waveform. Until this existed, no model
+        # output corresponded to a catheter trace, so the respiratory swing
+        # could not be compared to a measurement at all (backlog items 30, 31).
+        #
+        # The distinction is not cosmetic. Measured against Hoff 2019
+        # (PMID 31560715, 10 healthy awake supine volunteers, dCVP 3.05 mmHg),
+        # the TRANSMURAL swing is 0.14 mmHg and looks 22x too small, while the
+        # INTRALUMINAL swing at the same settings is 0.86 — and at a
+        # physiological -3 to -4 cmH2O pleural swing it reaches 2.6-3.5, i.e.
+        # on target. Comparing `cvp` to a catheter trace compares two different
+        # physical quantities.
+        ra_intra_ts[_oi] += p_cvp_edi + itp_pos_now + _itp_resp_now
         la_p_ts[_oi]     += p_la + itp_pos_now
         hr_ts[_oi]       += hr_eff
         dbp_ts[_oi]      += p_dbp
@@ -1245,14 +1285,11 @@ def run_simulation(
         if _disk is not None and (step % output_every == output_every - 1
                                   or step == n - 1):
             _c = _blk[_oi]
-            _disk["trend"][_oi] = (
-                (_oi * output_every + 0.5 * (_c - 1.0)) * dt,
-                aortic_p[_oi] / _c, 0.0, cvp_ts[_oi] / _c, la_p_ts[_oi] / _c,
-                co_ts[_oi] / _c, hr_ts[_oi] / _c, sv_ts[_oi] / _c,
-                dbp_ts[_oi] / _c, sbp_ts[_oi] / _c, lvedp_ts[_oi] / _c,
-                cpp_ts[_oi] / _c, cop_ts[_oi] / _c, buckberg_ts[_oi] / _c,
-                ankle_p_ts[_oi] / _c, brachial_p_ts[_oi] / _c,
-                brachial_sbp_ts[_oi] / _c, brachial_dbp_ts[_oi] / _c)
+            _disk["trend"][_oi] = [
+                (_oi * output_every + 0.5 * (_c - 1.0)) * dt if _nm == "t"
+                else 0.0 if _arr is None
+                else _arr[_oi] / _c
+                for _nm, _arr in _series]
             _disk["volumes"][_oi] = volumes_ts[_oi] / _c
             if _oi % flush_every == 0:
                 _disk["trend"].flush()
@@ -1338,9 +1375,9 @@ def run_simulation(
     # Every series above was accumulated with += over its block; divide to get the
     # mean. With output_every=1 every block holds one sample and this is a no-op,
     # which is what makes that case bit-for-bit identical to the old behaviour.
-    for _arr in (aortic_p, cvp_ts, la_p_ts, co_ts, hr_ts, sv_ts, dbp_ts, sbp_ts,
-                 brachial_sbp_ts, brachial_dbp_ts, lvedp_ts, cpp_ts, cop_ts,
-                 buckberg_ts, ankle_p_ts, brachial_p_ts):
+    for _arr in (aortic_p, cvp_ts, ra_intra_ts, la_p_ts, co_ts, hr_ts, sv_ts,
+                 dbp_ts, sbp_ts, brachial_sbp_ts, brachial_dbp_ts, lvedp_ts,
+                 cpp_ts, cop_ts, buckberg_ts, ankle_p_ts, brachial_p_ts):
         _arr /= _blk
     volumes_ts /= _blk[:, None]
     if slow_enabled:
@@ -1396,6 +1433,7 @@ def run_simulation(
         "aortic_p":    aortic_p,
         "map":         map_ts,
         "cvp":         cvp_ts,
+        "ra_intraluminal": ra_intra_ts,
         "la_pressure": la_p_ts,
         "co":          co_ts,
         "hr":          hr_ts,
