@@ -28,7 +28,23 @@ import numpy as np
 from .compartments import default_compartments, Compartment, ARTERIOLAR_SEGMENTS
 
 
-BSA_REF = 1.87   # m² — reference BSA for the default parameter set (70 kg, 175 cm male)
+# The body the default compartment set represents.
+REF_HEIGHT_CM = 175.0
+REF_WEIGHT_KG = 70.0
+
+# BSA_REF IS COMPUTED, NOT ASSIGNED, and that is the fix. It was 1.87, from the
+# initial commit, commented "(70 kg, 175 cm male)" — but no BSA formula gives
+# 1.87 for that body: Mosteller 1.8447, DuBois 1.8481, Haycock 1.8468,
+# Gehan-George 1.8539. The model uses Mosteller everywhere else, so the constant
+# disagreed with the function beside it.
+#
+# The consequence was quiet and systematic: every compartment scales by
+# bsa / BSA_REF, so `build_patient_params(175, 70)` — the reference patient
+# entered by their own height and weight — scaled everything by 0.9865 instead
+# of 1.0. A 1.4 % shrink applied to the exact case that should have been the
+# identity. Deriving it from the same function that measures every patient makes
+# the two incapable of disagreeing.
+BSA_REF = np.sqrt(REF_HEIGHT_CM * REF_WEIGHT_KG / 3600.0)   # = 1.8447 m²
 BV_REF  = 5000.0 # mL — reference total blood volume
 
 

@@ -127,9 +127,24 @@ Every change that touches physiology follows the same loop:
 3. **Add a pytest test citing the source** (DOI/PMID in the test docstring).
 4. **Add a `docs/validation_log.md` entry** recording what was measured and why.
 5. **The full suite must still pass — without loosening any existing assertion.**
+6. **Re-measure the headline claim of any open backlog item touching the same
+   compartments**, and annotate the entry with a dated claim-versus-measured table.
 
 The regression suite is a ratchet. If a change cannot leave it green without weakening a
 test, that is a finding to report, not a licence to retune.
+
+**Step 6 exists because backlog entries go stale SILENTLY.** An item gets fixed as a side
+effect of other work and nothing closes it. Three instances were found in a single audit on
+2026-09-01: item 20's pre/post-capillary ratio (claimed 25, measured 4.0 — fixed by
+`5ff2317`, which was aimed at a wiring error), item 24's "the ventricles do not empty"
+(claimed LVEF 40.8 %, measured 61.8 % — closed by the chamber rebuild, which was aimed at
+item 23), and a note claiming Luu's age tables were unavailable five days after they were
+transcribed. **Also re-measure BEFORE acting on an item** — one of those stale entries was
+picked as the next piece of work and the error was only caught because the first
+measurement disagreed with the entry.
+
+Staleness is not all-or-nothing: item 30 in the same audit had an exactly-correct pressure
+claim beside a volume claim that was 35x out. Check each number, not the entry.
 
 ### Model the physiology, not the result
 
