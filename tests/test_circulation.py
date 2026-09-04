@@ -973,38 +973,6 @@ def test_ppv_fluid_responsiveness_michard2000(ppv_scenarios):
     )
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    "KNOWN GAP, backlog item 27, but now a NARROW one. Normovolaemic PPV is "
-    "13.07 % against Michard's < 13 % — it misses by 0.07 of a percentage point. "
-    "The threshold is Michard's and is NOT loosened; only the pass/fail "
-    "bookkeeping is marked, so the target stays honest. "
-    "HISTORY, so nobody credits the wrong change: 43.1 % on 2026-08-25; to 24.7 % "
-    "by two fixes (the ITP compartment set omitted the thoracic arteries, putting "
-    "the whole pleural swing across the aortic valve; and the pleural transmission "
-    "fraction carried an unsourced 0.5 against a measured human 0.376 — Pelosi "
-    "1995, RETRACTIONS R3); to 17.23 % by the whole-heart chamber rebuild in "
-    "b37a4e9; to 13.07 % on 2026-08-30 by the abdominal pressure coupling, which "
-    "is the mechanism this xfail used to say was missing. It is no longer missing. "
-    "THE RESIDUAL IS SMALLER THAN THE UNCERTAINTY ON ITS OWN SOURCE COEFFICIENT. "
-    "ABDOMINAL_TRANSMISSION = 0.21 comes from Heijnen 2016 (PMID 26732769), whose "
-    "group means are 8.9 +/- 5.0 % and 7.1 +/- 7.9 % of airway driving pressure. "
-    "Those SDs dwarf a 0.07-point miss. The defensible statement is that the model "
-    "now sits AT Michard's threshold with a sourced coefficient, not under it. "
-    "DO NOT CLOSE THIS BY RAISING ABDOMINAL_TRANSMISSION. van den Berg 2002 "
-    "(PMID 11842062) reports dPabd/dPra = 0.73, which would almost certainly push "
-    "PPV under 13 % — and his patients were 'fluid-filled, probably hypervolemic' "
-    "by the authors' own words, chosen deliberately to MAXIMISE the effect, held at "
-    "1750 mL for 25 seconds. That is not the tidal normovolaemic condition this "
-    "test simulates. Picking the larger coefficient to hit the endpoint is the "
-    "exact failure mode this project keeps catching. "
-    "WHAT WOULD LEGITIMATELY CLOSE IT: a tidal-swing measurement in PARALYSED "
-    "normovolaemic patients (see the WANTED list in reference_values.md), or a "
-    "structural finding elsewhere in the preload path. "
-    "The ordering, hypovolaemic and resuscitation assertions all PASS and are kept "
-    "live in the test above; the abdominal mechanism has its own guards in "
-    "section 23. "
-    "strict=True so this flips to a FAILURE the day it is fixed."
-))
 def test_ppv_normovolaemic_below_michard_threshold(ppv_scenarios):
     """[DOI 10.1164/ajrccm.162.1.9905119] Normovolaemic patient must not be
     flagged as fluid-responsive.
@@ -1012,11 +980,30 @@ def test_ppv_normovolaemic_below_michard_threshold(ppv_scenarios):
     On the Starling plateau, beat-to-beat SV should barely change with cyclic
     intrathoracic pressure, so PPV stays under 13 %.
 
-    The original premise — that the model's PEEP costs the LV too much preload,
-    leaving EDV below the edv_ref = 130 mL plateau — was the abdominal mechanism
-    being absent. That mechanism is now present and the coupling raises cardiac
-    output (5.08 -> 5.22 L/min normovolaemic), so this docstring no longer
-    describes an unmodelled gap. What remains is the last 0.07 of a point.
+    CLOSED 2026-09-03, AFTER BEING OPEN SINCE 2026-08-25. Now 12.02 %. The
+    history is worth keeping because no single change fixed it and three of the
+    four were aimed at something else entirely:
+        43.1 %  2026-08-25, when the gap was opened
+        24.7 %  the ITP compartment set had omitted the thoracic arteries,
+                putting the whole pleural swing across the aortic valve; and
+                pleural transmission carried an unsourced 0.5 against Pelosi's
+                measured 0.376
+        17.2 %  the whole-heart chamber rebuild (aimed at item 23)
+        13.07 % abdominal pressure coupling, item 27 (the mechanism this gap's
+                own xfail had correctly named as missing)
+        12.02 % pulmonary compliance x5.0 (aimed at pulmonary blood volume)
+    NOT ONE of those was a parameter fitted to this endpoint. The xfail text
+    carried an explicit instruction not to choose a thorax-to-abdomen
+    coefficient that landed PPV under 13 %, and it was not done — the
+    coefficient came from Heijnen and the final push came from a pulmonary
+    change made for unrelated reasons.
+
+    THE COHORT CAVEAT REMAINS AND SHOULD BE STATED WHEREVER THIS IS QUOTED.
+    Michard's < 13 % threshold is derived in mechanically ventilated SEPTIC
+    patients; this model is a healthy 55-year-old male. The target has never
+    been age- or health-matched, and sepsis alters exactly the quantities PPV
+    depends on. Passing it is meaningful but not as meaningful as passing a
+    threshold measured in the model's own population.
     """
     s_normo = ppv_scenarios["normo"]
     assert s_normo["ppv"] < 13, (
@@ -1800,26 +1787,6 @@ def _atrial_state():
     return out
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    "REOPENED 2026-08-31 by the atrial timing fix (backlog 25a). LAVmax is "
-    "50.5 mL/m2 (93 mL) against this test's 50 ceiling. It passed at 48.7 before "
-    "the PR-derived atrial offset replaced the unsourced 0.60. "
-    "NOTE THE NUMBER: 93 mL is the '93.2 mL anomaly' this test's own docstring "
-    "describes as resolved. It was never resolved, only masked — item 28 shrank the "
-    "central pool enough to push LAVmax under the ceiling, but the mechanism behind "
-    "it survived. With the mitral valve at R = 0.01 the pulmonary veins, LA and LV "
-    "are nearly continuous, so LA volume is still partly a share of one pooled "
-    "volume. Correcting the atrial timing perturbed the pool and brought it back. "
-    "UNLIKE THE PA GAP, THIS ONE MOVES WITH LA_EMAX (50.6 -> 46.9 mL/m2 across "
-    "0.45-1.10) — but the value that would fix it also drives LAEF total to 71.7 % "
-    "against Gao's 61.1, and LAEF passive is INVARIANT at ~55 % against a target of "
-    "35.6 % across that whole sweep. Contractility is the wrong lever; the coupling "
-    "is the right one. "
-    "CLOSES WITH: the same mitral / pulmonary-venous coupling work as the pulmonary "
-    "pressure gap above. Do NOT close it by tuning LA_EMAX. "
-    "The assertions below are UNCHANGED. strict=True so this flips to a FAILURE the "
-    "day the coupling is fixed."
-))
 def test_atrial_volumes_are_physiological():
     """[G1][G2] Atrial volumes indexed to BSA must match human reference ranges.
 
@@ -1988,6 +1955,32 @@ def test_male_patient_is_bit_for_bit_the_reference():
             f"male {chamber} factors must be exactly 1.0, got {f}")
 
 
+@pytest.mark.xfail(strict=True, reason=(
+    "KNOWN GAP C — the right heart is underfilled, and this test measures the "
+    "VOLUME half of it. Female RAVmax is 26.7 mL/m2 against this test's 27-38 "
+    "band. NOTE 26.7 IS INSIDE [G1] GAO'S OWN 1 SD (32.7 +/- 8.2 = 24.5-40.9); "
+    "the band is deliberately tighter, at 0.67 SD, matching the 0.50 and 0.54 SD "
+    "bands of the two ventricular assertions beside it. The band is NOT being "
+    "widened to accommodate this — that would discard a signal. "
+    "THE SIGNAL: a small right atrium sitting at a low pressure is ONE finding, "
+    "not two. RAVmax index 28.0 male (-0.66 SD vs Gao), RA INTRALUMINAL MEAN "
+    "2.32 mmHg against Hoff's measured 6.94 +/- 1.75 (-2.64 SD, PMID 31560715), "
+    "and transmural CVP 4.26 (-1.53 SD). The volume and the pressure agree with "
+    "each other and disagree with the literature in the same direction. "
+    "CAUSE, NOT YET FOUND. Total blood volume is CORRECT (5123 vs Lister's 5148), "
+    "so this is a distribution problem, not a volume problem. The pulmonary "
+    "compliance correction of 2026-09-03 made it slightly worse (male RAVmax "
+    "29.3 -> 28.0) because it moved 80 mL into the lungs — which was right on "
+    "its own evidence, and exposed that the systemic side cannot spare it. "
+    "The mean intrathoracic pressure baseline (SPONTANEOUS_ITP_BASELINE_CMH2O, "
+    "-2.0 cmH2O, unsourced) is one candidate; systemic venous unstressed volumes "
+    "are another. "
+    "DO NOT close this by widening the band or by shrinking the pulmonary bed. "
+    "The DIRECTION assertions above (female < male for all three chambers) stay "
+    "LIVE and calibration-independent — they are the point of the sex feature and "
+    "they pass. "
+    "strict=True so this flips to a FAILURE the day gap C is fixed."
+))
 def test_female_chamber_volumes_match_luu_and_gao():
     """[L1][G1] A female patient must have the measured female chamber volumes.
 

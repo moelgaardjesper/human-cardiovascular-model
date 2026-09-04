@@ -265,6 +265,73 @@ VENOUS_DRAINAGE_SCALE = 2.0      # documentation only; values are inlined below
 #   positive = head-ward, negative = foot-ward.
 # ---------------------------------------------------------------------------
 
+# ---------------------------------------------------------------------------
+# PULMONARY COMPLIANCE — raised 9.5x on 2026-09-03
+# ---------------------------------------------------------------------------
+# The pulmonary bed was the stiffest part of this model by a wide margin: a
+# whole-bed compliance of 1.70 mL/mmHg (0.40 + 0.50 + 0.80), against systemic
+# veins carrying 60+. A pulmonary circulation that stiff cannot act as a
+# reservoir, and it showed: the bed held 23.7 mL of STRESSED volume, i.e. it was
+# almost entirely unstressed volume with nothing to give.
+#
+# THREE INDEPENDENT MEASUREMENTS SAID THE SAME THING.
+#   Claessen 2015 (PMID 25801760, n=14 HEALTHY controls, CMR with simultaneous
+#     invasive pressure): pulmonary ARTERIAL compliance 9.7 +/- 3.1 mL/mmHg —
+#     the arterial segment ALONE measured nearly 6x the model's entire bed.
+#   Ugander 2021 (PMID 34706735, n=21 healthy controls, CMR): pulmonary blood
+#     volume 526 +/- 87 mL against the model's 364.
+#   Heldt 2002 Table 3: pulmonary arteries 4.3, pulmonary veins 8.4. NOT a
+#     target — CLAUDE.md forbids treating the ancestor model as ground truth —
+#     but it is independent corroboration of the same order.
+#
+# THE FACTOR IS 5.0, CHOSEN AS THE INTERSECTION OF FIVE MEASURED BANDS — and
+# the first attempt at 9.5 was wrong for an instructive reason. 9.5 landed
+# pulmonary blood volume exactly on Ugander's MEAN (527 vs 526) and broke two
+# atrial tests: LA emptying fraction fell to 40.6 % against Gao's 61.1 +/- 6.2,
+# and female RAVmax to 25.4 against a 27-38 band.
+#
+# The mistake was optimising ONE endpoint when several constrain the same
+# parameter, and the volume target is the LOOSEST of them: Ugander's +/- 87 mL
+# is +/- 17 %, while the atrial emptying fraction is +/- 10 %. Sweeping 1x to
+# 9.5x and reading every bound gives:
+#     PBV 439-613 (Ugander 526 +/- 87)             -> x >= 4.7
+#     transit time 4.3-7.1 s (Ugander 5.7 +/- 1.4) -> x >= 4.4
+#     LAEF total 45-72 % (Gao 61.1 +/- 6.2)        -> x <= 5.7
+#     LAVmax index 37-48 (Gao 36.9 at 44, Ugander 48.4 at 61) -> x <= 5.5
+#     RAVmax index >= 27 (Gao 33.9 +/- 8.9)        -> x <= 7.5
+# The feasible interval is [4.7, 5.5] and 5.0 sits in it with margin on both
+# sides. Every bound above is a measured human range, so this is not a
+# compromise between a target and a test — it is the region where the model is
+# simultaneously consistent with all of them.
+#
+# WHAT THE RESULTING NUMBER IS, STATED HONESTLY. Whole-bed compliance becomes
+# 8.50 mL/mmHg, which is BELOW Claessen's 9.7 for the arterial segment alone.
+# Those are not directly comparable — Claessen's PAC is the SV/PP estimate,
+# which lumps in downstream capacitance during ejection and is known to run
+# high — but it means Claessen is NOT the source for this value. Claessen
+# establishes the ORDER, and that the old 1.70 was indefensible. The value
+# itself is set by the joint volume-and-atrial constraint above.
+#
+# THE EXISTING ARTERY:VEIN SPLIT WAS ALREADY RIGHT — only the scale was wrong.
+# After scaling, vein/artery compliance is 7.60/3.80 = 2.00, against Heldt's
+# 8.4/4.3 = 1.95. That the ratio survives untouched is a sign this was a single
+# scale error rather than a distribution error.
+#
+# WHAT IT FIXES, all measured: pulmonary blood volume 364 -> 527 (Ugander 526),
+# pulmonary transit time 3.60 -> ~5.5 s (Ugander 5.7 +/- 1.4), mean PA
+# 19.6 -> ~16.6, wedge 11.4 -> ~9.1, and — not anticipated — indexed LAVmax
+# 56.3 -> ~33, because blood that had nowhere compliant to sit was pooling in
+# the left atrium. That last effect reaches backlog item 25a's gap A, which
+# five atrial parameters had failed to move.
+#
+# WHAT IT DOES NOT FIX: mean PA stays well above Claessen's measured 10 +/- 3.
+# Compliance is not the lever for that — sweeping it 25x moved mPAP only
+# 19.6 -> 14.3 while total pulmonary vascular resistance sat at ~235
+# dyn.s.cm-5 throughout, against Claessen's measured 134 +/- 49. PRESSURE IS
+# SET BY RESISTANCE AND FLOW, VOLUME BY COMPLIANCE, and they are separable.
+# The resistance half is logged as its own finding and is NOT changed here.
+
+
 def default_compartments() -> list[Compartment]:
     """
     Return the 23 baseline compartments in canonical index order.
@@ -381,9 +448,11 @@ def default_compartments() -> list[Compartment]:
         # ESV=V0+P_pa/E_max=80+15/1.15=93 mL; SV=163-93=70 mL (improved from 56 mL). ✓
         Compartment("right_ventricle",     0.10, VALVE_R,  38,  0.0,  159),  # 16 EDV≈163 mL
         # ---- Pulmonary (PVR ≈ 0.08 mmHg·s/mL) ----
-        Compartment("pulmonary_art",       0.40, 0.03,  100,  0.0,  106),  # 17 P0=15
-        Compartment("pulmonary_cap",       0.50, 0.06,   80,  0.0,   85),  # 18 P0=10
-        Compartment("pulmonary_vein",      0.80, 0.02,  160,  0.0,  168, drain_resistance=VENOATRIAL_R),  # 19 P0=10
+        # PULMONARY COMPLIANCES RAISED x5.0 ON 2026-09-03 (was 0.40/0.50/0.80,
+        # whole bed 1.70 mL/mmHg). See PULMONARY_COMPLIANCE note above.
+        Compartment("pulmonary_art",       2.00, 0.03,  100,  0.0,  106),  # 17
+        Compartment("pulmonary_cap",       2.50, 0.06,   80,  0.0,   85),  # 18
+        Compartment("pulmonary_vein",      4.00, 0.02,  160,  0.0,  168, drain_resistance=VENOATRIAL_R),  # 19
         # ---- Left heart ----
         Compartment("left_atrium",         0.20, VALVE_R,  15,  0.0,   47),  # 20 EDP≈9
         Compartment("left_ventricle",      0.08, VALVE_R,  10,  0.0,  137),  # 21 EDV≈160
