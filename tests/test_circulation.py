@@ -578,87 +578,70 @@ def test_coronary_perfusion_buckberg1972(supine_175_75, tachycardia_175_75_nobar
     )
 
 
-def test_cvp_baseline_calibration(supine_175_75):
-    """Supine CVP must sit in the normal range.
+def test_ra_pressure_baseline_richter2021():
+    """Resting right atrial pressure, compared LIKE WITH LIKE.
 
-    BAND 2-4 -> 1-6 mmHg (2026-08-26). The old assertion was not comparing like
-    with like, in three ways at once. It cited Lloyd-Donald 2025
-    (DOI 10.1111/anae.16633) for "2-3 mmHg", which is a NARRATIVE REVIEW rather
-    than a cohort measurement, and which defines CVP as the intraluminal
-    pressure of the SUPERIOR VENA CAVA where this test reads the RIGHT ATRIUM.
-    The model also reports a rolling MINIMUM of RA pressure where a clinical
-    transducer displays a MEAN.
+    [PMID 33655769, DOI 10.1152/ajplung.00583.2020] Richter MJ et al. 2021,
+    Am J Physiol Lung Cell Mol Physiol 320:L715-25. Right heart catheterisation
+    with a conductance catheter in 15 patients WITHOUT pulmonary hypertension:
+        right atrial pressure       3 [2-6] mmHg   median [IQR]
+        RV end-diastolic pressure   4 [3-5] mmHg
+    Internally coherent — the ventricle sits just above the atrium across an
+    open tricuspid valve.
 
-    WHERE 1-6 COMES FROM. The upper bound is Rudski 2010, the ASE right-heart
-    guideline (PMID 20620859, DOI 10.1016/j.echo.2010.05.010), Table 3: an IVC
-    <= 2.1 cm collapsing > 50 % with a sniff indicates a NORMAL RA pressure of
-    3 mmHg, range 0-5. That is the only normal-POPULATION reference available —
-    echocardiography being the one modality applicable to healthy awake
-    volunteers — and 6 allows one further mmHg for the trough-vs-mean
-    convention below. Everything else in the ledger is measured in patients and
-    reads higher: Maas 2009 Pcv 6.72 +/- 2.26 (sedated, ventilated, PEEP 5),
-    Ferguson 1989 ~7.5 (one cath-lab patient), Cecconi 1998 9.1 +/- 4.3
-    (n=114, cardiac disease).
+    WHY THIS SOURCE REPLACED HOFF, AND IT IS A SITE QUESTION, NOT A SCATTER ONE.
+    The band was 4-10 mmHg from Hoff 2019 (PMID 31560715). Re-reading Hoff's
+    Methods on 2026-09-09 showed the catheter was "inserted via the left basilic
+    vein to the LEFT SUBCLAVIAN VEIN", with position confirmed only by waveform
+    and never by imaging. That is a subclavian venous pressure one site upstream
+    of the right atrium; the authors never call it a right atrial pressure, and
+    the paper reports NO absolute resting CVP at all — the 6.94 this project
+    used was our own derivation from their raw waveform archive.
+    Richter measured the right atrium itself, and matches this model's reference
+    patient far better besides: age 59 +/- 17 against the model's 55 (Hoff was
+    25 +/- 3) and 14 of 15 male against the model's male default (Hoff 11 M/9 F).
+    Site, age and sex all point the same way.
+    Hoff remains the source for the respiratory SWING (dCVP), which is a
+    difference and so is insensitive to a constant site offset — see
+    `test_ra_intraluminal_respiratory_swing`.
 
-    WHY THE LOWER BOUND IS 1 AND NOT 0. Physiologically RA pressure can be 0 and
-    intraluminal pressure goes frankly negative during spontaneous inspiration
-    — Rudski's own normal range starts at 0. But `_cardiac_pressure` returns
-    max(0.0, E*(V-V0)), so the model's atrial pressure is FLOORED AT ZERO by
-    construction, and at supine `itp_pos` is 0. An assertion of cvp >= 0 could
-    therefore never fail and would assert nothing. A floor of 1 is a real
-    assertion: it catches a drained right atrium.
-
-    CAVEAT, because it cuts against the upper bound: Rudski's values are
-    ASSIGNED from IVC appearance in order to compute pulmonary artery pressure,
-    not measured RAP distributions, and the guideline itself lists as a
-    disadvantage that "IVC collapse does not accurately reflect RA pressure".
-
-    The model reads 5.7 — inside the band, but near the top of it, and above
-    Rudski's normal range once the ~1 mmHg trough-to-mean offset is added
-    (model mean RA is about 6.4). That is a real if modest discrepancy and it is
-    NOT papered over: it belongs to backlog item 28, where CVP, mean systemic
-    filling pressure and resistance to venous return are bound together by
-    CVP = MSFP - CO x Rvr and cannot be moved independently.
-
-    BAND REVISED TO 4-10 ON 2026-09-01, AND THE OLD ONE WAS WRONG AT BOTH ENDS.
-    Everything above is superseded. Hoff 2019 (PMID 31560715, PMC6764667) supplies
-    what item 31 searched for twice and concluded "possibly does not exist": ten
-    HEALTHY, AWAKE, SUPINE volunteers with INVASIVELY measured CVP, catheterised
-    for an LBNP protocol. Resting arm, from the authors' own raw data archive:
-        mean 6.94, SD 1.75, median 7.23, individual values 4.3 to 9.8 mmHg.
-    NOT ONE of the ten fell below 4.3, so the old floor of 1 asserted almost
-    nothing and the old ceiling of 6 sat BELOW the measured mean.
-
-    THE SOURCES SPLIT BY METHOD, NOT BY SCATTER. Every INVASIVE measurement
-    clusters at 7-9: Hoff 6.94 (healthy awake), Maas 6.72 (post-op, PEEP 5),
-    van den Berg 9 +/- 4 (post-CABG), Ferguson ~7.5 (cath lab, n=1). The
-    ECHO-derived and review figures say 2-3: Rudski's 3 (range 0-5) is ASSIGNED
-    from IVC appearance to compute pulmonary pressures, and that guideline itself
-    warns "IVC collapse does not accurately reflect RA pressure";
-    Lloyd-Donald 2025 gives 2-3 in review. The catheter is the reference standard,
-    so the band follows the catheter. All eight sources stay tabulated in
-    reference_values.md.
-
-    AGE IS NOT A CONFOUNDER HERE, AND THAT WAS CHECKED RATHER THAN ASSUMED.
-    Hoff's cohort is 25 +/- 3 while this model's reference is 55, so by the
-    match-the-cohort rule the comparison should be made at 25. The model's CVP is
-    essentially age-invariant: 4.51 at 25, 4.72 at 55, 4.87 at 70 — a 0.36 mmHg
-    range. Matching the age moves the model AWAY from Hoff by 0.2 mmHg rather
-    than toward it, so the discrepancy is not an age artefact.
-
-    History: strict xfail from 2026-08-25 against a 2-4 band; widened to 2-8 on
-    2026-08-26; tightened to 1-6 the same day once Rudski was read; revised to
-    4-10 on 2026-09-01 on Hoff's measured cohort. The trough-vs-mean convention
-    question remains backlog item 31.
+    AND THE COMPARED QUANTITY CHANGED TOO. The old assertion read the model's
+    `cvp` output, which is TRANSMURAL and a rolling end-diastolic MINIMUM. A
+    catheter reads INTRALUMINAL pressure at END-EXPIRATION. This test now
+    measures that, which is why it can use the source's own band rather than
+    padding it for a convention mismatch.
     """
-    cvp = supine_175_75["cvp"]
-    assert 4.0 <= cvp <= 10.0, (
-        f"Supine CVP {cvp:.1f} mmHg outside 4-10 mmHg. Band from Hoff 2019 "
-        f"(PMID 31560715), the only healthy-awake cohort with INVASIVELY "
-        f"measured CVP: 6.94 +/- 1.75 mmHg in 10 supine volunteers, individual "
-        f"values 4.3 to 9.8. Not one subject fell below 4.3. The model reports a "
-        f"rolling MINIMUM, about 1 mmHg below the mean a transducer would show, "
-        f"which is why the floor is 4 rather than Hoff's observed 4.3."
+    comps, cardiac = build_patient_params(175, 75, hr_bpm=70)
+    params = SimParams(compartments=comps)
+    apply_cardiac(params, cardiac)
+    params.hr_bpm           = 70
+    params.ventilation_mode = "spontaneous"
+    params.resp_rate_bpm    = 15.0
+    r = run_simulation(params, duration_s=LIT_DURATION, dt=DT)
+
+    t     = np.asarray(r["t"])
+    h     = len(t) // 2
+    t     = t[h:]
+    intra = np.asarray(r["ra_intraluminal"])[h:]
+    trans = np.asarray(r["cvp"])[h:]
+
+    # End-expiration: the last 15 % of each respiratory cycle, where
+    # intrathoracic pressure is least negative and a transducer is read.
+    period = 60.0 / params.resp_rate_bpm
+    ee     = ((t % period) / period) > 0.85
+    rap_ee = float(np.mean(intra[ee]))
+
+    assert 2.0 <= rap_ee <= 6.0, (
+        f"end-expiratory intraluminal RA pressure {rap_ee:.2f} mmHg outside "
+        f"Richter's measured IQR of 2-6 (median 3), n=15 non-PH controls by "
+        f"right heart catheterisation"
+    )
+    # The transmural value must sit BELOW the intraluminal one at end-expiration,
+    # because intrathoracic pressure is negative in a spontaneously breathing
+    # supine subject. This is a sign check on the ITP wiring, not a calibration.
+    assert float(np.mean(trans[ee])) > rap_ee, (
+        "transmural RA pressure is not above intraluminal at end-expiration — "
+        "the respiratory ITP term has the wrong sign"
     )
 
 
@@ -702,18 +685,27 @@ def test_propofol_claeys1988():
 
 def test_rsa_spontaneous_breathing_hirsch_bishop1981():
     """[Hirsch & Bishop 1981] Spontaneous breathing produces an HR
-    oscillation of 3-10 bpm peak-to-peak at 15 breaths/min."""
+    oscillation of 3-10 bpm peak-to-peak at 15 breaths/min.
+
+    BOTH statistics are measured over the SETTLED half of the run. They used
+    to disagree: the standard deviation took the second half while the
+    peak-to-peak took the whole array, so the p-p figure was dominated by the
+    start-up transient as the model converges away from `init_volume` (which
+    is not the true equilibrium — see compartments.py). On 2026-09-04 the
+    full-run p-p read 8.55 bpm against a settled 4.26, so the old ceiling of
+    12.0 was really a limit on transient size and not on RSA at all.
+    With the window corrected the band can be the literature one."""
     p = SimParams()
     p.ventilation_mode = 'spontaneous'
     p.resp_rate_bpm    = 15.0
     r = run_simulation(p, duration_s=30, dt=DT, use_baroreflex=True)
-    hr = r['hr']
-    hr_std   = float(np.std(hr[len(hr) // 2:]))
+    hr = np.asarray(r['hr'])[len(r['hr']) // 2:]
+    hr_std   = float(np.std(hr))
     hr_range = float(np.max(hr) - np.min(hr))
 
     assert hr_std > 0.3, f"RSA not detectable: HR std={hr_std:.2f} bpm"
-    assert hr_range < 12.0, f"RSA excessive: HR p-p={hr_range:.2f} bpm"
-    assert hr_range > 0.5, f"RSA not measurable: HR p-p={hr_range:.2f} bpm"
+    assert hr_range < 10.0, f"RSA above Hirsch & Bishop: HR p-p={hr_range:.2f} bpm"
+    assert hr_range > 3.0, f"RSA below Hirsch & Bishop: HR p-p={hr_range:.2f} bpm"
 
 
 # ===========================================================================
@@ -1052,11 +1044,11 @@ def test_spinal_anaesthesia_malmqvist1987():
 # 10. Vasopressin dose-response — [PMID: 11873030, Patel 2002]
 # ===========================================================================
 
-def _run_vasopressin(units_hr):
+def _run_vasopressin(units_hr, baro=True):
     p = SimParams()
-    p.baroreflex_enabled = True
+    p.baroreflex_enabled = baro
     p.drug_factors = combined_drug_factors({"vasopressin": units_hr})
-    r = run_simulation(p, duration_s=20, dt=DT)
+    r = run_simulation(p, duration_s=20, dt=DT, use_baroreflex=baro)
     h = len(r['map']) // 2
     return {k: float(np.mean(r[k][h:])) for k in ('map', 'hr', 'co')}
 
@@ -1087,9 +1079,41 @@ def test_vasopressin_dose_response_patel2002():
     dco_pct = (v2['co'] - v0['co']) / v0['co'] * 100
     assert abs(dco_pct) < 20,  f"CO not maintained at 2 U/hr: {dco_pct:+.1f}% (lit ~0%)"
 
-    # HR unchanged (no chronotropy)
-    dhr = abs(v2['hr'] - v0['hr'])
-    assert dhr < 8,  f"HR changed with vasopressin: Δ{dhr:.1f} bpm (lit: no chronotropy)"
+    # NO DIRECT CHRONOTROPY — measured with the baroreflex OFF, which is the
+    # only way to isolate the drug's own action on the sinus node. This is a
+    # STRICTER test than the one it replaces: it requires the effect to be
+    # exactly zero, not merely small.
+    #
+    # It used to be measured with the reflex ON and asserted |dHR| < 8 bpm.
+    # That conflates two different claims. Vasopressin raises MAP by ~10 mmHg
+    # at 2 U/hr, and a baroreflex with the human gain (0.85 bpm/mmHg, Fritsch
+    # 1989) must answer that with ~9 bpm of bradycardia — which is also what
+    # vasopressin does at the bedside. Patel 2002 reports MAP and cardiac index
+    # and does not support an "HR unchanged" claim; its patients were in septic
+    # shock on other vasopressors. The old assertion passed only because the
+    # reflex's heart-rate arm was then ±5 bpm wide in total.
+    n0 = _run_vasopressin(0.0, baro=False)
+    n2 = _run_vasopressin(2.0, baro=False)
+    assert abs(n2['hr'] - n0['hr']) < 0.1, (
+        f"vasopressin has a DIRECT chronotropic effect: {n0['hr']:.2f} -> "
+        f"{n2['hr']:.2f} bpm with the baroreflex off (lit: none)"
+    )
+    assert n2['map'] > n0['map'], "vasopressin did not raise MAP without the reflex"
+
+    # With the reflex intact the HR change must be BRADYCARDIA, and must be
+    # explained by the pressure rise at roughly the calibrated reflex gain.
+    dhr = v2['hr'] - v0['hr']
+    dmap = v2['map'] - v0['map']
+    assert dhr < 0, f"vasopressin raised HR by {dhr:+.1f} bpm; reflex bradycardia expected"
+    implied_gain = abs(dhr) / max(dmap, 1e-6)
+    assert 0.5 < implied_gain < 1.3, (
+        f"HR change {dhr:+.1f} bpm for dMAP {dmap:+.1f} mmHg implies a reflex gain of "
+        f"{implied_gain:.2f} bpm/mmHg, away from the calibrated 0.85 (Fritsch 1989)"
+    )
+    assert abs(dhr) < 15, (
+        f"reflex bradycardia of {abs(dhr):.1f} bpm exceeds anything vasopressin "
+        f"produces clinically"
+    )
 
 
 # ===========================================================================
@@ -1169,13 +1193,24 @@ def test_epinephrine_biphasic_freyschuss1986():
     - MAP_high > MAP_low (α dominance emerges, biphasic pattern)
     """
     base     = _run_epi(0.00)
-    low_dose = _run_epi(0.02)   # β-dominant: CO↑, SVR↓/neutral, MAP ~unchanged
-    high_dose = _run_epi(0.30)  # α-dominant: CO↑↑, SVR↑↑, MAP↑↑
+    low_dose = _run_epi(0.02)   # β-dominant, inside Freyschuss's range
+    mid_dose = _run_epi(0.05)   # β-dominant, top of Freyschuss's range
+    high_dose = _run_epi(0.30)  # α-dominant — OUTSIDE Freyschuss's range
 
-    # CO increases monotonically with dose (β1 inotropy dominates across all doses;
-    # Freyschuss: "marked and concentration-dependent increases in SV and CO")
+    # CO rises with dose THROUGH THE RANGE FREYSCHUSS ACTUALLY STUDIED
+    # ("marked and concentration-dependent increases in SV and CO").
     assert low_dose['co']  > base['co'],      f"Low-dose epi: CO did not rise: {base['co']:.2f}→{low_dose['co']:.2f}"
-    assert high_dose['co'] > low_dose['co'],  f"High-dose epi: CO not > low-dose: {low_dose['co']:.2f}→{high_dose['co']:.2f}"
+    assert mid_dose['co'] > low_dose['co'],   f"Mid-dose epi: CO not > low-dose: {low_dose['co']:.2f}→{mid_dose['co']:.2f}"
+
+    # NO CO ASSERTION AT 0.30 mcg/kg/min. Freyschuss infused into the
+    # physiological, β2-dominant range and reported vascular resistances
+    # FALLING throughout; the α-dominant region is an extrapolation of this
+    # model's own PD curve, which `validation_log.md` has said in writing since
+    # the test was written. Asserting a CO ordering there tested the
+    # extrapolation against no source at all.
+    # Measured 2026-09-04: CO peaks at 0.05 (7.39 L/min) and settles to 7.11 by
+    # 0.30 as the drug's SVR factor reaches 1.98 and afterload limits ejection.
+    # Whether that plateau is real is UNVALIDATED — see backlog item 38.
 
     # Biphasic MAP: at vasopressor dose (0.30) α dominates → MAP well above low-dose MAP
     # Freyschuss only studied low/physiological doses (their high dose still shows SVR↓);
@@ -2986,3 +3021,215 @@ def test_raising_the_itp_swing_does_not_destabilise():
                 f"MAP {mp:.1f} mmHg at ITP swing {swing} cmH2O")
     finally:
         circ.intrathoracic_pressure = orig
+
+
+# ===========================================================================
+# 28. Heart-rate arm of the arterial baroreflex — Fritsch 1989
+#
+# [28] PMID 2916705  DOI 10.1152/ajpregu.1989.256.2.R549
+#      Fritsch JM, Rea RF, Eckberg DL (1989) Am J Physiol 256:R549-53.
+#      "Carotid baroreflex resetting during drug-induced arterial pressure
+#      changes in humans." n=10 healthy volunteers, ages 23-43.
+#      Blood pressure was changed in BOTH directions in ONE cohort and each
+#      change held for 25 min, giving a matched pair of heart-rate responses:
+#          nitroprusside   MAP -11 mmHg   R-R 932 ->  820 ms   HR  +8.8 bpm
+#          phenylephrine   MAP +19 mmHg   R-R 932 -> 1251 ms   HR -16.4 bpm
+#      Neither drug is meaningfully chronotropic, so both are reflex responses.
+# ===========================================================================
+
+def _reflex_hr_steady(map_held, dt=0.01, steps=30_000):
+    """Steady-state hr_delta for a held MAP, driving the real controller with
+    the CARDIOPULMONARY ARM SWITCHED OFF, so this measures the arterial arm.
+
+    This is the model's analogue of Fritsch's neck-chamber sequence: the
+    reflex is measured OPEN LOOP, without letting blood pressure move in
+    response. His sequences last ~15 s for exactly that reason.
+
+    A CAVEAT ON THE TARGETS, recorded rather than corrected. Fritsch changed
+    arterial pressure with drugs that also move filling pressure — nitroprusside
+    is a venodilator (CVP falls, which ADDS tachycardia) and phenylephrine a
+    venoconstrictor (CVP rises, which ADDS bradycardia). His heart-rate changes
+    are therefore the sum of both arms, and attributing all of each to the
+    arterial arm makes this model's arterial gain a slight OVERESTIMATE, in the
+    same direction at both points. He did not report CVP, so the size of that
+    contribution cannot be recovered — see the WANTED list in
+    `docs/reference_values.md`. It is bounded by the fact that both targets are
+    themselves floors, measured after 25 min of partial reflex resetting.
+    """
+    from model.baroreflex import BaroreflexController, CP_HR_REFERENCE_CVP_MMHG
+    b = BaroreflexController(dt=dt, history_len=200, cp_hr_enabled=False)
+    b._map_buf.extend([map_held] * b._map_buf.maxlen)
+    b._cvp_buf.extend([CP_HR_REFERENCE_CVP_MMHG] * b._cvp_buf.maxlen)
+    for _ in range(steps):
+        b.update(map_held, 40.0, CP_HR_REFERENCE_CVP_MMHG)
+    return float(b.hr_delta)
+
+
+def test_hr_reflex_gain_fritsch1989():
+    """[28] The heart-rate response to a sustained pressure change matches
+    Fritsch's two measured points, in both directions.
+
+    Tolerance is 20 %. Fritsch's own standard errors on these differences are
+    roughly +/-4 bpm on the nitroprusside point and +/-3 bpm on the
+    phenylephrine point, so 20 % (1.8 and 3.3 bpm) sits inside the study's
+    own uncertainty and is not a loose band.
+
+    BOTH TARGETS ARE FLOORS. They were measured after 25 min, by which time
+    the reflex has partly reset toward the new pressure, so the acute gain is
+    larger than this. A model that overshot them slightly would not be wrong;
+    one that falls short of them is.
+    """
+    from model.baroreflex import MAP_SETPOINT
+    for name, d_map, target in (("nitroprusside", -11.0, +8.79),
+                                ("phenylephrine", +19.0, -16.42)):
+        got = _reflex_hr_steady(MAP_SETPOINT + d_map)
+        assert abs(got - target) <= 0.20 * abs(target), (
+            f"{name}: dMAP {d_map:+.0f} mmHg gave dHR {got:+.2f} bpm, "
+            f"Fritsch measured {target:+.2f} bpm"
+        )
+
+
+def test_hr_reflex_range_exceeds_carotid_limb_fritsch1989():
+    """[28] The WHOLE arterial baroreflex must have a wider heart-rate range
+    than the carotid limb measured on its own.
+
+    Fritsch's neck chamber isolates the carotid sinus, and the vagal limb at
+    that. Its R-R response range was 214 +/- 27 ms about a baseline of 932 ms,
+    which is HR 55.1 to 68.6 — a span of 13.5 bpm.
+
+    This is a STRUCTURAL guard, not a calibration: a whole cannot be smaller
+    than one of its parts, whatever the gains are set to. It exists because
+    the reflex previously spanned only 10.0 bpm in total. The two effector
+    gains (-3 vagal, +2 sympathetic) read the same error through the same
+    scale, so they collapsed algebraically to a single -5*tanh(err/10) curve
+    that was already 97 % saturated after a 1000 mL bleed.
+    """
+    from model.baroreflex import MAP_SETPOINT
+    lo = _reflex_hr_steady(MAP_SETPOINT - 200.0)   # far past saturation
+    hi = _reflex_hr_steady(MAP_SETPOINT + 200.0)
+    span = lo - hi
+    assert span > 13.5, (
+        f"whole-reflex HR range {span:.1f} bpm does not exceed the carotid "
+        f"limb alone (13.5 bpm, Fritsch 1989)"
+    )
+    assert lo > 0.0 > hi, (
+        f"reflex is signed wrongly: low MAP gave {lo:+.1f} bpm, "
+        f"high MAP gave {hi:+.1f} bpm"
+    )
+
+
+def test_hr_reflex_limbs_have_distinct_time_constants():
+    """The vagal and sympathetic limbs must respond at DIFFERENT speeds.
+
+    Both limbs read the same pressure error, so the split between them changes
+    the dynamics and not the steady-state curve. That makes it easy for the
+    split to become decorative — which is exactly what had happened: the two
+    limbs ran at tau 1.5 s and 2.0 s through an identical sigmoid, so the
+    reflex was effectively one limb with a single time constant.
+
+    This guard asserts the separation is real by stepping the error and
+    checking the two filter states have diverged while both are still moving.
+    It is calibration-independent: it holds for any choice of gain.
+    """
+    from model.baroreflex import BaroreflexController, CVP_SETPOINT, MAP_SETPOINT
+    dt = 0.01
+    b = BaroreflexController(dt=dt, history_len=1)
+    for _ in range(int(2.0 / dt)):                 # 2 s after a step
+        b.update(MAP_SETPOINT - 20.0, 40.0, CVP_SETPOINT)
+    fast, slow = abs(b._para_map), abs(b._symp_hr_map)
+    assert fast > 1.5 * slow, (
+        f"vagal and sympathetic limbs track together (|para| {fast:.2f} vs "
+        f"|symp_hr| {slow:.2f} mmHg at t=2 s) — the split is decorative"
+    )
+
+
+# ===========================================================================
+# 29. Cardiopulmonary (filling-pressure) arm of the heart-rate reflex
+#
+# [29] The graded LBNP dataset in docs/reference_values.md, n=20 healthy
+#      supine volunteers, and Vettorello 2016 (PMID 26756378).
+#
+#      LBNP  0    MAP 77.3   CVP 6.9   HR 65.8
+#      LBNP 40    MAP 74.0   CVP 2.5   HR 74.1
+#      LBNP 80    MAP 79.9   CVP 0.2   HR 91.1     (>1 L blood-volume equivalent)
+#
+#      MAP IS FLAT while CVP falls 6.7 mmHg and heart rate rises 25.3 bpm.
+#      Vettorello measured HR 69 -> 107 (+38 bpm) over the same LBNP range.
+# ===========================================================================
+
+def test_cardiopulmonary_hr_arm_is_live_and_signed():
+    """[29] Falling cardiac filling must speed the heart EVEN WITH ARTERIAL
+    PRESSURE UNCHANGED, and the arm must do nothing when switched off.
+
+    This is a calibration-independent guard of the kind in §14. It holds MAP
+    exactly at the setpoint, so the arterial arm contributes precisely zero and
+    anything that appears comes from the filling-pressure arm alone. No choice
+    of arterial gain can satisfy it.
+
+    It exists because the model could not reproduce the human data at all
+    before 2026-09-04: the CVP error reached SVR, contractility and venous tone
+    but never heart rate, so with pressure held flat the model produced no
+    tachycardia whatsoever.
+    """
+    from model.baroreflex import (BaroreflexController, MAP_SETPOINT,
+                                  CP_HR_REFERENCE_CVP_MMHG as REF)
+
+    def hr_at(cvp, cp_on):
+        b = BaroreflexController(dt=0.01, history_len=200, cp_hr_enabled=cp_on)
+        b._map_buf.extend([MAP_SETPOINT] * b._map_buf.maxlen)
+        b._cvp_buf.extend([cvp] * b._cvp_buf.maxlen)
+        for _ in range(30_000):
+            b.update(MAP_SETPOINT, 40.0, cvp)
+        return float(b.hr_delta)
+
+    # Silent at the reference filling pressure — no standing offset at rest.
+    assert abs(hr_at(REF, True)) < 0.1, (
+        f"cardiopulmonary arm is not silent at rest: {hr_at(REF, True):+.2f} bpm"
+    )
+
+    # Hoff's stimulus: CVP down 6.7 mmHg, arterial pressure unchanged.
+    lo = hr_at(REF - 6.7, True)
+    assert 15.0 < lo < 32.0, (
+        f"filling-pressure fall of 6.7 mmHg gave {lo:+.1f} bpm; humans give "
+        f"+25.3 (LBNP -80, n=20) and +38 (Vettorello 2016)"
+    )
+
+    # Bidirectional: rising filling slows the heart (Herrera 2017, 500 mL bolus).
+    assert hr_at(REF + 3.0, True) < -1.0, "rising filling pressure did not slow the heart"
+
+    # THE SWITCH MUST ACTUALLY SWITCH IT OFF.
+    for cvp in (REF - 6.7, REF - 3.2, REF + 3.0):
+        assert abs(hr_at(cvp, False)) < 1e-9, (
+            f"cardiopulmonary arm still active when disabled: "
+            f"{hr_at(cvp, False):+.3f} bpm at CVP {cvp:.1f}"
+        )
+
+
+def test_hypovolaemic_tachycardia_matches_lbnp():
+    """[29] A 1000 mL bleed must produce a human-sized tachycardia.
+
+    LBNP -80 is a blood-volume equivalent of more than a litre and gives
+    +25.3 bpm (n=20); Vettorello measured +38 bpm over the same range. The band
+    below brackets both.
+
+    Before the two heart-rate changes of 2026-09-04 the model gave +7.0 bpm and
+    the reflex was 97 % saturated at this bleed volume. Both arms are needed:
+    the arterial arm alone reaches +18.3.
+    """
+    def run(ml):
+        p = SimParams()
+        if ml > 0:
+            p.hemorrhage_rate_mlmin = ml / 20.0 * 60.0
+            p.hemorrhage_start_s    = 10.0
+            p.hemorrhage_duration_s = 20.0
+        r = run_simulation(p, duration_s=60.0, dt=DT)
+        h = len(r['hr']) // 2
+        return {k: float(np.mean(np.asarray(r[k])[h:])) for k in ('hr', 'map', 'cvp')}
+
+    base, bled = run(0.0), run(1000.0)
+    dhr = bled['hr'] - base['hr']
+    assert 20.0 < dhr < 40.0, (
+        f"1000 mL bleed gave dHR {dhr:+.1f} bpm; humans give +25.3 (LBNP -80) "
+        f"to +38 (Vettorello 2016)"
+    )
+    assert bled['cvp'] < base['cvp'], "CVP did not fall with haemorrhage"

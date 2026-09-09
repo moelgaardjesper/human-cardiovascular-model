@@ -215,6 +215,9 @@ class SimParams:
 
         # Baroreflex on/off
         self.baroreflex_enabled = True
+        # Cardiopulmonary (filling-pressure) arm of the heart-rate reflex.
+        # Its own switch so it can be validated alone and in combination.
+        self.cardiopulmonary_hr_enabled = True
 
         # Frank-Starling on/off
         self.frank_starling_enabled = True
@@ -941,7 +944,10 @@ def run_simulation(
 
     baro: BaroreflexController | None = None
     if use_baroreflex and params.baroreflex_enabled:
-        baro = BaroreflexController(dt=dt)
+        baro = BaroreflexController(
+            dt=dt,
+            cp_hr_enabled=bool(getattr(params, 'cardiopulmonary_hr_enabled', True)),
+        )
 
     # Slow-timescale dynamics (minutes to hours). Inert unless explicitly
     # enabled: when off, `slow_state` stays None, `_p_scratch` is never
@@ -1177,28 +1183,35 @@ def run_simulation(
         p_cvp_edi = min(_cvp_win)
 
         # Update baroreflex — updates hr_delta, svr_factor etc. for NEXT ODE step
-        hr_eff = params.hr_bpm
         rsa_now = 0.0
         if baro is not None:
             baro.update(p_ao, 40.0, p_cvp_edi)
-            hr_eff = max(30.0, min(180.0, params.hr_bpm + baro.hr_delta))
         if params.ventilation_mode != 'none':
             rsa_now = respiratory_sinus_arrhythmia(
                 t, params.ventilation_mode, params.resp_rate_bpm, params.ie_ratio)
-            hr_eff = max(30.0, min(180.0, hr_eff + rsa_now))
 
-        # Carry forward updated HR for next step's monitoring
-        _hr_monitor   = hr_eff
-        _emax_monitor = params.lv_emax * (baro.emax_factor if baro is not None else 1.0)
-
-        # HR driving _odes's elastance this step (hr_bpm * drug hr_factor,
-        # then baroreflex, then RSA — same formula _odes used internally
-        # before this refactor moved phase-integration out to the caller).
+        # ONE heart rate: intrinsic rate × drug chronotropy, then the baroreflex,
+        # then RSA. It drives _odes's elastance AND is what gets reported.
+        #
+        # These were two variables computed in parallel — `hr_now` for the heart
+        # and `hr_eff` for the output — and they had drifted apart: `hr_eff`
+        # omitted the drug chronotropy entirely. The heart beat correctly while
+        # the reported rate did not move at all with a chronotropic drug, and
+        # stroke volume (derived as CO / reported HR) was inflated to match.
+        # Measured 2026-09-04 at epinephrine 0.30 mcg/kg/min: reported HR 48.1
+        # against a true beat rate of 76.5, and SV 145.4 against a true 93.0.
+        # Every drug test asserting on HR was reading a number the drug could
+        # not affect. Keep this as ONE expression.
         hr_now = params.hr_bpm * _drug_factors_at(params, t).get("hr_factor", 1.0)
         if baro is not None:
             hr_now = max(30.0, min(180.0, hr_now + baro.hr_delta))
         if params.ventilation_mode != 'none':
             hr_now = max(30.0, min(180.0, hr_now + rsa_now))
+        hr_eff = hr_now
+
+        # Carry forward updated HR for next step's monitoring
+        _hr_monitor   = hr_eff
+        _emax_monitor = params.lv_emax * (baro.emax_factor if baro is not None else 1.0)
 
         # DBP / SBP tracking (rolling min / max)
         _dbp_win.append(p_ao); _sbp_win.append(p_ao)
