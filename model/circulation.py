@@ -158,8 +158,21 @@ _NO_ORIFICE = {v: None for v in _ORIFICE_K}
 #   abdominal_aorta   retroperitoneal, diaphragm to the iliac bifurcation
 #   renal_art/vein    retroperitoneal
 #   splanchnic_art    mesenteric
-#   splanchnic_vein   portal and mesenteric — the mobilizable reservoir, and the
-#                     compartment through which this mechanism does its work
+#   splanchnic_vein   portal, mesenteric AND HEPATIC — the mobilizable reservoir,
+#                     and the compartment through which this mechanism does its
+#                     work. **THE LIVER IS INSIDE IT.** Declared explicitly on
+#                     2026-09-10 (Jesper) because the model had never decided:
+#                     this line used to read "portal and mesenteric", which
+#                     EXCLUDES the liver, while no other compartment contained
+#                     any hepatic blood. A healthy adult carries ~618 mL there
+#                     (11.3 % of total blood volume, Kiszka-Kanowitz 2001,
+#                     PMID 11690706), so the ambiguity was worth 600 mL and made
+#                     the model's abdominal excess unquotable — +703 or +1322 mL
+#                     depending on the reading. It is now the former.
+#                     CONSEQUENCE FOR ANY FUTURE SPLIT: a separate liver
+#                     compartment goes in SERIES (gut -> liver -> IVC), not in
+#                     parallel, so it would insert resistance into the venous
+#                     return path. See backlog item 46.
 #   ivc               runs from the iliac confluence to the diaphragm at T8. The
 #                     intrathoracic segment above the diaphragm is ~1 cm and is
 #                     not separately represented, so the compartment is abdominal

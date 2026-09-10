@@ -209,12 +209,28 @@ LA_EMAX = 0.45   # mmHg/mL  left atrium
 # compliance the source contradicts is the failure mode this project keeps
 # catching.
 #
-# WHAT 0.19 DOES NOT FIX. LAEF passive stays near 49 % and total near 74 %.
-# The residual is a VOLUME DISTRIBUTION problem, not an atrial one: LA peak
-# pressure is imposed by the circulation, so a compliant atrium is necessarily
-# a bigger one at that pressure, and the pulmonary vessels hold 365.8 mL
-# (7.1 % of blood volume) where the literature has 450-500 mL and 9-11 %. The
-# vessels are under-filled while the atrium is over-filled. See backlog 25a.
+# WHAT 0.19 DOES NOT FIX. The residual is a VOLUME DISTRIBUTION problem, not an
+# atrial one: LA peak pressure is IMPOSED BY THE CIRCULATION. Raising the
+# atrium's unstressed volume from 15 to 45 mL left peak pressure completely
+# unchanged, which is the direct evidence for that — the atrium finds a
+# different VOLUME at the pressure the loop dictates.
+#
+# THE DIAGNOSIS THAT USED TO BE HERE HAS BEEN OVERTAKEN, 2026-09-10. It read:
+# "the pulmonary vessels hold 365.8 mL where the literature has 450-500, so the
+# vessels are under-filled while the atrium is over-filled." Both halves have
+# since flipped. The pulmonary bed now holds 505 mL against Ugander's
+# 526 +/- 87 — corrected by the compliance work of 2026-09-03 and 2026-09-10 —
+# and the LEFT ATRIUM IS NOW UNDER-FILLED, at a volume index of 34.1 against
+# Gao's 37-48, with a peak pressure of 9.64 against Chemla's PAOP of 11 +/- 2.
+#
+# THAT RULES SOMETHING OUT. Fixing the pulmonary bed did NOT bring the atrium
+# up with it, so "the lungs are holding the atrium's volume" is not the
+# explanation. The missing ~10 mL is somewhere else.
+# AND IT RULES OUT A TEMPTING FIX: making the atrial law exponential or
+# collapsible-tube would change the VOLUME at which the imposed pressure is
+# reached, not the pressure — and since the volume is already low, a stiffening
+# law moves it further from target. See validation_log.md, 2026-09-10.
+# See backlog 25a.
 LA_EMIN = 0.19   # mmHg/mL
 
 # ---------------------------------------------------------------------------

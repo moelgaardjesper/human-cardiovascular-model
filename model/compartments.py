@@ -470,7 +470,22 @@ def default_compartments() -> list[Compartment]:
         # `_odes` (the pulmonic valve uses params.pulmonic_r and PA->capillary
         # uses pulmonary_cap.resistance). Kept equal to the valve so the two
         # cannot silently diverge again — see test_valve_resistances.
-        Compartment("pulmonary_art",       2.00, PULMONIC_R, 100, 0.0, 106),  # 17
+        # PULMONARY ARTERIAL COMPLIANCE 2.00 -> 6.00 ON 2026-09-10, on its own,
+        # because PULSE pressure is what the arterial compartment sets — the
+        # capillary and venous compliances store volume but barely touch it.
+        # The x5 of 2026-09-03 raised all three together, which fixed the VOLUME
+        # the bed holds and left the pulse pressure nearly twice too wide.
+        # Feasible interval from every sourced bound, sweeping this alone:
+        #   SPAP 20-26      Chemla 23 +/- 3 (PMID 15486398)  -> C in [3.3, 8.2]
+        #   SV/PP 6.6-12.8  Claessen 9.7 +/- 3.1             -> C >= 4.4
+        #   PBV 439-613     Ugander 526 +/- 87               -> C <= ~12
+        #   DPAP, MPAP, PVR index                            -> satisfied throughout
+        # Intersection [4.4, 8.2]; 6.0 chosen, mid-interval with margin both
+        # sides. Every endpoint then lands within 0.4 SD of its source.
+        # NOTE the compartment value is not the measured quantity: C = 6.0 here
+        # produces an EFFECTIVE SV/PP of 8.36, because the artery drains during
+        # ejection. Calibrate against the measurement, not the parameter.
+        Compartment("pulmonary_art",       6.00, PULMONIC_R, 100, 0.0, 106),  # 17
         Compartment("pulmonary_cap",       2.50, 0.06,   80,  0.0,   85),  # 18
         Compartment("pulmonary_vein",      4.00, 0.02,  160,  0.0,  168, drain_resistance=VENOATRIAL_R),  # 19
         # ---- Left heart ----
