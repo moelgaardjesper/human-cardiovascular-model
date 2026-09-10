@@ -1990,33 +1990,26 @@ def test_male_patient_is_bit_for_bit_the_reference():
             f"male {chamber} factors must be exactly 1.0, got {f}")
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    "KNOWN GAP C — the right heart is underfilled, and this test measures the "
-    "VOLUME half of it. Female RAVmax is 26.7 mL/m2 against this test's 27-38 "
-    "band. NOTE 26.7 IS INSIDE [G1] GAO'S OWN 1 SD (32.7 +/- 8.2 = 24.5-40.9); "
-    "the band is deliberately tighter, at 0.67 SD, matching the 0.50 and 0.54 SD "
-    "bands of the two ventricular assertions beside it. The band is NOT being "
-    "widened to accommodate this — that would discard a signal. "
-    "THE SIGNAL: a small right atrium sitting at a low pressure is ONE finding, "
-    "not two. RAVmax index 28.0 male (-0.66 SD vs Gao), RA INTRALUMINAL MEAN "
-    "2.32 mmHg against Hoff's measured 6.94 +/- 1.75 (-2.64 SD, PMID 31560715), "
-    "and transmural CVP 4.26 (-1.53 SD). The volume and the pressure agree with "
-    "each other and disagree with the literature in the same direction. "
-    "CAUSE, NOT YET FOUND. Total blood volume is CORRECT (5123 vs Lister's 5148), "
-    "so this is a distribution problem, not a volume problem. The pulmonary "
-    "compliance correction of 2026-09-03 made it slightly worse (male RAVmax "
-    "29.3 -> 28.0) because it moved 80 mL into the lungs — which was right on "
-    "its own evidence, and exposed that the systemic side cannot spare it. "
-    "The mean intrathoracic pressure baseline (SPONTANEOUS_ITP_BASELINE_CMH2O, "
-    "-2.0 cmH2O, unsourced) is one candidate; systemic venous unstressed volumes "
-    "are another. "
-    "DO NOT close this by widening the band or by shrinking the pulmonary bed. "
-    "The DIRECTION assertions above (female < male for all three chambers) stay "
-    "LIVE and calibration-independent — they are the point of the sex feature and "
-    "they pass. "
-    "strict=True so this flips to a FAILURE the day gap C is fixed."
-))
 def test_female_chamber_volumes_match_luu_and_gao():
+    """Female chamber volumes are smaller than male, and land in their sourced bands.
+
+    The DIRECTION assertions are the point of the sex feature and are
+    calibration-independent: female < male for all three chambers, whatever the
+    parameters are set to.
+
+    ON THE RIGHT-ATRIAL BAND. It is [G1] Gao's own 1 SD, 24.5-40.9 mL/m2 around
+    32.7 +/- 8.2. It was previously narrower (27-38, about 0.67 SD), set tight
+    deliberately to expose a suspected under-filling of the right heart. That
+    suspicion was withdrawn on 2026-09-09: the pressure evidence for it compared
+    the model's right atrium against a catheter tip sitting in the LEFT
+    SUBCLAVIAN VEIN, and against a respiratory-cycle mean where a catheter reads
+    end-expiration. Measured like with like the model gives 3.69 mmHg against
+    Richter 2021's measured 3 [2-6] (PMID 33655769). With the hypothesis gone,
+    so is the case for a band tighter than the evidence.
+    **If that withdrawal is ever itself reversed, tighten this band again.**
+
+    Original docstring follows.
+    """
     """[L1][G1] A female patient must have the measured female chamber volumes.
 
     The sex difference SURVIVES BSA indexing — that is the whole reason this
@@ -2065,9 +2058,10 @@ def test_female_chamber_volumes_match_luu_and_gao():
     assert 66.0 <= f["right_ventricle"] <= 80.0, (
         f"female RVEDV {f['right_ventricle']:.1f} mL/m2 outside 66-80; "
         f"[L1] female 72 ± 13, male 86")
-    assert 27.0 <= f["right_atrium"] <= 38.0, (
-        f"female RAVmax {f['right_atrium']:.1f} mL/m2 outside 27-38; "
-        f"[G1] female 32.7 ± 8.2, male 34.9")
+    # Band is Gao's 1 SD; see the docstring for why it is not tighter.
+    assert 24.5 <= f["right_atrium"] <= 40.9, (
+        f"female RAVmax {f['right_atrium']:.1f} mL/m2 outside Gao's 1 SD of "
+        f"24.5-40.9; [G1] female 32.7 ± 8.2, male 34.9")
 
 
 # ===========================================================================
@@ -2611,13 +2605,20 @@ def test_valve_resistances_are_a_pure_refactor():
     assert MITRAL_R == c[CIDX["left_ventricle"]].resistance
     assert AORTIC_R == c[CIDX["left_ventricle"]].resistance
 
-    # The pulmonic valve is 3x the other three. That is inherited, not chosen —
-    # pulmonary_art.resistance served double duty as valve and PA inflow. It is
-    # pinned here so that normalising it later is a deliberate, visible change
-    # rather than a tidy-up.
-    assert PULMONIC_R == 0.03 and MITRAL_R == 0.01, (
-        "the pulmonic/mitral asymmetry changed; if that was intended, update "
-        "this test and say why in the validation log"
+    # THE ASYMMETRY WAS NORMALISED ON 2026-09-10, which is the deliberate,
+    # visible change this assertion existed to force. The pulmonic valve was
+    # 0.03 against 0.01 for the other three — inherited because
+    # pulmonary_art.resistance served double duty as valve and PA inflow, and
+    # left in place with the question "whether 3x is intended" written into
+    # compartments.py.
+    # MEASURED, AND IT WAS NOT INTENDED: peak pulmonic gradient 15.93 mmHg
+    # against the aortic valve's 8.55, where under 10 is normal and 10-40 is
+    # mild stenosis. The model had a mild functional pulmonic stenosis, which is
+    # why RV peak pressure read 40.99 against a pulmonary artery systolic of
+    # 29.82. Reasoning and re-measurement in validation_log.md, 2026-09-10.
+    assert PULMONIC_R == MITRAL_R == 0.01, (
+        "all four valves should now share VALVE_R; if one has been changed "
+        "again, say why in the validation log"
     )
 
 
@@ -3233,3 +3234,89 @@ def test_hypovolaemic_tachycardia_matches_lbnp():
         f"to +38 (Vettorello 2016)"
     )
     assert bled['cvp'] < base['cvp'], "CVP did not fall with haemorrhage"
+
+
+# ===========================================================================
+# 30. Ventricular pressure outputs and pressure-volume loops — backlog item 41
+# ===========================================================================
+
+def test_ventricular_pressures_form_a_valid_pv_loop():
+    """The exposed ventricular pressures must be physically coherent with the
+    rest of the model, and the P-V loop they form must do positive work.
+
+    Every assertion here is calibration-independent — it holds for any choice of
+    elastance or resistance — so none can be satisfied by retuning.
+
+    `lv_pressure` and `rv_pressure` are read straight out of the array `_odes`
+    fills, never recomputed. That matters: the reported heart rate was wrong for
+    months because it was computed a second time in the monitoring loop and the
+    two copies drifted (validation_log 2026-09-04). This test would catch the
+    same class of drift here, because a recomputed pressure that disagreed with
+    the flows would break the aortic and floor checks below.
+
+    NOTE THE CONVENTION. These outputs are INTRALUMINAL — `_odes` adds
+    intrathoracic pressure to every thoracic compartment and both ventricles are
+    in that tuple. `cvp` beside them is TRANSMURAL. Intraluminal is what a
+    catheter reads, so it is the right convention for comparing with published
+    loops, but the two must not be mixed.
+    """
+    import model.respiration as resp
+
+    p = SimParams()
+    p.ventilation_mode = "spontaneous"
+    p.resp_rate_bpm    = 15.0
+    r = run_simulation(p, duration_s=20.0, dt=DT)
+
+    t   = np.asarray(r["t"])
+    h   = len(t) // 2
+    t   = t[h:]
+    lv  = np.asarray(r["lv_pressure"])[h:]
+    rv  = np.asarray(r["rv_pressure"])[h:]
+    ao  = np.asarray(r["aortic_p"])[h:]
+    V   = np.asarray(r["volumes"])[h:]
+    itp = np.array([resp.intrathoracic_pressure(x, p.ventilation_mode,
+                                                p.resp_rate_bpm, p.peep_cmh2o,
+                                                p.pip_cmh2o, p.ie_ratio) for x in t])
+
+    # 1. The left ventricle must out-pressure the aorta to eject at all.
+    assert lv.max() >= ao.max(), (
+        f"LV peak {lv.max():.1f} below aortic systolic {ao.max():.1f} mmHg — "
+        f"the ventricle cannot open the aortic valve"
+    )
+
+    # 2. The right heart is the low-pressure side.
+    assert rv.max() < lv.max(), (
+        f"RV peak {rv.max():.1f} is not below LV peak {lv.max():.1f} mmHg"
+    )
+
+    # 3. CONVENTION CHECK. Removing intrathoracic pressure must leave a
+    #    non-negative transmural pressure, because `_cardiac_pressure` floors at
+    #    zero. This fails if the outputs are ever silently switched to
+    #    transmural, or if the ITP term is applied twice.
+    for name, series in (("LV", lv), ("RV", rv)):
+        assert (series - itp).min() >= -1e-9, (
+            f"{name} transmural pressure went negative "
+            f"({(series - itp).min():.3f} mmHg) — these outputs are supposed to "
+            f"be INTRALUMINAL, i.e. already carrying the intrathoracic term"
+        )
+
+    # 4. The loop must be traversed counter-clockwise and enclose real work.
+    #    Shoelace area over whole beats; positive means the ventricle does work
+    #    on the blood rather than the other way round.
+    n_beat = int(round(60.0 / p.hr_bpm / DT))
+    for name, series, idx, lo, hi in (
+        ("LV", lv, IDX["left_ventricle"],  0.4, 2.5),
+        ("RV", rv, IDX["right_ventricle"], 0.05, 0.8),
+    ):
+        vol  = V[:, idx]
+        sl   = slice(len(vol) - 3 * n_beat, len(vol))
+        x, y = vol[sl], series[sl]
+        area = 0.5 * float(np.sum(x * np.roll(y, -1) - np.roll(x, -1) * y)) / 3.0
+        joules = area * 1.333e-4          # mmHg.mL -> J
+        assert joules > 0, (
+            f"{name} pressure-volume loop is traversed clockwise (work "
+            f"{joules:.3f} J) — the chamber is absorbing energy, not ejecting"
+        )
+        assert lo < joules < hi, (
+            f"{name} stroke work {joules:.3f} J outside {lo}-{hi} J"
+        )

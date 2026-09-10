@@ -955,7 +955,15 @@ def run_simulation(
     # step — behaviour is bit-for-bit identical to having no slow dynamics.
     slow_enabled = bool(getattr(params, "slow_dynamics_enabled", False))
     slow_state = init_slow_state(comp) if slow_enabled else None
-    _p_scratch = np.zeros(len(comp)) if slow_enabled else None
+    # Always allocated. `_odes` writes the compartment pressures it has ALREADY
+    # computed into this array; the slow-dynamics clock reads it, and so do the
+    # ventricular pressure outputs below. Filling it does not touch dV, so a run
+    # with slow dynamics off stays bit-for-bit identical to one without it.
+    # THIS IS THE ONLY PLACE VENTRICULAR PRESSURE IS COMPUTED. Do not add a
+    # second computation in the monitoring block — that is exactly how the
+    # reported heart rate came to exclude drug chronotropy (see the 2026-09-04
+    # entry in docs/validation_log.md).
+    _p_scratch = np.zeros(len(comp))
 
     t_eval = np.arange(0.0, duration_s, dt)
     n = len(t_eval)
@@ -1034,6 +1042,8 @@ def run_simulation(
     cvp_ts      = np.zeros(n_out)
     ra_intra_ts = np.zeros(n_out)
     la_p_ts     = np.zeros(n_out)
+    lv_p_ts     = np.zeros(n_out)
+    rv_p_ts     = np.zeros(n_out)
     co_ts       = np.zeros(n_out)
     hr_ts       = np.zeros(n_out)
     dbp_ts          = np.zeros(n_out)
@@ -1114,7 +1124,8 @@ def run_simulation(
                    ("ankle_p", ankle_p_ts), ("brachial_p", brachial_p_ts),
                    ("brachial_sbp", brachial_sbp_ts),
                    ("brachial_dbp", brachial_dbp_ts),
-                   ("ra_intraluminal", ra_intra_ts)]
+                   ("ra_intraluminal", ra_intra_ts),
+                   ("lv_pressure", lv_p_ts), ("rv_pressure", rv_p_ts)]
         _cols = [_nm for _nm, _ in _series]
         _disk = {
             "trend": np.lib.format.open_memmap(
@@ -1342,6 +1353,27 @@ def run_simulation(
         # returns immediately unless SLOW_DT of simulated time has elapsed.
         dV = _odes(t, V, params, baro, _cardiac_phase, _p_scratch, slow_state,
                    hr_now=hr_now)
+
+        # Ventricular pressures, taken from the array `_odes` just filled rather
+        # than recomputed. `_oi` is still this step's output index.
+        #
+        # THESE ARE INTRALUMINAL, NOT TRANSMURAL — and that differs from `cvp`
+        # next to them, so read this before comparing anything.
+        # `_odes` adds the full intrathoracic pressure (respiratory + positional)
+        # to every THORACIC_COMPARTMENTS entry, and both ventricles are in that
+        # tuple. So these carry the pleural swing, which is why their minima go
+        # slightly negative during spontaneous inspiration where
+        # `_cardiac_pressure` alone is floored at zero.
+        # Intraluminal is the RIGHT choice here: a conductance or fluid-filled
+        # catheter reads intraluminal pressure, so these compare directly with
+        # published pressure-volume loops (Richter 2021, PMID 33655769).
+        # For a transmural trace, subtract the intrathoracic term.
+        # The output set now carries three conventions — `cvp` transmural,
+        # `la_pressure` transmural plus POSITIONAL ITP only, and these two fully
+        # intraluminal. See the match-the-quantity note in the validation log.
+        lv_p_ts[_oi] += _p_scratch[i["left_ventricle"]]
+        rv_p_ts[_oi] += _p_scratch[i["right_ventricle"]]
+
         V  = V + dV * dt
 
         if slow_enabled:
@@ -1388,7 +1420,8 @@ def run_simulation(
     # Every series above was accumulated with += over its block; divide to get the
     # mean. With output_every=1 every block holds one sample and this is a no-op,
     # which is what makes that case bit-for-bit identical to the old behaviour.
-    for _arr in (aortic_p, cvp_ts, ra_intra_ts, la_p_ts, co_ts, hr_ts, sv_ts,
+    for _arr in (aortic_p, cvp_ts, ra_intra_ts, la_p_ts, lv_p_ts, rv_p_ts,
+                 co_ts, hr_ts, sv_ts,
                  dbp_ts, sbp_ts, brachial_sbp_ts, brachial_dbp_ts, lvedp_ts,
                  cpp_ts, cop_ts, buckberg_ts, ankle_p_ts, brachial_p_ts):
         _arr /= _blk
@@ -1448,6 +1481,8 @@ def run_simulation(
         "cvp":         cvp_ts,
         "ra_intraluminal": ra_intra_ts,
         "la_pressure": la_p_ts,
+        "lv_pressure": lv_p_ts,
+        "rv_pressure": rv_p_ts,
         "co":          co_ts,
         "hr":          hr_ts,
         "sv":          sv_ts,

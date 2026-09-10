@@ -167,6 +167,53 @@ const C = {
   cop: '#f472b6', buck: '#fbbf24',
 };
 
+// Pressure-volume loops (backlog item 41). Plots the LAST FEW BEATS only —
+// a whole run overlaid is unreadable, and the settled beats are what compares
+// with a published loop.
+//
+// The pressures are INTRALUMINAL, which is what a catheter reads, so these are
+// directly comparable with published loops (e.g. Richter 2021). They are NOT
+// the same convention as the CVP trace above, which is transmural.
+function renderPvLoops(d) {
+  const el = document.getElementById('chart_pv');
+  if (!el) return;
+  if (!d.lv_pressure || !d.lv_volume) {
+    el.innerHTML = '<div class="placeholder">No ventricular pressure in this response</div>';
+    return;
+  }
+  // Sample interval from the time base, then keep the last four beats.
+  const dt   = (d.t.length > 1) ? (d.t[1] - d.t[0]) : 0.001;
+  const hr   = d.summary?.hr_mean || 70;
+  const beat = Math.max(1, Math.round(60.0 / hr / dt));
+  const from = Math.max(0, d.t.length - 4 * beat);
+  const cut  = a => a.slice(from);
+
+  const strokeWork = (v, p) => {           // shoelace area, mmHg.mL -> J
+    let a = 0;
+    for (let i = 0; i < v.length; i++) {
+      const k = (i + 1) % v.length;
+      a += v[i] * p[k] - v[k] * p[i];
+    }
+    return Math.abs(a * 0.5) * 1.333e-4 / 4.0;
+  };
+  const lvV = cut(d.lv_volume), lvP = cut(d.lv_pressure);
+  const rvV = cut(d.rv_volume), rvP = cut(d.rv_pressure);
+
+  Plotly.newPlot('chart_pv', [
+    { x: lvV, y: lvP, name: `LV (${strokeWork(lvV, lvP).toFixed(2)} J)`,
+      mode: 'lines', line: { color: C.ap, width: 1.6 } },
+    { x: rvV, y: rvP, name: `RV (${strokeWork(rvV, rvP).toFixed(2)} J)`,
+      mode: 'lines', line: { color: C.cvp, width: 1.6 }, xaxis: 'x2', yaxis: 'y2' },
+  ], { ...BASE,
+       title: { text: 'Pressure-Volume Loops (last 4 beats)',
+                font: { color: '#c7d2fe', size: 11 } },
+       grid: { rows: 1, columns: 2, pattern: 'independent' },
+       xaxis:  { ...BASE.xaxis, title: 'LV volume (mL)' },
+       yaxis:  { ...BASE.yaxis, title: 'mmHg' },
+       xaxis2: { ...BASE.xaxis, title: 'RV volume (mL)' },
+       yaxis2: { ...BASE.yaxis, title: 'mmHg' } }, CFG);
+}
+
 function renderStaticCharts(d) {
   const src    = getBpSource();
   const isAo   = src === 'aortic';
@@ -195,6 +242,8 @@ function renderStaticCharts(d) {
     { x: d.t, y: d.la_pressure, name: 'PCWP', line: { color: C.la,  width: 1.5 } },
   ], { ...BASE, title: { text: 'Filling Pressures', font: { color: '#c7d2fe', size: 11 } },
        yaxis: { ...BASE.yaxis, title: 'mmHg' } }, CFG);
+
+  renderPvLoops(d);
 
   const cppCol = (d.summary?.cpp_mean || 70) < 50 ? C.cpp_bad
                : (d.summary?.cpp_mean || 70) < 60 ? C.cpp_warn : C.cpp_ok;

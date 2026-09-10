@@ -164,6 +164,16 @@ def simulate():
         "map":         _round(result["map"]),
         "cvp":         _round(result["cvp"]),
         "la_pressure": _round(result["la_pressure"]),
+        # Ventricular pressure and volume, for the pressure-volume loop plot.
+        # Only the two ventricular COLUMNS of `volumes` are sent, not all 23
+        # compartments — the loop needs exactly these and the payload stays the
+        # same order of size as the existing waveforms.
+        # NOTE the pressures are INTRALUMINAL where `cvp` above is TRANSMURAL;
+        # see the note in circulation.py where they are written.
+        "lv_pressure": _round(result["lv_pressure"]),
+        "rv_pressure": _round(result["rv_pressure"]),
+        "lv_volume":   _round(result["volumes"][:, IDX["left_ventricle"]]),
+        "rv_volume":   _round(result["volumes"][:, IDX["right_ventricle"]]),
         "co":          _round(result["co"]),
         "hr":          _round(result["hr"]),
         "sv":          _round(result["sv"]),

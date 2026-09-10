@@ -112,7 +112,28 @@ def frank_starling_emax(
 # ---------------------------------------------------------------------------
 LV_EMAX = 3.00   # mmHg/mL  left ventricle peak systolic elastance
 LV_EMIN = 0.055   # mmHg/mL  left ventricle diastolic elastance
-RV_EMAX = 1.15   # mmHg/mL  right ventricle peak systolic elastance
+# RV_EMAX was 1.15 (Heldt 2002) until 2026-09-09. Replaced with a HUMAN
+# MEASUREMENT: Richter MJ et al. 2021 (PMID 33655769,
+# DOI 10.1152/ajplung.00583.2020) measured right-ventricular end-systolic
+# elastance by conductance catheter with preload reduction, fitting a tangent
+# across the end-systolic points of multibeat pressure-volume loops. In 15
+# patients WITHOUT pulmonary hypertension:
+#     Ees 0.7 [0.6-0.9] mmHg/mL     Ea 0.4 [0.3-0.5]     Ees/Ea 1.7 [1.1-2.3]
+#
+# The model was measured by the SAME method (graded preload reduction, reflex
+# off) rather than by reading this constant: Ees came out 1.114 mmHg/mL with the
+# elastance line intercepting the volume axis at 42.8 mL against the chamber's
+# unstressed volume of 38, r2 0.9996. That measurement recovers this constant to
+# within 3 %, which is what validates identifying end-systole at maximum P/V —
+# so the constant is scaled by 0.7/1.114 to put the MEASURED Ees on Richter's
+# median. Full record in docs/validation_log.md, 2026-09-09.
+#
+# CAVEAT KEPT DELIBERATELY: Richter's controls are dyspnoeic referrals with a
+# mean PA pressure of 19 mmHg, which is upper-normal, not healthy volunteers. A
+# mildly pressure-loaded right ventricle would if anything have a HIGHER Ees, so
+# the direction of this change is safe even though the cohort is not ideal. A
+# healthy-volunteer RV Ees is on the WANTED list in docs/reference_values.md.
+RV_EMAX = 0.72   # mmHg/mL  right ventricle peak systolic elastance
 # The RV is highly compliant in diastole (thin wall). Measured: P_rv_dia = 1.68 mmHg
 # at RV Vmin 80 mL, which is what lets the RA sit low enough to be a plausible CVP.
 RV_EMIN = 0.04   # mmHg/mL  right ventricle diastolic elastance

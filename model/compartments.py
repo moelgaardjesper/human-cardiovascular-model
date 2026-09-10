@@ -117,7 +117,23 @@ VALVE_R = 0.01
 # VALUES ARE UNCHANGED FROM WHAT THE FLOW EQUATIONS ACTUALLY USED, so this is
 # a pure refactor — see test_valve_resistances_are_a_pure_refactor.
 TRICUSPID_R = VALVE_R      # was right_ventricle.resistance
-PULMONIC_R  = 0.03         # was pulmonary_art.resistance — NOT VALVE_R, see (3)
+# PULMONIC_R was 0.03 until 2026-09-10, three times the other three valves.
+# The naming commit preserved that rather than normalising it and left the
+# question open in writing: "whether 3x is intended". MEASURED, AND IT IS NOT.
+#   peak pulmonic gradient  15.93 mmHg   (aortic 8.55)
+#   mean over ejection       9.44 mmHg   (aortic 4.17)
+# A peak gradient under 10 mmHg is normal and 10-40 is mild stenosis, so the
+# model had a mild functional pulmonic stenosis. It is why RV peak pressure read
+# 40.99 while pulmonary artery systolic was only 29.82 — eleven mmHg of the
+# right ventricle's work never reached the artery.
+# The 0.03 was inherited because `pulmonary_art.resistance` served double duty
+# as the pulmonic valve AND the PA inflow resistance. The refactor separated
+# them; only the value carried over. `pulmonary_art.resistance` is now read by
+# nothing in `_odes` — the PA-to-capillary flow uses `pulmonary_cap.resistance`.
+# ANATOMY, NOT TIDINESS: the pulmonic and aortic valves are comparable semilunar
+# orifices and the pulmonic annulus is if anything the larger of the two, so
+# there is no basis for the pulmonic being the more resistive.
+PULMONIC_R  = VALVE_R      # was 0.03; see above and validation_log 2026-09-10
 MITRAL_R    = VALVE_R      # was left_ventricle.resistance
 AORTIC_R    = VALVE_R      # was left_ventricle.resistance
 
@@ -450,7 +466,11 @@ def default_compartments() -> list[Compartment]:
         # ---- Pulmonary (PVR ≈ 0.08 mmHg·s/mL) ----
         # PULMONARY COMPLIANCES RAISED x5.0 ON 2026-09-03 (was 0.40/0.50/0.80,
         # whole bed 1.70 mL/mmHg). See PULMONARY_COMPLIANCE note above.
-        Compartment("pulmonary_art",       2.00, 0.03,  100,  0.0,  106),  # 17
+        # resistance 0.03 -> PULMONIC_R: this field is now read by NOTHING in
+        # `_odes` (the pulmonic valve uses params.pulmonic_r and PA->capillary
+        # uses pulmonary_cap.resistance). Kept equal to the valve so the two
+        # cannot silently diverge again — see test_valve_resistances.
+        Compartment("pulmonary_art",       2.00, PULMONIC_R, 100, 0.0, 106),  # 17
         Compartment("pulmonary_cap",       2.50, 0.06,   80,  0.0,   85),  # 18
         Compartment("pulmonary_vein",      4.00, 0.02,  160,  0.0,  168, drain_resistance=VENOATRIAL_R),  # 19
         # ---- Left heart ----
