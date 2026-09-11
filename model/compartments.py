@@ -348,6 +348,55 @@ VENOUS_DRAINAGE_SCALE = 2.0      # documentation only; values are inlined below
 # The resistance half is logged as its own finding and is NOT changed here.
 
 
+# ---------------------------------------------------------------------------
+# REGIONAL UNSTRESSED VOLUME REDISTRIBUTED 2026-09-11 — 658 mL out of the
+# splanchnic bed, 244 mL into the legs and 414 mL into the upper body.
+#
+# WHY. The model distributed blood like a patient with portal hypertension.
+# Against Kiszka-Kanowitz 2001 (PMID 11690706, 6 healthy supine controls,
+# whole-body scintigraphy) every control lies between 29 and 32 % abdominal;
+# the model sat at 44.4 %, above all but one or two of her 23 patients with
+# cirrhosis. Total blood volume and total systemic STRESSED volume were both
+# already correct, so the excess could only be UNSTRESSED volume.
+#
+# WHY THESE NUMBERS.
+#   abdomen  Kiszka-Kanowitz 29.7 +/- 1.2 % of TBV. The thorax is left alone --
+#            it is only -1.1 SD and every thoracic sub-compartment is
+#            individually validated (pulmonary 505 vs Ugander 526 +/- 87, all
+#            four chambers inside CMR ranges), so there is no room there. With
+#            the thorax held, the other two regions absorb the 4.4 points it is
+#            short, split in proportion to their measured targets: abdomen
+#            31.5 %, periphery 45.5 %. Measured after the change: 31.5 / 45.5.
+#   legs     ~1400 mL, from Arndt 1985 (PMID 4061917). His thigh-cuff congestion
+#            test sequestered ~560 mL and raised the leg region's counts by
+#            40 +/- 6.8 %, so the region holds ~1400 mL at rest. Model now 1401.
+#   upper    the REMAINDER, 414 mL. This is a residual, NOT a target -- no
+#   body     source gives a resting upper-body blood volume. Flagged as such.
+#
+# WHAT IT CHANGED, AND THIS IS THE IMPORTANT PART: ALMOST NOTHING.
+# Resting MAP, CO, SV, CVP and HR are identical to the decimal. So are the tilt
+# responses at 45 and 60 deg, the thoracic share of a 1 L volume change, and the
+# CVP response to volume. That is not a bug -- unstressed volume PARKS blood, it
+# does not participate in dynamics, which is exactly why the two earlier sweeps
+# failed (one let total volume fall, the other merely relabelled blood as
+# stressed; neither MOVED it).
+#
+# THE ONE REAL COST. `venous_tone_factor` multiplies venous unstressed volume,
+# so shrinking the mobilizable reservoir weakens vasopressor preload
+# recruitment: noradrenaline's cardiac-output change goes -0.07 -> -0.30 L/min
+# and phenylephrine's -0.34 -> -0.65. The Ngan Kee ordering (NE preserves CO
+# better than phenylephrine) is preserved, but both move further from her
+# measured CO preservation. **This is accepted, not tuned around.** The regional
+# volumes are sourced and the drug magnitudes are not.
+#
+# WHAT THIS DOES NOT FIX, AND WHERE THE NEXT REAL GAP IS. The thoracic share of
+# a 1 L volume change stays at 39 % against Echt 1974's measured compliance
+# ratio of unity, i.e. 50 % (cited by both Arndt and Stanton-Hicks). Leg pooling
+# on tilt is unchanged. Those are COMPLIANCE problems, not unstressed-volume
+# problems, and no setting of V0 anywhere will touch them.
+# ---------------------------------------------------------------------------
+
+
 def default_compartments() -> list[Compartment]:
     """
     Return the 23 baseline compartments in canonical index order.
@@ -398,7 +447,7 @@ def default_compartments() -> list[Compartment]:
         # level), not the neck: with physiological compliance the hydrostatic term
         # C·ΔP dominates tilt redistribution, so a mid-neck height (0.15-0.20) would
         # pool ~200 mL into the upper body in head-down tilt and steal preload.
-        Compartment("upper_body_vein",    12.00, 3.75,  350,  0.05,  440,
+        Compartment("upper_body_vein",    12.00, 3.75,  764,  0.05,  854,
                     drain_resistance=0.100),  # 3  P0≈6 (R = arteriole + exchange segment)
         Compartment("svc",                 8.00, 0.05,   70,  0.05,  110, drain_resistance=CAVOATRIAL_R),  # 4  P0≈4
         Compartment("abdominal_aorta",     0.25, 0.05,   60, -0.10,   82),  # 5  P0=88
@@ -409,7 +458,7 @@ def default_compartments() -> list[Compartment]:
         Compartment("renal_vein",          7.20, 4.50,   60, -0.10,  132,
                     drain_resistance=0.200),                                # 7  P0≈8
         Compartment("splanchnic_art",      0.12, 0.10,   50, -0.15,   60),  # 8  P0=83 (conduit; arteriole moved to splanchnic_vein)
-        Compartment("splanchnic_vein",    52.00, 3.60, 1200, -0.08, 1920,
+        Compartment("splanchnic_vein",    52.00, 3.60,  542, -0.08, 1262,
                     drain_resistance=0.140),  # 9  P0≈11 (dominant mobilizable reservoir)
         Compartment("lower_body_art",      0.35, 0.30,   80, -0.50,  111),  # 10 P0=89 (conduit; arteriole moved to the leg exchange branches)
         # ---- Lower body venous: foot→calf→thigh→ivc (outflow resistance on each segment) ----
@@ -449,11 +498,11 @@ def default_compartments() -> list[Compartment]:
         # lower_body_art's inflow, split 30/40/30 across the three segments:
         #   2.80/0.30 = 9.33,  2.80/0.40 = 7.00,  2.80/0.30 = 9.33
         #   equivalent parallel R = 2.80 ✓, plus the 0.30 conduit = 3.10 as before.
-        Compartment("thigh_vein",          3.20, 9.033, 300, -0.20,  332, p_stiffen=12.0,
+        Compartment("thigh_vein",          3.20, 9.033, 381, -0.20,  413, p_stiffen=12.0,
                     drain_resistance=0.600),  # 11
-        Compartment("calf_vein",           4.80, 6.950, 400, -0.55,  448, p_stiffen=11.0,
+        Compartment("calf_vein",           4.80, 6.950, 508, -0.55,  556, p_stiffen=11.0,
                     drain_resistance=0.100),  # 12
-        Compartment("foot_vein",           4.00, 9.263, 200, -0.85,  241, p_stiffen= 8.0,
+        Compartment("foot_vein",           4.00, 9.263, 254, -0.85,  295, p_stiffen= 8.0,
                     drain_resistance=0.140),  # 13
         Compartment("ivc",                12.00, 0.04,  120, -0.15,  195, drain_resistance=CAVOATRIAL_R),  # 14 P0≈5
         # ---- Cardiac chambers (elastance model; R = valve resistance) ----
