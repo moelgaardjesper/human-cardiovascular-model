@@ -175,6 +175,10 @@ def intrathoracic_pressure(
     peep_cmh2o: float = 5.0,
     pip_cmh2o: float = 20.0,
     ie_ratio: float = 0.33,
+    hold_start_s: float | None = None,
+    hold_duration_s: float = 0.0,
+    hold_mode: str = 'inspiratory',
+    hold_pressure_cmh2o: float | None = None,
 ) -> float:
     """
     Instantaneous intrathoracic pressure (mmHg) as a function of time.
@@ -187,13 +191,54 @@ def intrathoracic_pressure(
     peep_cmh2o    : PEEP for mechanical ventilation (cmH₂O)
     pip_cmh2o     : peak inspiratory pressure for mechanical ventilation (cmH₂O)
     ie_ratio      : inspiratory fraction of cycle (0.33 → 1:2 I:E ratio)
+    hold_start_s  : when a ventilatory hold begins (s), or None for no hold
+    hold_duration_s : how long the hold lasts (s)
+    hold_mode     : 'inspiratory' (airway held at the plateau) or 'expiratory'
+                    (airway held at PEEP)
+    hold_pressure_cmh2o : plateau pressure for an inspiratory hold; defaults to
+                    `pip_cmh2o`. Ignored for an expiratory hold.
 
     Returns
     -------
     ITP in mmHg (negative = below atmospheric, as in spontaneous breathing)
+
+    Notes
+    -----
+    **On the hold.** Cyclic inspiration here is a HALF-SINE, so airway pressure
+    ramps up and straight back down and there is no plateau to read against.
+    That is correct for tidal ventilation and wrong for the manoeuvre used to
+    measure the venous return curve, which needs a SQUARE step held long enough
+    to read.
+
+    Berger 2016 (Am J Physiol Heart Circ Physiol 311:H794-806,
+    DOI 10.1152/ajpheart.00931.2015) holds at a fixed airway plateau for 30 s
+    and reads "the first three cardiac cycles occurring **9 s into the
+    manoeuvre**". The 9 s matters: he measured mean systemic filling pressure
+    over 9-12 s of right atrial occlusion **"before the onset of sympathetic
+    reflex vasoconstriction"**, and notes that sympathetic activation shows up
+    as a further rise in all intravascular pressures about 10 s later.
+    **Read later than that and the reflex, not the vasculature, is what is being
+    measured.** A sustained-pressure protocol read at 45-60 s gave a venous
+    return slope of -0.280 against -0.456 for the same model measured properly.
+
+    Berger's study is in PIGS, so the PROTOCOL transfers but none of its
+    absolute values may be used as a human target.
     """
     if mode == 'none':
         return 0.0
+
+    # ---- ventilatory hold: a square plateau, overriding the cyclic waveform --
+    if hold_start_s is not None and hold_duration_s > 0.0 \
+            and hold_start_s <= t < hold_start_s + hold_duration_s:
+        if mode == 'mechanical':
+            if hold_mode == 'expiratory':
+                airway = peep_cmh2o
+            else:
+                airway = pip_cmh2o if hold_pressure_cmh2o is None \
+                    else hold_pressure_cmh2o
+            return airway * PLEURAL_TRANSMISSION * _CMHG_TO_MMHG
+        # A spontaneous breath-hold parks ITP at its end-expiratory baseline.
+        return SPONTANEOUS_ITP_BASELINE_CMH2O * _CMHG_TO_MMHG
 
     T     = 60.0 / resp_rate_bpm          # breath period (s)
     phase = (t % T) / T                    # 0–1 within one breath cycle

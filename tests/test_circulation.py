@@ -1165,6 +1165,260 @@ def test_norepi_vs_phenyl_co_preservation_ngan_kee2015():
 
 
 # ===========================================================================
+# 11a. The venous return curve does not ROTATE when blood is removed
+#      — [PMID: 19237896, Maas 2009; reviewed in PMC9128096, Persichini 2022]
+#
+# Guyton's venous return curve has two parameters: the zero-flow intercept
+# (Pmsf) and the slope (whose inverse is the resistance to venous return, RVr).
+# Removing blood lowers the stressed volume, so it must lower Pmsf. It must NOT
+# change RVr, because resistance is a property of the vessels and not of how
+# full they are. The line shifts LEFT without ROTATING. Maas measured exactly
+# that in patients and found the slope volume-independent.
+#
+# WHY THIS TEST IS WORTH HAVING EVEN THOUGH THE ABSOLUTE Pmsf IS DISPUTED.
+# The project's Pmsf target (Maas 2009, 18.8-20.9 mmHg) comes from ventilated
+# post-cardiac-surgery patients who are fluid-loaded and on vasopressors.
+# Persichini 2022 gives normal human Pmsf as 2-10 mmHg and says explicitly that
+# the 15-33 range reported in surgical and septic patients is higher "due to
+# treatments such as fluid infusion and vasopressors". Which target applies to
+# this model's healthy supine patient is an OPEN QUESTION (backlog item 47).
+# This test sidesteps it entirely: it asserts an INVARIANCE and a DIRECTION, so
+# no absolute value is needed and no cohort argument can undermine it.
+#
+# PROTOCOL LIMITATION, STATED HONESTLY. Maas's manoeuvre is a set of BRIEF
+# end-inspiratory and end-expiratory holds. This helper uses a SUSTAINED airway
+# pressure instead, because SimParams cannot step ventilation mid-run. Over a
+# sustained hold the reflexes act and volume redistributes, so the ABSOLUTE
+# slope this protocol reports is not Maas's (-0.280 here against his -0.465).
+# The test therefore compares two arms measured the SAME way and asserts a
+# RATIO, which is what survives a systematic protocol bias. Do not read the
+# absolute slope out of this test. Rebuilding the protocol as short holds is
+# step 2 of backlog item 47.
+#
+# NOTE ra_intraluminal, NOT cvp. The model reports `cvp` TRANSMURAL, and under a
+# rising airway pressure transmural CVP FALLS while the catheter reading RISES.
+# Fitting against `cvp` gives a positive slope and a negative Pmsf, which is how
+# this error was caught on 2026-09-13.
+# ===========================================================================
+
+def _venous_return_curve(bleed_ml=0.0):
+    """Fit CO against intraluminal RAP across four airway-pressure holds.
+
+    Returns (slope in L/min/mmHg, Pmsf in mmHg).
+    """
+    cvp, co = [], []
+    for airway in (5, 15, 25, 35):
+        p = SimParams()
+        p.duration_s = 60.0
+        p.baroreflex_enabled = True          # Maas measured in intact patients
+        p.ventilation_mode = 'mechanical'
+        p.peep_cmh2o = airway
+        p.pip_cmh2o = airway
+        p.ie_ratio = 0.5
+        if bleed_ml:
+            p.hemorrhage_rate_mlmin = bleed_ml / (20.0 / 60.0)
+            p.hemorrhage_start_s = 10.0
+            p.hemorrhage_duration_s = 20.0
+        r = run_simulation(p)
+        t = np.asarray(r["t"])
+        tail = t >= t[-1] - 8.0
+        cvp.append(float(np.mean(np.asarray(r["ra_intraluminal"])[tail])))
+        co.append(float(np.mean(np.asarray(r["co"])[tail])))
+    slope, intercept = np.polyfit(np.array(cvp), np.array(co), 1)
+    return float(slope), float(-intercept / slope)
+
+
+def test_haemorrhage_shifts_venous_return_curve_without_rotating_it():
+    """[PMID: 19237896 — Maas 2009] A moderate haemorrhage must lower Pmsf and
+    leave the venous-return slope alone: resistance to venous return is a
+    property of the vessels, not of how full they are.
+
+    Measured with a 500 mL bleed, which is a class I haemorrhage and sits in the
+    range where a linear venous return curve applies.
+
+    BOTH assertions are needed. The invariance alone would pass trivially if the
+    haemorrhage did nothing, so the test also requires Pmsf to fall materially —
+    that is what proves the perturbation landed.
+
+    KNOWN LIMIT, recorded rather than hidden: at 1000 mL the slope ratio goes to
+    1.14 and the invariance breaks. That bleed drives the model into profound
+    shock with cardiac output near 2 L/min, where the limb veins collapse and
+    the vascular waterfall Persichini describes takes over — a regime in which
+    a linear venous return curve is not expected to hold, in the model or in a
+    patient. It is asserted at 500 mL for that reason, not to avoid the result.
+    """
+    base_slope, base_pmsf = _venous_return_curve(0.0)
+    bled_slope, bled_pmsf = _venous_return_curve(500.0)
+
+    ratio = bled_slope / base_slope
+    assert 0.90 <= ratio <= 1.10, (
+        f"haemorrhage ROTATED the venous return curve: slope {base_slope:.4f} "
+        f"-> {bled_slope:.4f} (ratio {ratio:.3f}). Resistance to venous return "
+        f"must not change with blood volume (Maas 2009 found it "
+        f"volume-independent)"
+    )
+    assert bled_pmsf < base_pmsf - 3.0, (
+        f"haemorrhage did not lower Pmsf materially: {base_pmsf:.2f} -> "
+        f"{bled_pmsf:.2f} mmHg. Removing 500 mL must reduce stressed volume "
+        f"and therefore the zero-flow intercept"
+    )
+
+
+# ===========================================================================
+# 11b. Phenylephrine dose-response in HEALTHY SUPINE MEN
+#      — [PMID: 10073742, Schäfers 1999]
+#
+# Why this cohort matters. The model's only other vasopressor cardiac-output
+# comparator is Ngan Kee 2015, whose subjects are TERM PARTURIENTS under spinal
+# anaesthesia — cardiac output ~40 % above normal, low systemic resistance and
+# aortocaval compression. Schäfers studied 12 healthy men, median age 27 (22-36),
+# supine throughout and fasted, with a graded intravenous phenylephrine infusion
+# (0.25-4 mcg/kg/min in 10 min steps). The placebo arm of that study is an
+# unantagonised phenylephrine dose-response and is the right comparator for the
+# model's default patient.
+#
+# MATCH ON THE PRESSURE RESPONSE, NOT THE DOSE. Their reported bars sit at the
+# highest dose each subject tolerated — the protocol stopped at a diastolic rise
+# of +30 mmHg — not at a fixed infusion rate. Comparing dose-for-dose would be
+# meaningless, so the model is exercised across its own plateau (2-4 mcg/kg/min)
+# and every dose there must satisfy the flow bands.
+#
+# ONE SENTENCE IN THAT PAPER IS EASY TO MISREAD, and was misread here on a first
+# pass: "phenylephrine increased cardiac output and stroke volume and reduced
+# heart rate to a similar extent in tamsulosin- and terazosin-treated subjects"
+# describes the two ACTIVE arms only. Under placebo phenylephrine LOWERS cardiac
+# output. Read their Figure 6, not that sentence.
+#
+# The bands below are MEDIANS WITH QUARTILES read off Figures 5 and 6, since the
+# paper plots them rather than tabulating them. Treat them as approximate; they
+# are recorded in docs/reference_values.md with that caveat.
+# ===========================================================================
+
+# Schäfers 1999 placebo arm, median (lower quartile, upper quartile)
+_SCH_DCO  = (-1.25, -0.40)    # L/min      median -1.15
+_SCH_DHR  = (-19.5, -14.2)    # beats/min  median -16
+_SCH_DSV  = (-0.5,  +18.5)    # mL         median  +9
+_SCH_DMAP = (+23.5, +32.5)    # mmHg       median +28
+_SCH_DTPR = (+650,  +1270)    # dyn.s/cm5  median +950
+
+# The model's phenylephrine plateau. Below 2 the pressor effect is still
+# climbing; above 4 it barely moves (dMAP +21.9 -> +22.8 from 4 to 6).
+_PHENYL_PLATEAU = (2.0, 3.0, 4.0)
+
+
+def _run_phenyl(dose_mcg_kg_min):
+    """Settled haemodynamics on a phenylephrine infusion.
+
+    90 s with a 20 s averaging window: a 70 s run averaged over 5 s moved
+    cardiac output by up to 0.23 L/min between adjacent doses, which is a
+    quarter of the band being asserted. At 90/20 the numbers agree with a
+    120 s run averaged over 30 s to within 0.03 L/min.
+    """
+    p = SimParams()
+    p.baroreflex_enabled = True
+    p.duration_s = 90.0
+    if dose_mcg_kg_min:
+        p.drug_factors = combined_drug_factors({"phenylephrine": dose_mcg_kg_min})
+    r = run_simulation(p)
+    t = np.asarray(r["t"])
+    tail = t >= t[-1] - 20.0
+    m = lambda k: float(np.mean(np.asarray(r[k])[tail]))
+    co, hr = m("co"), m("hr")
+    return {
+        "map": m("map"), "cvp": m("cvp"), "co": co, "hr": hr,
+        "sv": 1000.0 * co / hr,
+        "tpr": 80.0 * (m("map") - m("cvp")) / co,
+    }
+
+
+@pytest.fixture(scope="module")
+def phenyl_dose_response():
+    """Baseline plus the three plateau doses, run once and shared."""
+    return {d: _run_phenyl(d) for d in (0.0,) + _PHENYL_PLATEAU}
+
+
+def test_phenylephrine_flow_response_schafers1999(phenyl_dose_response):
+    """[PMID: 10073742 — Schäfers 1999] Phenylephrine in healthy supine men
+    LOWERS cardiac output, LOWERS heart rate and RAISES stroke volume.
+
+    Placebo arm, median (quartiles): dCO -1.15 (-1.25 to -0.40) L/min,
+    dHR -16 (-19.5 to -14.2) beats/min, dSV +9 (-0.5 to +18.5) mL.
+
+    Three independent flow quantities from one source, none of them tuned to.
+    The direction matters as much as the magnitude: an alpha1 agonist raises
+    afterload and recruits preload at the same time, and in a healthy supine
+    subject with intact reflexes the afterload and the reflex bradycardia win.
+    """
+    base = phenyl_dose_response[0.0]
+    for dose in _PHENYL_PLATEAU:
+        m = phenyl_dose_response[dose]
+        dco = m["co"] - base["co"]
+        dhr = m["hr"] - base["hr"]
+        dsv = m["sv"] - base["sv"]
+        assert _SCH_DCO[0] <= dco <= _SCH_DCO[1], (
+            f"phenylephrine {dose} mcg/kg/min: dCO {dco:+.2f} L/min outside "
+            f"Schäfers quartiles {_SCH_DCO} (median -1.15)"
+        )
+        assert _SCH_DHR[0] <= dhr <= _SCH_DHR[1], (
+            f"phenylephrine {dose} mcg/kg/min: dHR {dhr:+.1f} bpm outside "
+            f"Schäfers quartiles {_SCH_DHR} (median -16)"
+        )
+        assert _SCH_DSV[0] <= dsv <= _SCH_DSV[1], (
+            f"phenylephrine {dose} mcg/kg/min: dSV {dsv:+.1f} mL outside "
+            f"Schäfers quartiles {_SCH_DSV} (median +9)"
+        )
+
+
+@pytest.mark.xfail(strict=True, reason=(
+    "KNOWN GAP — THE PRESSOR RESPONSE IS TOO SMALL AND IT SATURATES. Against "
+    "Schäfers 1999 (PMID 10073742, 12 healthy supine men) the model delivers "
+    "about two thirds of the measured mean-arterial-pressure rise and half the "
+    "total-peripheral-resistance rise: at 2/3/4 mcg/kg/min dMAP is +18.2/+20.5/"
+    "+22.0 against a measured +28 (quartiles 23.5-32.5), and dTPR is "
+    "+423/+460/+517 against +950 (650-1270). "
+    "IT SATURATES BELOW THE TARGET: from 4 to 6 mcg/kg/min dMAP moves only "
+    "+21.9 to +22.8, so the curve is at its ceiling well short of the measured "
+    "effect and no higher dose reaches it. "
+    "AGE MAKES THE GAP WORSE, NOT BETTER. Their subjects are 27 and the model's "
+    "reference patient is 55; stiffer arteries give a LARGER pressure rise for "
+    "the same vasoconstriction, so the model should overshoot a young cohort "
+    "and it undershoots. "
+    "THE FLOW RESPONSE FROM THE SAME SOURCE PASSES — cardiac output, heart rate "
+    "and stroke volume are all inside their quartiles (see the test above), so "
+    "this is specifically the pressure arm, not the drug being inert. "
+    "DO NOT CLOSE THIS BY RAISING THE PHENYLEPHRINE HILL MAXIMUM. A ceiling "
+    "this low may be the svr_factor pathway rather than the drug curve, and the "
+    "pre/post-capillary resistance split (backlog item 18) acts on the same "
+    "machinery. Find out which before touching either. "
+    "strict=True so it flips to a FAILURE the day the pressor arm is right. "
+    "Full record in docs/reference_values.md under Schäfers 1999."
+))
+def test_phenylephrine_pressor_response_schafers1999(phenyl_dose_response):
+    """[PMID: 10073742 — Schäfers 1999] Phenylephrine in healthy supine men
+    raises MAP by +28 mmHg (quartiles 23.5-32.5) and total peripheral
+    resistance by +950 dyn.s/cm5 (650-1270) at the highest tolerated dose.
+
+    Asserted at the model's own plateau, so this is not a dose mismatch: no
+    dose the model will accept produces the measured pressor effect.
+    """
+    base = phenyl_dose_response[0.0]
+    best = max(
+        (phenyl_dose_response[d] for d in _PHENYL_PLATEAU),
+        key=lambda m: m["map"],
+    )
+    dmap = best["map"] - base["map"]
+    dtpr = best["tpr"] - base["tpr"]
+    assert _SCH_DMAP[0] <= dmap <= _SCH_DMAP[1], (
+        f"dMAP {dmap:+.1f} mmHg outside Schäfers quartiles {_SCH_DMAP} "
+        f"(median +28)"
+    )
+    assert _SCH_DTPR[0] <= dtpr <= _SCH_DTPR[1], (
+        f"dTPR {dtpr:+.0f} dyn.s/cm5 outside Schäfers quartiles {_SCH_DTPR} "
+        f"(median +950)"
+    )
+
+
+# ===========================================================================
 # 12. Epinephrine biphasic dose-response — [PMID: 3956110, Freyschuss 1986]
 # ===========================================================================
 
@@ -3020,7 +3274,10 @@ def test_raising_the_itp_swing_does_not_destabilise():
     orig = circ.intrathoracic_pressure
 
     def patched(swing):
-        def f(t, mode, rr, peep, pip, ie):
+        # *_ absorbs the ventilatory-hold arguments added on 2026-09-13. This
+        # stand-in only needs to reproduce the spontaneous swing, so it ignores
+        # them — but it must ACCEPT them, or every caller raises TypeError.
+        def f(t, mode, rr, peep, pip, ie, *_, **__):
             if mode == "none":
                 return 0.0
             ph = (t % (60.0 / rr)) / (60.0 / rr)

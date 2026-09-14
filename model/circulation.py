@@ -143,6 +143,11 @@ THORACIC_COMPARTMENTS = (
 )
 _THORACIC_IDX = tuple(IDX[name] for name in THORACIC_COMPARTMENTS)
 
+# Ventricular phase held during a circulatory arrest. `_normalised_activation`
+# returns EXACTLY 0.0 for any phase >= 0.45, so this is true diastole and both
+# ventricles sit at E_min. 0.90 is chosen well clear of that boundary.
+_ARREST_PHASE = 0.90
+
 _ORIFICE_K = {v: orifice_k(v) for v in ("mitral", "aortic", "tricuspid", "pulmonic")}
 _NO_ORIFICE = {v: None for v in _ORIFICE_K}
 
@@ -253,6 +258,44 @@ class SimParams:
         self.peep_cmh2o       = 5.0      # cmH₂O — PEEP for mechanical ventilation
         self.pip_cmh2o        = 20.0     # cmH₂O — peak inspiratory pressure
         self.ie_ratio         = 0.33     # inspiratory fraction (0.33 = 1:2 I:E)
+
+        # ---- Ventilatory hold (Berger 2016's venous-return manoeuvre) -------
+        # Cyclic inspiration is a half-sine, so there is no plateau to read a
+        # venous return curve against. A hold steps airway pressure to a square
+        # plateau and keeps it there. Read the result at ~9 s: Berger places his
+        # window at 9-12 s explicitly BEFORE sympathetic vasoconstriction, which
+        # shows up about 10 s later. Reading at 45-60 s measures the reflex, not
+        # the vasculature -- it flattened the model's venous return slope from
+        # -0.456 to -0.280. See backlog item 47.
+        self.hold_start_s        = None     # s, or None for no hold
+        self.hold_duration_s     = 0.0      # s
+        self.hold_mode           = 'inspiratory'   # 'inspiratory' | 'expiratory'
+        self.hold_pressure_cmh2o = None     # plateau; None -> pip_cmh2o
+
+        # ---- Circulatory arrest (Schipke 2003's fibrillation sequences) -----
+        # Stops cardiac ejection so arterial and venous pressures converge
+        # towards the static filling pressure. Implemented by PINNING the
+        # ventricular phase in diastole, where `_normalised_activation` is
+        # exactly zero (it returns 0 for phase >= 0.45), so both ventricles
+        # become passive chambers at E_min and no ejection occurs.
+        #
+        # WHY IT IS WORTH HAVING. Schipke JD et al. 2003, Am J Physiol Heart
+        # Circ Physiol 285:H2510-H2515, measured 82 anaesthetised supine
+        # patients (age 59 +/- 10) through 323 fibrillation/defibrillation
+        # sequences of 13 +/- 2 s. That is the only direct human measurement of
+        # the approach to static filling pressure, and it yields TIME CONSTANTS
+        # rather than a single number -- which is what actually constrains the
+        # arterial and venous compliances. See backlog item 47.
+        #
+        # CAVEAT ON VF vs ASYSTOLE. Schipke's patients are in VENTRICULAR
+        # FIBRILLATION, where the myocardium keeps some disorganised tone; this
+        # implementation is a FLACCID diastolic arrest. `arrest_activation`
+        # exposes that assumption -- 0.0 is flaccid, and a small positive value
+        # stiffens the chambers as fibrillating muscle would. Do not tune it to
+        # fit an endpoint.
+        self.arrest_start_s    = None   # s, or None for no arrest
+        self.arrest_duration_s = 0.0    # s
+        self.arrest_activation = 0.0    # 0 = flaccid diastole
 
         # Abdominal pressure driven by the same diaphragm descent that raises
         # pleural pressure (backlog item 27). Mechanical ventilation only — see
@@ -610,6 +653,8 @@ def _odes(t: float, V: np.ndarray, params: SimParams, baro: BaroreflexController
         intrathoracic_pressure(
             t, params.ventilation_mode, params.resp_rate_bpm,
             params.peep_cmh2o, params.pip_cmh2o, params.ie_ratio,
+            params.hold_start_s, params.hold_duration_s,
+            params.hold_mode, params.hold_pressure_cmh2o,
         )
         if params.ventilation_mode != 'none' else 0.0
     )
@@ -1275,7 +1320,9 @@ def run_simulation(
         # Respiratory ITP at this instant, for the intraluminal RA trace below.
         _itp_resp_now = (
             intrathoracic_pressure(t, params.ventilation_mode, params.resp_rate_bpm,
-                                   params.peep_cmh2o, params.pip_cmh2o, params.ie_ratio)
+                                   params.peep_cmh2o, params.pip_cmh2o, params.ie_ratio,
+                                   params.hold_start_s, params.hold_duration_s,
+                                   params.hold_mode, params.hold_pressure_cmh2o)
             if params.ventilation_mode != 'none' else 0.0
         )
 
@@ -1400,7 +1447,20 @@ def run_simulation(
                 V = V + dV_slow
 
         # Advance integrated cardiac phases for the next step.
-        _cardiac_phase = (_cardiac_phase + hr_now / 60.0 * dt) % 1.0
+        # During a circulatory arrest the ventricular phase is PINNED in
+        # diastole instead, so elastance sits at E_min and the heart stops
+        # ejecting. The monitor phase keeps running so the output trace stays
+        # sampled at a fixed rate.
+        _arresting = (
+            params.arrest_start_s is not None
+            and params.arrest_duration_s > 0.0
+            and params.arrest_start_s <= t
+            < params.arrest_start_s + params.arrest_duration_s
+        )
+        if _arresting:
+            _cardiac_phase = _ARREST_PHASE
+        else:
+            _cardiac_phase = (_cardiac_phase + hr_now / 60.0 * dt) % 1.0
         _monitor_phase = (_monitor_phase + _hr_monitor / 60.0 * dt) % 1.0
 
         # Guard: volumes can't go negative; replace NaN/inf from overflow
