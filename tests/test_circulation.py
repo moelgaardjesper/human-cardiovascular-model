@@ -1164,6 +1164,173 @@ def test_norepi_vs_phenyl_co_preservation_ngan_kee2015():
     )
 
 
+# ===========================================================================
+# 10a. The Valsalva manoeuvre — [PMID: 2918169, Ferguson 1989]
+#
+# The standard bedside autonomic and preload challenge, and the model had no
+# scenario for it despite having every mechanism needed.
+#
+# WHY FERGUSON'S FIGURE 4 IS THE RIGHT TARGET. In a patient WITHOUT an atrial
+# septal defect, at peak strain right atrial PRESSURE rises while RA VOLUME and
+# RA stroke volume FALL. **A model that only pushed pressure up would pass a
+# pressure-only assertion and still be wrong** — the same "plausible pressure,
+# implausible volume" signature as the six defects the chamber rebuild found.
+# So pressure and volume are asserted together, in opposite directions.
+#
+# READ THE INTRALUMINAL TRACE, NOT `aortic_p`. `aortic_p` is TRANSMURAL and a
+# real arterial line is not. Measured on the same run: transmurally the strain
+# looks like an arterial collapse to 4 mmHg; intraluminally it is a normal
+# manoeuvre. `aortic_intraluminal` was added for this test.
+# ===========================================================================
+
+def test_valsalva_four_phases_and_atrial_emptying_ferguson1989():
+    """[PMID: 2918169 — Ferguson 1989] A 40 mmHg, 15 s Valsalva.
+
+    Two independent assertions, neither calibrated to:
+
+    (1) FERGUSON'S SIGNATURE. Right atrial pressure must RISE while right atrial
+        VOLUME falls. Pressure alone is not enough — raising thoracic pressure
+        trivially raises an intraluminal pressure; what makes it a test is that
+        the chamber must EMPTY at the same time.
+
+    (2) THE FOUR CLASSIC PHASES on the arterial trace. I rise at strain onset as
+        the thorax squeezes the aorta; II fall during sustained strain as venous
+        return is cut off; III abrupt dip at release; IV overshoot ABOVE
+        baseline. **Phase IV is a direct check that the baroreflex is live and
+        correctly signed** — a dead or inverted reflex cannot produce it.
+    """
+    strain_s, dur_s = 30.0, 15.0
+    p = SimParams()
+    p.duration_s = 59.0
+    p.baroreflex_enabled = True
+    p.valsalva_start_s = strain_s
+    p.valsalva_duration_s = dur_s
+    r = run_simulation(p)
+
+    t = np.asarray(r["t"])
+    ao = np.asarray(r["aortic_intraluminal"])
+    ra_p = np.asarray(r["ra_intraluminal"])
+    ra_v = np.asarray(r["volumes"])[:, IDX["right_atrium"]]
+    win = lambda a, b: (t >= a) & (t < b)
+
+    base = win(strain_s - 6.0, strain_s)
+    early = win(strain_s, strain_s + 2.0)                    # phase I
+    late = win(strain_s + 8.0, strain_s + dur_s)             # phase II
+    release = win(strain_s + dur_s, strain_s + dur_s + 2.0)  # phase III
+    after = win(strain_s + dur_s + 3.0, strain_s + dur_s + 10.0)   # phase IV
+
+    m = lambda sig, w: float(np.mean(sig[w]))
+
+    # (1) Ferguson: pressure up, volume down, together
+    assert m(ra_p, late) > m(ra_p, base) + 10.0, (
+        f"RA pressure did not rise during the strain: {m(ra_p, base):.1f} -> "
+        f"{m(ra_p, late):.1f} mmHg"
+    )
+    assert m(ra_v, late) < m(ra_v, base) * 0.85, (
+        f"RA did not EMPTY during the strain: {m(ra_v, base):.1f} -> "
+        f"{m(ra_v, late):.1f} mL. Ferguson 1989 Fig 4 shows pressure rising and "
+        f"volume falling together; pressure alone is not the finding"
+    )
+
+    # (2) the four phases
+    assert m(ao, early) > m(ao, base), (
+        f"phase I: arterial pressure did not rise at strain onset "
+        f"({m(ao, base):.1f} -> {m(ao, early):.1f} mmHg)"
+    )
+    assert m(ao, late) < m(ao, base), (
+        f"phase II: arterial pressure did not fall during sustained strain "
+        f"({m(ao, base):.1f} -> {m(ao, late):.1f} mmHg)"
+    )
+    assert m(ao, release) < m(ao, base), (
+        f"phase III: no dip at release ({m(ao, release):.1f} mmHg against a "
+        f"baseline of {m(ao, base):.1f})"
+    )
+    assert m(ao, after) > m(ao, base), (
+        f"phase IV: no overshoot above baseline ({m(ao, after):.1f} against "
+        f"{m(ao, base):.1f} mmHg). This is the direct check that the baroreflex "
+        f"is live and correctly signed"
+    )
+
+
+@pytest.mark.xfail(strict=True, reason=(
+    "KNOWN DEFECT — THE REFERENCE PATIENT RESCALES ITSELF. `patient.py` scales a "
+    "patient's arteriolar resistance by svr_measured/svr_ref, where svr_ref is "
+    "built from REFERENCE_MAP/CVP/CO in baroreflex.py. Feeding the model its OWN "
+    "settled operating point back in must therefore give a scale of 1.000, and "
+    "gives 0.863 — a 14 % rescale of a patient identical to the reference. "
+    "THE REFERENCE TRIPLE DESCRIBES A MODEL THAT NO LONGER EXISTS: it says "
+    "MAP 93.0 / CVP 5.0 / CO 5.0 where the model settles at 95.37 / 4.36 / 5.99. "
+    "The CO term is the worst, 5.0 against 5.99, and it sits in the DENOMINATOR "
+    "of the reference resistance. "
+    "MEASURED AND DELIBERATELY NOT CORRECTED, 2026-09-15. Raising svr_ref raises "
+    "svr_scale for EVERY patient entered with a blood pressure, which moves every "
+    "patient-scaled test at once — and the direction makes the known overshoot on "
+    "a requested-MAP input WORSE before better: asking for MAP 83 already settles "
+    "at 92. So this is entangled with how Tier 1 scaling works, not a constant to "
+    "retype. "
+    "DO NOT close it by editing the three numbers to match today's settled state. "
+    "That would be fitting a calibration constant to the model's own output, and "
+    "the model's operating point moves whenever a compliance does — it would be "
+    "stale again within a week, exactly like the init volumes in item 16. The "
+    "fix is to make svr_ref DERIVE from the reference run rather than be typed. "
+    "strict=True so it fires the day that lands."
+))
+def test_reference_operating_point_is_self_consistent():
+    """A patient whose measured haemodynamics equal the reference model's must
+    need no rescaling: svr_scale == 1.0.
+
+    Backlog item 50. This is the assertion that turns "two uncited copies of a
+    constant" into a measurable defect — the duplication was the symptom, the
+    staleness is the disease.
+    """
+    from model.baroreflex import (REFERENCE_MAP_MMHG, REFERENCE_CVP_MMHG,
+                                  REFERENCE_CO_LPM)
+    from model.patient import _svr
+
+    p = SimParams()
+    p.duration_s = 70.0
+    r = run_simulation(p)
+    t = np.asarray(r["t"])
+    tail = t >= t[-1] - 15.0
+    m = lambda k: float(np.mean(np.asarray(r[k])[tail]))
+
+    svr_ref = _svr(REFERENCE_MAP_MMHG, REFERENCE_CVP_MMHG, REFERENCE_CO_LPM)
+    svr_own = _svr(m("map"), m("cvp"), m("co"))
+    scale = svr_own / svr_ref
+
+    assert abs(scale - 1.0) < 0.05, (
+        f"the reference patient rescales itself by {100*(scale-1):+.1f} %. "
+        f"Reference operating point is MAP {REFERENCE_MAP_MMHG} / CVP "
+        f"{REFERENCE_CVP_MMHG} / CO {REFERENCE_CO_LPM}; the model settles at "
+        f"MAP {m('map'):.2f} / CVP {m('cvp'):.2f} / CO {m('co'):.2f}"
+    )
+
+
+def test_reference_operating_point_is_defined_once():
+    """The reference operating point must have exactly one definition.
+
+    Backlog item 50. `patient.py` hard-coded `_svr(93.0, 5.0, 5.0)` while
+    `baroreflex.py` held MAP_SETPOINT separately, with nothing linking them — so
+    changing one left the other silently disagreeing, and the symptom would have
+    been a patient-scaling error that looked like a reflex error.
+
+    This guards the FIX, not the values: it asserts patient.py imports the
+    constants rather than repeating them. Same argument as item 16's settling
+    guard — a rule that depends on memory gets forgotten.
+    """
+    import inspect
+    import model.patient as patient_mod
+
+    src = inspect.getsource(patient_mod)
+    assert "REFERENCE_MAP_MMHG" in src, (
+        "patient.py no longer imports the shared reference operating point"
+    )
+    assert "_svr(93.0" not in src and "_svr(93," not in src, (
+        "patient.py has re-introduced a hard-coded copy of the reference "
+        "operating point. Import it from baroreflex.py instead — see item 50"
+    )
+
+
 def test_init_volumes_are_the_settled_equilibrium():
     """`init_volume` must BE the model's equilibrium, not a stale guess at it.
 

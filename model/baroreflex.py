@@ -35,9 +35,51 @@ import numpy as np
 from collections import deque
 
 
-MAP_SETPOINT = 93.0   # mmHg
+# ---------------------------------------------------------------------------
+# THE REFERENCE OPERATING POINT — defined here ONCE and imported elsewhere.
+#
+# Backlog item 50. Until 2026-09-15 `patient.py` hard-coded the same operating
+# point a SECOND time, as `_svr(93.0, 5.0, 5.0)`, with nothing tying the two
+# together: change one and the other silently disagrees, and the symptom would
+# be a patient-scaling error that looks like a reflex error. Same shape as
+# `pulmonary_art.resistance` serving double duty and the `VALVE_R` coupling.
+#
+# ON THE MAP VALUE. 93 had no citation when it was chosen. It is now supportable
+# rather than merely inherited: McEniery CM et al. 2005 (PMID 16256881), the
+# Anglo-Cardiff Collaborative Trial, 4001 healthy normotensive subjects, males
+# 50-59 (n=429) measure **MAP 95 +/- 7 mmHg**. 93 sits 0.3 SD below that, so the
+# number is fine; it was the absence of a source that was the defect.
+#
+# ON THE SETPOINT vs WHERE THE MODEL SETTLES. The model settles ABOVE this
+# setpoint, and that is correct, not a defect. The reflex is purely
+# PROPORTIONAL — first-order lags, no integral term — so a standing error is
+# structural. An integrating baroreflex would drive every steady-state error to
+# zero, which would make sustained hypertension impossible. **Do not add an
+# integrator to close the gap.**
+# ---------------------------------------------------------------------------
+MAP_SETPOINT = 93.0   # mmHg — McEniery 2005 males 50-59 measure 95 +/- 7
 PP_SETPOINT  = 40.0   # mmHg
 CVP_SETPOINT =  3.0   # mmHg
+
+# The reference patient's OPERATING POINT, used by `patient.py` to compute the
+# SVR a patient's measured numbers should be scaled against. This is NOT the
+# same thing as the setpoints above — a proportional reflex settles above its
+# setpoint, so the operating point is legitimately higher.
+#
+# **KNOWN DEFECT, MEASURED 2026-09-15 AND NOT SILENTLY CHANGED.** These values
+# describe a model that no longer exists. The reference patient actually settles
+# at MAP 95.37, CO 5.99, CVP 4.36, so feeding the model its OWN operating point
+# back in yields `svr_scale = 0.863` where it must be 1.000 — the reference
+# patient rescales itself by -14 %. The CO term is the worst of the three: 5.0
+# against a settled 5.99.
+# Correcting them is NOT a one-line change: raising svr_ref raises svr_scale for
+# every patient, which moves every patient-scaled test, and the direction makes
+# the known MAP overshoot on a requested-MAP input WORSE before it makes it
+# better. Carried as a strict xfail
+# (`test_reference_operating_point_is_self_consistent`) rather than adjusted.
+REFERENCE_MAP_MMHG = 93.0
+REFERENCE_CVP_MMHG =  5.0
+REFERENCE_CO_LPM   =  5.0
 
 # Autonomic time constants (s) — Borst 1982, Olufsen 2005
 _TAU_PARA       =  1.5   # parasympathetic (fast HR, 1-2 cardiac cycles)

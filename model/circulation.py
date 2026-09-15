@@ -47,7 +47,7 @@ from .gravity import hydrostatic_delta_mmhg, GravityEnvironment, smooth_tilt_pro
 from .baroreflex import BaroreflexController
 from .pharmacology import combined_drug_factors, NEUTRAL_FACTORS
 from .respiration import (
-    intrathoracic_pressure, respiratory_sinus_arrhythmia,
+    intrathoracic_pressure, respiratory_sinus_arrhythmia, valsalva_itp_mmhg,
     ABDOMINAL_TRANSMISSION,
 )
 from .slow_dynamics import (init_slow_state, update_slow_state,
@@ -296,6 +296,15 @@ class SimParams:
         self.arrest_start_s    = None   # s, or None for no arrest
         self.arrest_duration_s = 0.0    # s
         self.arrest_activation = 0.0    # 0 = flaccid diastole
+
+        # ---- Valsalva strain (backlog item 29) ------------------------------
+        # A forced expiration against a closed glottis. NOT routed through the
+        # ventilation path: see `valsalva_itp_mmhg` for why the pleural
+        # transmission differs from positive-pressure ventilation's 0.376.
+        # Standard bedside manoeuvre is 40 mmHg for 15 s.
+        self.valsalva_start_s     = None   # s, or None for no strain
+        self.valsalva_duration_s  = 15.0   # s
+        self.valsalva_mmhg        = 40.0   # mouth pressure held
 
         # Abdominal pressure driven by the same diaphragm descent that raises
         # pleural pressure (backlog item 27). Mechanical ventilation only — see
@@ -659,7 +668,9 @@ def _odes(t: float, V: np.ndarray, params: SimParams, baro: BaroreflexController
         if params.ventilation_mode != 'none' else 0.0
     )
     itp_pos   = positional_itp_mmhg(tilt)
-    itp_total = itp_resp + itp_pos
+    itp_vals  = valsalva_itp_mmhg(t, params.valsalva_start_s,
+                                  params.valsalva_duration_s, params.valsalva_mmhg)
+    itp_total = itp_resp + itp_pos + itp_vals
 
     if itp_total != 0.0:
         for _ti in _THORACIC_IDX:
@@ -1099,6 +1110,7 @@ def run_simulation(
     aortic_p    = np.zeros(n_out)
     cvp_ts      = np.zeros(n_out)
     ra_intra_ts = np.zeros(n_out)
+    ao_intra_ts = np.zeros(n_out)
     la_p_ts     = np.zeros(n_out)
     lv_p_ts     = np.zeros(n_out)
     rv_p_ts     = np.zeros(n_out)
@@ -1175,6 +1187,7 @@ def run_simulation(
         # reason `apply_cardiac` exists. `t` is computed per row; `map` is a
         # placeholder written after the loop because it is derived by smoothing.
         _series = [("t", None), ("aortic_p", aortic_p), ("map", None),
+                   ("aortic_intraluminal", ao_intra_ts),
                    ("cvp", cvp_ts), ("la_pressure", la_p_ts), ("co", co_ts),
                    ("hr", hr_ts), ("sv", sv_ts), ("dbp", dbp_ts),
                    ("sbp", sbp_ts), ("lvedp", lvedp_ts), ("cpp", cpp_ts),
@@ -1352,8 +1365,31 @@ def run_simulation(
         # physiological -3 to -4 cmH2O pleural swing it reaches 2.6-3.5, i.e.
         # on target. Comparing `cvp` to a catheter trace compares two different
         # physical quantities.
-        ra_intra_ts[_oi] += p_cvp_edi + itp_pos_now + _itp_resp_now
-        la_p_ts[_oi]     += p_la + itp_pos_now
+        # A Valsalva strain is included here because a catheter reads it: the
+        # whole thorax is pressurised, so intraluminal RA pressure RISES during
+        # the strain even as the chamber EMPTIES. That pressure-up/volume-down
+        # combination is the Ferguson 1989 signature and the point of the test —
+        # a model asserting pressure alone would pass while being wrong.
+        _itp_vals_now = valsalva_itp_mmhg(t, params.valsalva_start_s,
+                                          params.valsalva_duration_s,
+                                          params.valsalva_mmhg)
+        ra_intra_ts[_oi] += p_cvp_edi + itp_pos_now + _itp_resp_now + _itp_vals_now
+        # INTRALUMINAL AORTIC PRESSURE — what an arterial line reads.
+        # `aortic_p` above is TRANSMURAL, (V - V0)/C with no external pressure,
+        # which is the right quantity to drive the baroreflex (wall stretch) and
+        # the wrong one to compare with a catheter. The distinction is invisible
+        # at rest, where thoracic pressure is near zero, and dominates the moment
+        # it is not. In a 40 mmHg Valsalva the transmural trace shows arterial
+        # pressure COLLAPSING to 4 mmHg while the intraluminal trace shows a
+        # normal manoeuvre: phase I rises to 110, phase II falls to 40, phase IV
+        # overshoots to 133. Same run, opposite clinical readings.
+        # Added 2026-09-15 for backlog item 29, and it is the third instance of
+        # this quantity-matching trap in three days — after lumen-versus-outer-
+        # wall on aortic diameter and `cvp` under sustained airway holds. The
+        # right atrium got `ra_intraluminal` for exactly this reason; the
+        # arterial side never did, because until Valsalva nothing exercised it.
+        ao_intra_ts[_oi] += p_ao + itp_pos_now + _itp_resp_now + _itp_vals_now
+        la_p_ts[_oi]     += p_la + itp_pos_now + _itp_vals_now
         hr_ts[_oi]       += hr_eff
         dbp_ts[_oi]      += p_dbp
         sbp_ts[_oi]      += p_sbp
@@ -1553,6 +1589,7 @@ def run_simulation(
         "map":         map_ts,
         "cvp":         cvp_ts,
         "ra_intraluminal": ra_intra_ts,
+        "aortic_intraluminal": ao_intra_ts,
         "la_pressure": la_p_ts,
         "lv_pressure": lv_p_ts,
         "rv_pressure": rv_p_ts,

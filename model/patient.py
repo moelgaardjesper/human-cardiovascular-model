@@ -26,6 +26,8 @@ from .aging import (REFERENCE_AGE_YEARS, arterial_compliance_factor,
 
 import numpy as np
 from .compartments import default_compartments, Compartment, ARTERIOLAR_SEGMENTS
+from model.baroreflex import (REFERENCE_MAP_MMHG, REFERENCE_CVP_MMHG,
+                              REFERENCE_CO_LPM)
 
 
 # The body the default compartment set represents.
@@ -274,7 +276,11 @@ def scale_compartments(
     if map_mmhg is not None:
         co_est = cardiac_output_lpm if cardiac_output_lpm is not None else _estimate_co(bsa)
         svr_measured = _svr(map_mmhg, cvp_mmhg or 5.0, co_est)
-        svr_ref      = _svr(93.0, 5.0, 5.0)
+        # Imported, not re-typed — see the REFERENCE_* note in baroreflex.py.
+        # These were two independent copies of one operating point until
+        # 2026-09-15 (backlog item 50).
+        svr_ref      = _svr(REFERENCE_MAP_MMHG, REFERENCE_CVP_MMHG,
+                            REFERENCE_CO_LPM)
         svr_scale    = svr_measured / svr_ref
         # Scale the ARTERIOLES, which since 2026-08-21 live on the venous side
         # of each exchange bed (see ARTERIOLAR_SEGMENTS). Matching on "art" in the

@@ -270,6 +270,47 @@ def intrathoracic_pressure(
     return itp_cmh2o * _CMHG_TO_MMHG
 
 
+def valsalva_itp_mmhg(
+    t: float,
+    start_s: float | None,
+    duration_s: float,
+    mouth_pressure_mmhg: float = 40.0,
+    transmission: float = 0.9,
+) -> float:
+    """Intrathoracic pressure offset (mmHg) during a Valsalva strain.
+
+    **WHY THIS IS NOT THE VENTILATORY HOLD WITH A DIFFERENT NUMBER.**
+    `PLEURAL_TRANSMISSION = 0.376` describes POSITIVE-PRESSURE VENTILATION: the
+    ventilator inflates the lung, the chest wall and diaphragm resist, and only
+    about a third of airway pressure reaches the pleural space.
+    **A Valsalva is the opposite manoeuvre.** The glottis is closed and the
+    subject actively contracts the expiratory muscles, so the thorax is squeezed
+    from OUTSIDE and pleural pressure rises almost as much as mouth pressure —
+    oesophageal pressure tracks a 40 mmHg strain closely. Routing a Valsalva
+    through the ventilation path would therefore under-deliver it by roughly a
+    factor of two and make the manoeuvre look far milder than it is.
+    The default of 0.9 rather than 1.0 leaves a little for abdominal recruitment
+    and rib-cage compliance. **It is an assumption, not a measurement** — no
+    sourced pleural-to-mouth ratio for a strained Valsalva is in the ledger.
+
+    The standard bedside manoeuvre is 40 mmHg held for 15 s, which is the
+    default here.
+
+    Parameters
+    ----------
+    t                   : simulation time (s)
+    start_s             : when the strain begins, or None for no Valsalva
+    duration_s          : strain duration (s)
+    mouth_pressure_mmhg : expiratory pressure held against the closed glottis
+    transmission        : fraction reaching the pleural space (see above)
+    """
+    if start_s is None or duration_s <= 0.0:
+        return 0.0
+    if not (start_s <= t < start_s + duration_s):
+        return 0.0
+    return mouth_pressure_mmhg * transmission
+
+
 def respiratory_sinus_arrhythmia(
     t: float,
     mode: str,
