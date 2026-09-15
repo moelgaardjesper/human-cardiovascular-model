@@ -1,0 +1,33 @@
+cff-version: 1.2.0
+message: "If you use this model, please cite the frozen release you actually ran."
+title: "Cardiovascular System Simulator: a 23-compartment lumped-parameter model of human cardiovascular physiology"
+abstract: >-
+  A 23-compartment lumped-parameter cardiovascular simulator covering posture
+  change, vasopressor administration, mechanical ventilation, haemorrhage,
+  neuraxial anaesthesia and altered gravity, with minutes-to-hours dynamics on a
+  separate coarse clock. Built under a stated validation discipline: every
+  physiological parameter is traced to a human measurement, every comparison
+  states its cohort, and known gaps are carried as strict xfail tests so none can
+  close silently. The model contains no random number generation, so the same
+  inputs reproduce bit-identical outputs.
+type: software
+authors:
+  - given-names: Jesper
+    family-names: Mølgaard
+    orcid: "https://orcid.org/0000-0003-2062-9570"
+    affiliation: >-
+      Department of Anaesthesia, Centre for Cancer and Organ Dysfunction,
+      Copenhagen University Hospital – Rigshospitalet, Copenhagen, Denmark
+repository-code: "https://github.com/moelgaardjesper/human-cardiovascular-model"
+license: BUSL-1.1
+version: 1.0.0
+date-released: 2026-09-15
+keywords:
+  - cardiovascular modelling
+  - lumped-parameter model
+  - haemodynamics
+  - baroreflex
+  - orthostatic stress
+  - vasopressors
+  - anaesthesia
+  - physiological simulation

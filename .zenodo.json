@@ -1,0 +1,24 @@
+{
+  "title": "Cardiovascular System Simulator: a 23-compartment lumped-parameter model of human cardiovascular physiology",
+  "description": "<p>A 23-compartment lumped-parameter cardiovascular simulator covering posture change, vasopressor administration, mechanical ventilation, haemorrhage, neuraxial anaesthesia and altered gravity, with minutes-to-hours dynamics on a separate coarse clock.</p><p>Built under a stated validation discipline: every physiological parameter is traced to a human measurement, every comparison states its cohort, and known gaps are carried as strict xfail tests so none can close silently. The model contains no random number generation, so the same inputs reproduce bit-identical outputs.</p><p>This release is a model freeze. The archived <code>freeze/v1.0.0/</code> directory carries the pinned environment, the full introspected parameter set, a freshly measured validation table, and the actual output of all three test tiers at the tagged commit. See <code>FREEZE.md</code> for what the artefact contains, what it deliberately omits, and every known limitation at the freeze.</p>",
+  "upload_type": "software",
+  "creators": [
+    {
+      "name": "Mølgaard, Jesper",
+      "orcid": "0000-0003-2062-9570",
+      "affiliation": "Department of Anaesthesia, Centre for Cancer and Organ Dysfunction, Copenhagen University Hospital – Rigshospitalet, Copenhagen, Denmark"
+    }
+  ],
+  "keywords": [
+    "cardiovascular modelling",
+    "lumped-parameter model",
+    "haemodynamics",
+    "baroreflex",
+    "orthostatic stress",
+    "vasopressors",
+    "anaesthesia",
+    "physiological simulation"
+  ],
+  "license": "BUSL-1.1",
+  "access_right": "open"
+}
