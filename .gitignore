@@ -31,3 +31,7 @@ docs/*
 #
 # The file stays on disk and in use; it is simply local from here on, alongside
 # the validation log, backlog and ethics draft.
+
+# Frozen artefacts are committed deliberately — they are the evidence a paper
+# cites. Only the dry-run scratch directory is ignored.
+freeze/dryrun*/

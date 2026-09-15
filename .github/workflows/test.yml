@@ -1,5 +1,22 @@
 name: tests
 
+# THE INTERPRETER AND THE PINS ARE PART OF THE FROZEN MODEL, 2026-09-15.
+#
+# This ran '3.13' while development and every published measurement happened on
+# 3.14.4, so CI was not testing the environment the numbers came from. That is a
+# small gap and it is exactly the kind that makes a reproduction attempt fail for
+# a reason nobody can name afterwards. CI now matches the freeze.
+#
+# 3.13 IS NOT CLAIMED TO WORK. It is untested at the freeze — a different
+# statement from incompatible. Only 3.14 was available on the development
+# machine, so no honest claim about 3.13 could be made, and a green badge for an
+# interpreter nobody ran would be worse than no claim at all. Add a matrix entry
+# if a second interpreter is ever actually verified.
+#
+# CI RUNS THE FAST SUITE ONLY, and that is deliberate — it is the ratchet. Seven
+# `slow` tests and one `overnight` test are deselected by pytest.ini and are run
+# by hand at a freeze; see docs/FREEZE.md for what was run and what it produced.
+
 on:
   push:
   pull_request:
@@ -12,8 +29,13 @@ jobs:
 
       - uses: actions/setup-python@v5
         with:
-          python-version: '3.13'
+          python-version: '3.14'
 
       - run: pip install -r requirements.txt
+
+      # Record what actually got installed. A pinned requirements.txt can still
+      # resolve differently if a pin is ever loosened, and the log is the only
+      # place that discrepancy would show up.
+      - run: python -VV && pip freeze
 
       - run: pytest tests/ -v

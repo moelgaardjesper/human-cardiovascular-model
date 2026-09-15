@@ -1,5 +1,34 @@
-numpy
-scipy
-flask
-flask-cors
-pytest
+# PINNED AT THE MODEL FREEZE, 2026-09-15.
+#
+# WHY EXACT PINS AND NOT RANGES. Every number this project publishes — the
+# validation table, the comparison against each source, the suite result — is a
+# floating-point output of these libraries running this model. A reader who
+# installs `numpy` bare in 2027 gets a different numpy and cannot reproduce the
+# figures in the paper, and would have no way to tell whether a disagreement was
+# their environment or our error. The pins make that distinction recoverable.
+#
+# THE INTERPRETER IS PART OF THE PIN: Python 3.14.4. See PYTHON_VERSION below
+# and the note in README. Earlier versions are NOT claimed to work; they are
+# untested at the freeze, which is a different statement from incompatible.
+#
+# The five direct dependencies come first. The transitive pins below them are
+# recorded because Flask's dependency tree moves independently of Flask, and a
+# reproduction needs the whole set, not the parts we happen to import by name.
+
+# --- direct ---------------------------------------------------------------
+numpy==2.4.4
+scipy==1.17.1
+Flask==3.1.3
+flask-cors==6.0.2
+pytest==9.0.3
+
+# --- transitive, recorded for reproducibility -----------------------------
+blinker==1.9.0
+click==8.1.8
+iniconfig==2.3.0
+itsdangerous==2.2.0
+Jinja2==3.1.6
+MarkupSafe==3.0.3
+packaging==26.0
+pluggy==1.6.0
+Werkzeug==3.1.8
