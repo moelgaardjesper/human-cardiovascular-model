@@ -54,7 +54,16 @@ _CMHG_TO_MMHG = 0.735
 #
 # This replaces an unsourced 0.5 that was attributed to Suter 1978 and Talmor
 # 2008. Neither paper reports a transmission fraction — Suter (1975, not 1978)
-# is a PEEP-titration study and Talmor 2008 is an outcome RCT. See RETRACTIONS
+# is a PEEP-titration study and Talmor 2008 is an outcome RCT. Both verified
+# against PubMed 2026-09-15 and both readings hold:
+#   Suter  PMID 234174,   DOI 10.1056/NEJM197502062920604 — N Engl J Med
+#          292(6):284-9, 1975. "Optimum end-expiratory airway pressure in
+#          patients with acute pulmonary failure", n=15. PEEP titration.
+#   Talmor PMID 19001507, DOI 10.1056/NEJMoa0708638 — N Engl J Med
+#          359(20):2095-104, 2008. Oesophageal-pressure-guided PEEP RCT, n=61,
+#          primary endpoint OXYGENATION.
+# The identifiers are recorded so a reader can check the retraction rather than
+# take it on trust. See RETRACTIONS
 # R3. The old value was ~33% above the measured human ratio and, because every
 # ITP-driven venous-return effect scales with it, that error propagated into
 # the model's PEEP sensitivity and its pulse-pressure variation.
@@ -108,7 +117,9 @@ ABDOMINAL_TRANSMISSION = 0.21
 #               transmitted through tissue.
 #
 # There is therefore no single coefficient, and no sourced value for the
-# spontaneous case: Akoumianaki 2024 has the right instrumentation (76 patients,
+# spontaneous case: Akoumianaki 2024 [PMID 38753985, DOI
+# 10.1097/ALN.0000000000005071, Anesthesiology 141(3):541-553] has the right
+# instrumentation (76 patients,
 # simultaneous oesophageal and gastric pressure) but every patient had
 # spontaneous effort, so its ΔPgas is expiratory MUSCLE contraction rather than
 # transmitted pressure.

@@ -17,6 +17,11 @@ to BSA immediately, and every compartment scales by bsa / BSA_REF. Two patients 
 the same BSA get the same model whatever their BMI. BMI is derivable from the inputs
 but is not used — see backlog item 34, which carries the measured slope (Sindi 2014:
 oesophageal pressure +0.27 cmH2O per BMI unit) for when the term goes in.
+[PMID 24026187, DOI 10.4187/respcare.02287 — Respir Care 59(4):491-6, n=43
+ventilated laparoscopic-surgery patients, BMI 13.7-60.5. The +0.27 is their
+MULTIVARIABLE coefficient (95% CI 0.11-0.43); the univariate one is 0.29.
+Their finding is that BMI predicts oesophageal pressure and abdominal pressure
+does NOT, once both are in the model.]
 """
 
 from dataclasses import replace

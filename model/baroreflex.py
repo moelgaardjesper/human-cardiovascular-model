@@ -10,7 +10,8 @@ Implements the 4-step control architecture from PMC9363491 §Methods / Heldt 200
             Parasympathetic (τ=1.5 s) → fast HR adjustment (1-2 cardiac cycles).
             Sympathetic fast (τ=2 s)  → acute HR modulation.
             Sympathetic slow (τ=10 s) → sustained SVR and venous tone.
-            Source: Borst et al. 1982/1984; Olufsen et al. 2005/2006.
+            Source: Borst & Karemaker 1983; Olufsen et al. 2005/2006.
+            (identifiers and two caveats at the constants below)
   Step 4: Scale filtered errors to effector adjustments (HR, SVR, E_max, V0_vein).
 
 NOTE on implementation: the original FIR convolution approach (100 taps at dt=0.001 s)
@@ -81,7 +82,43 @@ REFERENCE_MAP_MMHG = 93.0
 REFERENCE_CVP_MMHG =  5.0
 REFERENCE_CO_LPM   =  5.0
 
-# Autonomic time constants (s) — Borst 1982, Olufsen 2005
+# Autonomic time constants (s) — Borst & Karemaker 1983, Olufsen 2005/2006.
+#
+# IDENTIFIERS ADDED 2026-09-15, and the lookup corrected TWO things. Both are
+# recorded rather than quietly fixed, because each changes what these constants
+# can claim to rest on.
+#
+#   Borst C, Karemaker JM. "Time delays in the human baroreceptor reflex."
+#   J Auton Nerv Syst 9(2-3):399-409. PMID 6663021,
+#   DOI 10.1016/0165-1838(83)90004-8.
+#
+# (1) IT IS 1983, not the "1982/1984" this file carried. Same shape as the
+#     Suter 1975-vs-1978 error already recorded in respiration.py: a year
+#     attribution that nobody could check because no identifier sat beside it.
+#
+# (2) IT MEASURES DELAYS, NOT TIME CONSTANTS, and that is a match-the-quantity
+#     issue of the kind that has cost this project real time. Borst reports
+#     LATENCIES from carotid-sinus-nerve stimulation in 11 subjects: PP interval
+#     0.5-0.6 s, AV interval ~1 s, arterial pressure 2-3 s. A latency is a dead
+#     time before a response starts; a tau is the rate at which it then
+#     proceeds. They are different quantities and this file uses the paper for
+#     the second while the paper measures the first. The 2-3 s arterial figure
+#     is at least consistent with _TAU_SYMP_FAST = 2.0, but "consistent with" is
+#     not "measured as".
+#
+#   Olufsen MS et al. J Appl Physiol 99(4):1523-37, 2005. PMID 15860687,
+#   DOI 10.1152/japplphysiol.00177.2005.
+#   Olufsen MS et al. Am J Physiol Regul Integr Comp Physiol 291(5):R1355-68,
+#   2006. PMID 16793939, DOI 10.1152/ajpregu.00205.2006.
+#
+# (3) OLUFSEN IS A MODEL, NOT A MEASUREMENT. Both papers are parameter-estimation
+#     studies that FIT a lumped model to postural-change data. Under this
+#     project's own rule — do not treat another model's parameter table as
+#     ground truth, the rule that demoted Heldt — these are a starting point and
+#     a cross-check, not validation. The taus below therefore rest on one
+#     delay study and two fitted models, and NO test asserts them directly.
+#     That is a weaker footing than most constants in this repository have, and
+#     it is worth a sourced human measurement of autonomic response dynamics.
 _TAU_PARA       =  1.5   # parasympathetic (fast HR, 1-2 cardiac cycles)
 _TAU_SYMP_FAST  =  2.0   # sympathetic fast (acute HR modulation)
 # τ_slow increased 10→20 s: adds damping to the SVR feedback loop.

@@ -391,6 +391,11 @@ VENOUS_DRAINAGE_SCALE = 2.0      # documentation only; values are inlined below
 #
 # WHAT THIS DOES NOT FIX, AND WHERE THE NEXT REAL GAP IS. The thoracic share of
 # a 1 L volume change stays at 39 % against Echt 1974's measured compliance
+# [PMID 4809350 — Echt, Düweling, Gauer, Lange, Circ Res 34(1):61-8, "Effective
+# compliance of the total vascular bed and the intrathoracic compartment derived
+# from changes in central venous pressure induced by volume changes in man".
+# CITE BY PMID: PubMed returns a malformed DOI for this paper
+# (10.1161/01.res.40.4.61 names volume 40; the paper is volume 34).]
 # ratio of unity, i.e. 50 % (cited by both Arndt and Stanton-Hicks). Leg pooling
 # on tilt is unchanged. Those are COMPLIANCE problems, not unstressed-volume
 # problems, and no setting of V0 anywhere will touch them.

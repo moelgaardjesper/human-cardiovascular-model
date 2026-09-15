@@ -97,7 +97,10 @@ def region_volumes(V: np.ndarray) -> dict[str, float]:
 #
 # Applied to the MOBILIZABLE VENOUS RESERVOIR (splanchnic + upper-body/cutaneous
 # beds). This is the physiology: sympathetic venoconstriction recruits chiefly
-# the splanchnic capacitance bed (Rothe 1983; Gelman 2008), while the caval
+# the splanchnic capacitance bed (Rothe 1983; Gelman 2008 — PMID 18362606,
+# DOI 10.1097/ALN.0b013e3181672607, Anesthesiology 108(4):735-48, the review
+# that sets out the compliant/noncompliant two-compartment split this tuple
+# implements), while the caval
 # conduits, renal, and muscle/limb veins contribute little actively mobilizable
 # volume. With physiological venous compliance (compartments.py) the recruited
 # slug lands in a ~1.6 L stressed pool, so a ±15 % tone change moves CO ~±13 %.
