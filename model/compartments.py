@@ -397,6 +397,108 @@ VENOUS_DRAINAGE_SCALE = 2.0      # documentation only; values are inlined below
 # ---------------------------------------------------------------------------
 
 
+# ---------------------------------------------------------------------------
+# ARTERIAL COMPLIANCE x1.6 ON 2026-09-14 — 1.64 -> 2.62 mL/mmHg in total.
+# Every systemic arterial compartment scaled by the same factor; the RATIO
+# between them is untouched, because nothing sources it.
+#
+# WHY. The model's CENTRAL pulse pressure was 55.2 mmHg against a measured
+# 35 +/- 7 -- **+2.9 SD, the largest remaining arterial deviation**, and it was
+# invisible because nothing in the suite looked at central pressure.
+# McEniery CM et al. 2005, J Am Coll Cardiol 46(9):1753-60 (PMID 16256881),
+# the Anglo-Cardiff Collaborative Trial: 4,001 HEALTHY NORMOTENSIVE subjects,
+# Table 1, MALES 50-59 yrs, n = 429 -- the model's own decade.
+#
+# TWO INDEPENDENT SOURCES PICK THE SAME FACTOR, NEITHER TUNED TO.
+#   central pulse pressure   37.2 vs 35 +/- 7          (+0.3 SD)  McEniery
+#   arterial decay tau       2.97 s vs 2.9 +/- 1.0 s   (+0.1 SD)  Schipke 2003
+# Schipke (PMID 14561679) measured the arterial decay during 323 induced
+# fibrillation sequences in 82 supine patients aged 59 +/- 10. tau = R x C, so
+# it is an independent view of the same parameter -- and it agrees.
+#
+# WHAT ELSE MOVED, all still in band against McEniery males 50-59:
+#   central SBP  115.5 vs 115 +/- 9      MAP 95.4 vs 95 +/- 7
+#   peripheral pulse pressure 32.8 vs 46 +/- 8  -- **-1.7 SD, and it got WORSE**
+#
+# THE PERIPHERAL COST IS REAL AND IS NOT A CALIBRATION ERROR. See the
+# amplification note below. Central was chosen over peripheral because central
+# is what the model actually computes; the brachial trace is derived from it.
+#
+# AGE. `aging.arterial_compliance_factor` multiplies this and returns exactly
+# 1.0 at the reference age of 55, so these values ARE the age-55 values and a
+# patient of any other age scales from them. **OPEN QUESTION, NOT ACTED ON:**
+# that factor is derived from Franklin's BRACHIAL pulse pressure slope, while
+# the parameter it scales is AORTIC, and McEniery now supplies a central law
+# directly (Table 2, males: CPP = -0.032*age + 0.003*age^2 + 28.913). The two
+# disagree sharply at the young end -- 1.66 vs 1.21 at age 25 -- because
+# McEniery's peripheral PP is nearly age-invariant (50 -> 55 mmHg across the
+# whole span) where Franklin's rises 0.68 mmHg/yr. Franklin is longitudinal,
+# McEniery cross-sectional with hypertensives excluded at measurement, which
+# selects out exactly the people whose PP widened. Which is right for "a healthy
+# person of age X" is a judgement call and is left to Jesper.
+#
+# ---------------------------------------------------------------------------
+# STRUCTURAL LIMITATION — PULSE PRESSURE AMPLIFICATION CANNOT BE REPRODUCED.
+# In humans brachial pulse pressure EXCEEDS central: McEniery measures the ratio
+# at 1.33 +/- 0.16 in males 50-59, falling from 1.72 at age 20 to 1.24 at 70.
+# **The model has 0.88 -- inverted -- and raising arterial compliance makes it
+# WORSE (0.94 -> 0.88 -> 0.84 across the sweep).**
+#
+# THIS IS NOT FIXABLE BY CALIBRATION. Amplification arises from WAVE REFLECTION
+# and impedance mismatch along a distributed arterial tree: the pressure wave
+# travels, reflects off branch points and the high-resistance periphery, and the
+# reflected wave arrives later and adds differently at each site. A LUMPED
+# compartment model has no wave travel, no transit time and no reflection --
+# every compartment sees pressure instantaneously. McEniery's augmentation index
+# (-2 % at age 20 to 30 % at 70) is the direct measure of that reflected wave,
+# and the model has no mechanism that could produce it at all.
+#
+# CONSEQUENCES, so this is not rediscovered:
+#   - The `brachial_sbp` / `brachial_dbp` trace the UI offers as "what the cuff
+#     reads" is systematically NARROW, and nothing tests it.
+#   - Peripheral pulse pressure cannot be fixed at the same time as central. Do
+#     not split the difference between them -- that makes both wrong and hides
+#     the structural cause.
+#   - Closing this needs a 1-D wave model of the arterial tree (see the VaMpy
+#     reference in README), which is a different architecture, not a parameter.
+# ---------------------------------------------------------------------------
+
+
+# ---------------------------------------------------------------------------
+# INIT VOLUMES RE-DERIVED FROM THE SETTLED STATE, 2026-09-14 — backlog item 16.
+#
+# Every `init_volume` above is now the compartment's volume at CARDIAC PHASE 0
+# in a settled 120 s run, which is the phase a run actually starts at. Measured
+# once and written back; not fitted.
+#
+# WHY PHASE 0 AND NOT A CYCLE MEAN. `init_volume` is a volume at an instant, not
+# an average. Writing back cycle means would have started both ventricles at
+# mid-ejection volume while the phase clock starts in diastole — LV 95 instead
+# of 138. The check that this is right: at phase 0 the ventricles measure 160.0
+# and 138.0 against existing values of 159 and 137, so the original derivation
+# WAS phase-correct and is reproduced to within 1 mL.
+#
+# TOTAL BLOOD VOLUME IS PRESERVED EXACTLY: the phase-0 volumes sum to 5122.0
+# against an init sum of 5122. Taking all compartments at one instant is what
+# makes that identity hold — a mixture of means and instants would not.
+#
+# THE TWO LARGE OFFENDERS WERE BOTH RECENT AND BOTH AVOIDABLE:
+#   splanchnic_vein  1262 -> 1064 (-198). Set in `fd3fc65` by SUBTRACTING 658
+#                    from the old value rather than re-deriving the equilibrium.
+#   pulmonary_art     106 ->  180 (+74). Never re-derived after compliance went
+#                    2.00 -> 6.00 in `e6e86ce`.
+# Both are the same mistake: changing a compliance or an unstressed volume moves
+# the equilibrium, and the starting volume has to move with it.
+# **WHEN YOU CHANGE C OR V0 ON A COMPARTMENT, RE-DERIVE ITS init_volume.**
+#
+# CONSEQUENCE. The settling transient was 174 mL when item 16 was opened, 201 on
+# 2026-09-01, 45 on 2026-09-09 (largely resolved by other work), and had grown
+# back to 246 by 2026-09-14 — 198 of it splanchnic. It should now be near zero.
+# This matters beyond tidiness: slow_dynamics captures its resting reference
+# from the settled state precisely BECAUSE init_volume could not be trusted.
+# ---------------------------------------------------------------------------
+
+
 def default_compartments() -> list[Compartment]:
     """
     Return the 23 baseline compartments in canonical index order.
@@ -440,27 +542,27 @@ def default_compartments() -> list[Compartment]:
         # Artery→vein TOTALS are unchanged per bed, so systemic resistance, MAP and
         # cardiac output are preserved (measured: CO 4.131 -> 4.140).
         # See docs/validation_log.md "Backlog 20 diagnosed".
-        Compartment("aorta",               0.50, 0.05,  100,  0.05,  145),  # 0  P0=90
-        Compartment("brachiocephalic",     0.12, 0.05,   30,  0.15,   41),  # 1  P0=91
-        Compartment("upper_body_art",      0.25, 0.10,   50,  0.25,   72),  # 2  P0=88 (conduit; arteriole moved to upper_body_vein)
+        Compartment("aorta",               0.80, 0.05,  100,  0.05,  165),  # 0  P0=90
+        Compartment("brachiocephalic",     0.19, 0.05,   30,  0.15,   45),  # 1  P0=91
+        Compartment("upper_body_art",      0.40, 0.10,   50,  0.25,   81),  # 2  P0=88 (conduit; arteriole moved to upper_body_vein)
         # Heights reference the volume-weighted thoracic venous centroid (~heart
         # level), not the neck: with physiological compliance the hydrostatic term
         # C·ΔP dominates tilt redistribution, so a mid-neck height (0.15-0.20) would
         # pool ~200 mL into the upper body in head-down tilt and steal preload.
-        Compartment("upper_body_vein",    12.00, 3.75,  764,  0.05,  854,
+        Compartment("upper_body_vein",    12.00, 3.75,  764,  0.05,  850,
                     drain_resistance=0.100),  # 3  P0≈6 (R = arteriole + exchange segment)
-        Compartment("svc",                 8.00, 0.05,   70,  0.05,  110, drain_resistance=CAVOATRIAL_R),  # 4  P0≈4
-        Compartment("abdominal_aorta",     0.25, 0.05,   60, -0.10,   82),  # 5  P0=88
-        Compartment("renal_art",           0.05, 0.10,   20, -0.10,   24),  # 6  P0=80 (conduit; arteriole moved to renal_vein)
+        Compartment("svc",                 8.00, 0.05,   70,  0.05,  123, drain_resistance=CAVOATRIAL_R),  # 4  P0≈4
+        Compartment("abdominal_aorta",     0.40, 0.05,   60, -0.10,   91),  # 5  P0=88
+        Compartment("renal_art",           0.08, 0.10,   20, -0.10,   26),  # 6  P0=80 (conduit; arteriole moved to renal_vein)
         # renal_vein / splanchnic_vein: `resistance` is the artery→vein exchange
         # segment; `drain_resistance` is the vein→IVC drainage. These were a single
         # shared number until 2026-08-21 — see Compartment.drain_resistance.
-        Compartment("renal_vein",          7.20, 4.50,   60, -0.10,  132,
+        Compartment("renal_vein",          7.20, 4.50,   60, -0.10,  135,
                     drain_resistance=0.200),                                # 7  P0≈8
-        Compartment("splanchnic_art",      0.12, 0.10,   50, -0.15,   60),  # 8  P0=83 (conduit; arteriole moved to splanchnic_vein)
-        Compartment("splanchnic_vein",    52.00, 3.60,  542, -0.08, 1262,
+        Compartment("splanchnic_art",      0.19, 0.10,   50, -0.15,   65),  # 8  P0=83 (conduit; arteriole moved to splanchnic_vein)
+        Compartment("splanchnic_vein",    52.00, 3.60,  542, -0.08, 1064,
                     drain_resistance=0.140),  # 9  P0≈11 (dominant mobilizable reservoir)
-        Compartment("lower_body_art",      0.35, 0.30,   80, -0.50,  111),  # 10 P0=89 (conduit; arteriole moved to the leg exchange branches)
+        Compartment("lower_body_art",      0.56, 0.30,   80, -0.50,  123),  # 10 P0=89 (conduit; arteriole moved to the leg exchange branches)
         # ---- Lower body venous: foot→calf→thigh→ivc (outflow resistance on each segment) ----
         # Compliances reproduce the ~640 mL venous pooling on standing documented by
         # Sjöstrand (1953, DOI: 10.1152/physrev.1953.33.2.202).
@@ -498,20 +600,20 @@ def default_compartments() -> list[Compartment]:
         # lower_body_art's inflow, split 30/40/30 across the three segments:
         #   2.80/0.30 = 9.33,  2.80/0.40 = 7.00,  2.80/0.30 = 9.33
         #   equivalent parallel R = 2.80 ✓, plus the 0.30 conduit = 3.10 as before.
-        Compartment("thigh_vein",          3.20, 9.033, 381, -0.20,  413, p_stiffen=12.0,
+        Compartment("thigh_vein",          3.20, 9.033, 381, -0.20,  420, p_stiffen=12.0,
                     drain_resistance=0.600),  # 11
-        Compartment("calf_vein",           4.80, 6.950, 508, -0.55,  556, p_stiffen=11.0,
+        Compartment("calf_vein",           4.80, 6.950, 508, -0.55,  568, p_stiffen=11.0,
                     drain_resistance=0.100),  # 12
-        Compartment("foot_vein",           4.00, 9.263, 254, -0.85,  295, p_stiffen= 8.0,
+        Compartment("foot_vein",           4.00, 9.263, 254, -0.85,  298, p_stiffen= 8.0,
                     drain_resistance=0.140),  # 13
-        Compartment("ivc",                12.00, 0.04,  120, -0.15,  195, drain_resistance=CAVOATRIAL_R),  # 14 P0≈5
+        Compartment("ivc",                12.00, 0.04,  120, -0.15,  197, drain_resistance=CAVOATRIAL_R),  # 14 P0≈5
         # ---- Cardiac chambers (elastance model; R = valve resistance) ----
         # RA Vinit=155: at RA_EMIN=0.04 and P_ra_eq≈3.8 mmHg → V=60+3.8/0.04=155 mL.
         # End-diastolic (rolling-minimum) CVP ≈ 3 mmHg once RA partially empties ✓
-        Compartment("right_atrium",        0.35, VALVE_R,  16,  0.0,   47),  # 15
+        Compartment("right_atrium",        0.35, VALVE_R,  16,  0.0,   33),  # 15
         # RV Vinit=163: at RV_EMIN=0.02, P_rv_dia=0.02×(163-80)=1.7 mmHg → CVP can be 2-3 mmHg.
         # ESV=V0+P_pa/E_max=80+15/1.15=93 mL; SV=163-93=70 mL (improved from 56 mL). ✓
-        Compartment("right_ventricle",     0.10, VALVE_R,  38,  0.0,  159),  # 16 EDV≈163 mL
+        Compartment("right_ventricle",     0.10, VALVE_R,  38,  0.0,  160),  # 16 EDV≈163 mL
         # ---- Pulmonary (PVR ≈ 0.08 mmHg·s/mL) ----
         # PULMONARY COMPLIANCES RAISED x5.0 ON 2026-09-03 (was 0.40/0.50/0.80,
         # whole bed 1.70 mL/mmHg). See PULMONARY_COMPLIANCE note above.
@@ -534,12 +636,12 @@ def default_compartments() -> list[Compartment]:
         # NOTE the compartment value is not the measured quantity: C = 6.0 here
         # produces an EFFECTIVE SV/PP of 8.36, because the artery drains during
         # ejection. Calibrate against the measurement, not the parameter.
-        Compartment("pulmonary_art",       6.00, PULMONIC_R, 100, 0.0, 106),  # 17
-        Compartment("pulmonary_cap",       2.50, 0.06,   80,  0.0,   85),  # 18
-        Compartment("pulmonary_vein",      4.00, 0.02,  160,  0.0,  168, drain_resistance=VENOATRIAL_R),  # 19
+        Compartment("pulmonary_art",       6.00, PULMONIC_R, 100, 0.0, 179),  # 17
+        Compartment("pulmonary_cap",       2.50, 0.06,   80,  0.0,   105),  # 18
+        Compartment("pulmonary_vein",      4.00, 0.02,  160,  0.0,  197, drain_resistance=VENOATRIAL_R),  # 19
         # ---- Left heart ----
-        Compartment("left_atrium",         0.20, VALVE_R,  15,  0.0,   47),  # 20 EDP≈9
-        Compartment("left_ventricle",      0.08, VALVE_R,  10,  0.0,  137),  # 21 EDV≈160
+        Compartment("left_atrium",         0.20, VALVE_R,  15,  0.0,   38),  # 20 EDP≈9
+        Compartment("left_ventricle",      0.08, VALVE_R,  10,  0.0,  138),  # 21 EDV≈160
         # ---- Coronary ----
         Compartment("coronary",            0.10, 15.0,   20,  0.05,   21),  # 22 flow≈0.3 L/min
     ]

@@ -144,7 +144,7 @@ import numpy as np
 import pytest
 
 from model.circulation import SimParams, run_simulation
-from model.compartments import IDX
+from model.compartments import IDX, default_compartments
 from model.gravity import GravityEnvironment
 from model.patient import build_patient_params, apply_cardiac
 from model.heart import LV_EMAX, RV_EMAX
@@ -1164,6 +1164,160 @@ def test_norepi_vs_phenyl_co_preservation_ngan_kee2015():
     )
 
 
+def test_init_volumes_are_the_settled_equilibrium():
+    """`init_volume` must BE the model's equilibrium, not a stale guess at it.
+
+    Backlog item 16, and the reason this is a TEST rather than a note in the
+    code. The settling transient was 174 mL when the item was opened, 201 mL on
+    2026-09-01, 45 mL on 2026-09-09 after other work happened to resolve it, and
+    **246 mL by 2026-09-14 because two changes moved an equilibrium without
+    moving the starting volume with it** — `fd3fc65` set splanchnic_vein's init
+    by subtracting a number from the old value instead of re-deriving it, and
+    `e6e86ce` changed pulmonary arterial compliance and never touched init at
+    all. Re-derived, it is now about 8 mL.
+
+    IT WILL DRIFT AGAIN. Any change to a compliance or an unstressed volume
+    moves that compartment's equilibrium, so this is not a thing that gets fixed
+    once. **That is precisely why it is asserted here instead of relied on** —
+    the same lesson as the dead `venous_tone_factor` and the unguarded drug
+    magnitudes: a rule that depends on memory gets forgotten, a rule with a test
+    behind it does not.
+
+    TO RE-DERIVE when this fails: run a settled simulation, take every
+    compartment's volume at CARDIAC PHASE 0 (not a cycle mean — that would start
+    the ventricles at mid-ejection while the phase clock sits in diastole), and
+    write those back. Taking all compartments at one instant is also what keeps
+    total blood volume identical.
+
+    WHY IT MATTERS BEYOND TIDINESS: `slow_dynamics` captures its resting
+    reference from the settled state rather than from `init_volume` precisely
+    because this could not be trusted — referencing init made stress relaxation
+    creep permanently and dropped resting MAP by 1.4 mmHg.
+    """
+    comp = default_compartments()
+    p = SimParams()
+    p.duration_s = 90.0
+    r = run_simulation(p)
+    V = np.asarray(r["volumes"])
+    t = np.asarray(r["t"])
+    settled = V[t >= t[-1] - 5.0].mean(axis=0)
+    init = np.array([c.init_volume for c in comp])
+
+    veins = ["upper_body_vein", "svc", "renal_vein", "splanchnic_vein",
+             "thigh_vein", "calf_vein", "foot_vein", "ivc"]
+    redistribution = sum(abs(settled[IDX[n]] - init[IDX[n]]) for n in veins)
+    assert redistribution < 50.0, (
+        f"venous settling transient is {redistribution:.0f} mL — init_volume is "
+        f"no longer the equilibrium. A compliance or unstressed volume has been "
+        f"changed without re-deriving the starting volume. See the docstring for "
+        f"how to re-derive; it is measured at phase 0, not as a cycle mean."
+    )
+
+    worst = max(range(len(comp)), key=lambda i: abs(settled[i] - init[i]))
+    drift = settled[worst] - init[worst]
+    assert abs(drift) < 60.0, (
+        f"{comp[worst].name} settles {drift:+.0f} mL from its init_volume "
+        f"({init[worst]:.0f} -> {settled[worst]:.0f})"
+    )
+
+
+# ===========================================================================
+# 10b. Central blood pressure in a 55-year-old man
+#      — [PMID: 16256881, McEniery 2005, the Anglo-Cardiff Collaborative Trial]
+#
+# 4,001 healthy NORMOTENSIVE subjects aged 18-90, peripheral AND central
+# pressure. Table 1, MALES 50-59 yrs, n = 429 — the model's own decade and sex.
+#
+# WHY THIS COHORT SETTLED AN ARGUMENT. Backlog item 37 carried the headline
+# "the model runs ~20 mmHg too high on MAP" against a target of 77.3, taken from
+# a cohort aged 25 +/- 3. McEniery's age-matched men measure MAP 95 +/- 7 and the
+# model sits at 95.4. The model's PERIPHERAL haemodynamics were right all along;
+# only the CENTRAL ones were wrong, and nothing in the suite was looking at them.
+# ===========================================================================
+
+# McEniery 2005 Table 1, males 50-59 yrs, n = 429 (mean +/- SD)
+_MCE_CSBP = (115.0, 9.0)     # central systolic
+_MCE_CPP  = (35.0, 7.0)      # central pulse pressure
+_MCE_MAP  = (95.0, 7.0)
+_MCE_PDBP = (79.0, 6.0)      # diastolic (same centrally and peripherally)
+_MCE_AMP  = (1.33, 0.16)     # peripheral PP / central PP
+
+
+@pytest.fixture(scope="module")
+def central_pressures():
+    p = SimParams()
+    p.duration_s = 90.0
+    r = run_simulation(p)
+    t = np.asarray(r["t"])
+    tail = t >= t[-1] - 15.0
+    m = lambda k: float(np.mean(np.asarray(r[k])[tail]))
+    cs, cd = m("sbp"), m("dbp")
+    bs, bd = m("brachial_sbp"), m("brachial_dbp")
+    return {
+        "csbp": cs, "cpp": cs - cd, "dbp": cd, "map": m("map"),
+        "ppp": bs - bd, "amp": (bs - bd) / (cs - cd),
+    }
+
+
+def test_central_pressures_mceniery2005(central_pressures):
+    """[PMID: 16256881 — McEniery 2005] Central systolic, central pulse
+    pressure, diastolic and mean pressure for a 55-year-old man.
+
+    Central pulse pressure was the model's largest arterial deviation at
+    +2.9 SD (55.2 against 35 +/- 7) and was invisible because nothing looked at
+    central pressure. Arterial compliance x1.6 on 2026-09-14 closed it, and the
+    same factor independently satisfies Schipke's arterial decay constant — two
+    sources, one parameter, neither tuned to.
+    """
+    c = central_pressures
+    for name, key, (mean, sd) in (
+        ("central systolic", "csbp", _MCE_CSBP),
+        ("central pulse pressure", "cpp", _MCE_CPP),
+        ("diastolic", "dbp", _MCE_PDBP),
+        ("mean arterial", "map", _MCE_MAP),
+    ):
+        z = (c[key] - mean) / sd
+        assert abs(z) <= 2.0, (
+            f"{name} {c[key]:.1f} mmHg is {z:+.1f} SD from McEniery's "
+            f"{mean} +/- {sd} (males 50-59, n=429)"
+        )
+
+
+@pytest.mark.xfail(strict=True, reason=(
+    "STRUCTURAL LIMITATION OF A LUMPED MODEL — NOT A CALIBRATION GAP. "
+    "In humans brachial pulse pressure EXCEEDS central: McEniery 2005 measures "
+    "the ratio at 1.33 +/- 0.16 in males 50-59, falling from 1.72 at age 20 to "
+    "1.24 at 70. The model reads about 0.88 — INVERTED — and raising arterial "
+    "compliance makes it worse (0.94 -> 0.88 -> 0.84 across the sweep), so it "
+    "cannot be calibrated away. "
+    "WHY IT CANNOT BE FIXED HERE. Amplification arises from WAVE REFLECTION and "
+    "impedance mismatch along a distributed arterial tree — the wave travels, "
+    "reflects off branch points and the periphery, and the reflected wave "
+    "arrives later and adds differently at each site. A lumped compartment "
+    "model has no wave travel, no transit time and no reflection: every "
+    "compartment sees pressure instantaneously. McEniery's augmentation index "
+    "(-2 % at 20 to 30 % at 70) measures that reflected wave directly, and the "
+    "model has no mechanism that could produce it. "
+    "CONSEQUENCE: the brachial trace the UI offers as 'what the cuff reads' is "
+    "systematically NARROW, and peripheral pulse pressure cannot be right at "
+    "the same time as central. DO NOT split the difference between them — that "
+    "makes both wrong and hides the cause. Closing this needs a 1-D wave model "
+    "of the arterial tree, a different architecture, not a parameter. "
+    "strict=True so that if a future architecture ever produces amplification, "
+    "this fires and is removed deliberately."
+))
+def test_pulse_pressure_amplification_mceniery2005(central_pressures):
+    """[PMID: 16256881 — McEniery 2005] Brachial pulse pressure must exceed
+    central; the measured ratio in males 50-59 is 1.33 +/- 0.16.
+    """
+    amp = central_pressures["amp"]
+    z = (amp - _MCE_AMP[0]) / _MCE_AMP[1]
+    assert abs(z) <= 2.0, (
+        f"pulse pressure amplification {amp:.2f} is {z:+.1f} SD from "
+        f"McEniery's {_MCE_AMP[0]} +/- {_MCE_AMP[1]}"
+    )
+
+
 # ===========================================================================
 # 11a. The venous return curve does not ROTATE when blood is removed
 #      — [PMID: 19237896, Maas 2009; reviewed in PMC9128096, Persichini 2022]
@@ -1301,9 +1455,23 @@ _SCH_DSV  = (-0.5,  +18.5)    # mL         median  +9
 _SCH_DMAP = (+23.5, +32.5)    # mmHg       median +28
 _SCH_DTPR = (+650,  +1270)    # dyn.s/cm5  median +950
 
-# The model's phenylephrine plateau. Below 2 the pressor effect is still
-# climbing; above 4 it barely moves (dMAP +21.9 -> +22.8 from 4 to 6).
-_PHENYL_PLATEAU = (2.0, 3.0, 4.0)
+# The model's phenylephrine plateau — the doses where its pressor response is
+# near its own maximum, which is what Schäfers' bars correspond to (his subjects
+# were taken to the highest dose each tolerated, a diastolic rise of +30 mmHg).
+#
+# MOVED 2/3/4 -> 4/6/8 ON 2026-09-14, and NOT to make a test pass. Arterial
+# compliance x1.6 that day means a given vasoconstriction produces LESS pressure
+# rise, so the same dose sits lower on the dose-response curve: 2.0 mcg/kg/min
+# gave dMAP +18.3 before and +15.5 after. The plateau is a property of the
+# model, the model changed, and the plateau moved with it. The BANDS below are
+# untouched.
+#
+# The failure this fixed is worth recording. At 2.0 the reflex bradycardia had
+# not fully engaged (dHR -13.6 against a band of -19.5 to -14.2) — because less
+# pressure rise means less baroreflex response. That is DOWNSTREAM of the known
+# pressor xfail below, not a separate defect: cardiac output and stroke volume
+# stayed inside their bands at every dose throughout.
+_PHENYL_PLATEAU = (4.0, 6.0, 8.0)
 
 
 def _run_phenyl(dose_mcg_kg_min):
@@ -1376,9 +1544,10 @@ def test_phenylephrine_flow_response_schafers1999(phenyl_dose_response):
     "total-peripheral-resistance rise: at 2/3/4 mcg/kg/min dMAP is +18.2/+20.5/"
     "+22.0 against a measured +28 (quartiles 23.5-32.5), and dTPR is "
     "+423/+460/+517 against +950 (650-1270). "
-    "IT SATURATES BELOW THE TARGET: from 4 to 6 mcg/kg/min dMAP moves only "
-    "+21.9 to +22.8, so the curve is at its ceiling well short of the measured "
-    "effect and no higher dose reaches it. "
+    "IT SATURATES BELOW THE TARGET: after the 2026-09-14 arterial compliance "
+    "change, dMAP is +19.0/+20.6/+21.3 at 4/6/8 mcg/kg/min — the curve is at "
+    "its ceiling well short of the measured +28, and no higher dose reaches "
+    "it. "
     "AGE MAKES THE GAP WORSE, NOT BETTER. Their subjects are 27 and the model's "
     "reference patient is 55; stiffer arteries give a LARGER pressure rise for "
     "the same vasoconstriction, so the model should overshoot a young cohort "
