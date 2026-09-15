@@ -52,6 +52,10 @@ from collections import defaultdict
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 PMID_RE = re.compile(r"PMID:?\s*([0-9]{7,8})", re.I)
+# PMC is a THIRD identifier namespace and was missed on the first pass: 13 of
+# them appear in tests/ and model/, and a source cited only by PMC was invisible
+# to this tool — neither indexed nor reported as unasserted, simply absent.
+PMC_RE = re.compile(r"\b(PMC[0-9]{6,8})\b", re.I)
 DOI_RE = re.compile(r"\b(10\.\d{4,5}/[A-Za-z0-9./_():;-]*[A-Za-z0-9)])")
 # A section header in the test file: "# ===..." then "# 28. Title — Source".
 SECTION_RE = re.compile(r"^#\s*={10,}\s*$")
@@ -68,6 +72,8 @@ def citations_in(text):
     for i, line in enumerate(text.splitlines(), start=1):
         for m in PMID_RE.finditer(line):
             found.append((i, "pmid", m.group(1)))
+        for m in PMC_RE.finditer(line):
+            found.append((i, "pmc", m.group(1).upper()))
         for m in DOI_RE.finditer(line):
             doi = m.group(1).rstrip(".,;)")
             found.append((i, "doi", doi.lower()))
@@ -123,7 +129,7 @@ def citation_blocks(cite_lines, gap=15):
 def collect():
     """Build {source_key: record} across tests/ and model/."""
     sources = defaultdict(lambda: {
-        "pmids": set(), "dois": set(), "context": None,
+        "pmids": set(), "pmcs": set(), "dois": set(), "context": None,
         "tests": [], "model_files": set(), "test_files": set(),
     })
     # Merge identifiers that appear within this many lines of each other: a
@@ -177,7 +183,7 @@ def collect():
             for ln, kind, ident in cites:
                 k = key_for(ident)
                 rec = sources[k]
-                (rec["pmids"] if kind == "pmid" else rec["dois"]).add(ident)
+                rec[{"pmid": "pmids", "pmc": "pmcs", "doi": "dois"}[kind]].add(ident)
                 if rec["context"] is None:
                     ctx = _clean(lines[ln - 1])
                     if len(ctx) < 40 and ln < len(lines):
@@ -209,9 +215,10 @@ def collect():
 def render(sources, markdown, only_unasserted):
     rows = []
     for _k, rec in sources.items():
-        ids = " ".join(sorted(f"PMID {p}" for p in rec["pmids"]))
-        dois = " ".join(sorted(rec["dois"]))
-        label = (ids + (" " if ids and dois else "") + dois) or "(no identifier)"
+        parts = [" ".join(sorted(f"PMID {p}" for p in rec["pmids"])),
+                 " ".join(sorted(rec["pmcs"])),
+                 " ".join(sorted(rec["dois"]))]
+        label = " ".join(p for p in parts if p) or "(no identifier)"
         asserted = bool(rec["tests"])
         if only_unasserted and (asserted or not rec["model_files"]):
             continue
