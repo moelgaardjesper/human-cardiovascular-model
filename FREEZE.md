@@ -31,13 +31,44 @@ It writes `freeze/<tag>/`:
 | `MANIFEST.md` | what ran, what did not, sha256 of every file |
 | `environment.txt` | interpreter, platform, full `pip freeze` |
 | `parameters.md` | every compartment field and model constant, **introspected** |
-| `validation_table.md` | literature target vs model value, measured fresh |
+| `validation_table.md` | literature target vs model value, measured fresh — **representative, not exhaustive** |
+| `sources.md` | **every** cited source, the test that asserts it, and its status — derived |
 | `suite_fast.txt` | `pytest` — the ratchet, and what CI runs |
 | `suite_slow.txt` | `pytest -m slow` — minutes-to-hours dynamics |
 | `suite_overnight.txt` | `pytest -m overnight` — 24 h runs, ~11 h wall clock |
 
 The command **refuses to run on a dirty working tree**. An artefact emitted from
 uncommitted code cannot be checked out again, which defeats its purpose.
+
+### Two tables, and only one is written by hand
+
+`validation_table.md` is **curated and representative** — about a dozen headline
+comparisons, deliberately short enough that a person will read it. It is not the
+evidence base, and it must not be counted as one.
+
+`sources.md` is **the complete citation record, and it is derived.** Every test
+docstring and section header already carries its source's PMID or DOI;
+`tools/source_index.py` collects them, attributes each to the tests that assert
+it, and reports whether those pass or are strict xfails. Nobody maintains it, so
+it cannot drift out of step with the suite — which is exactly how the curated
+table went wrong before the freeze, carrying two comparisons run at protocols
+their sources never used.
+
+**The rule this encodes: anything that must stay in step with 84 tests has to be
+generated, never written.** A bigger hand-maintained table would rot faster than
+the small one did.
+
+`sources.md` also reports the inverse, which is where it earns its keep: sources
+cited in `model/` as a parameter justification whose identifier **no test
+repeats**. That is the citation form of "documented mechanism, silently inert",
+this repository's most frequent defect class. It matches identifiers rather than
+names, so a test citing a paper in prose without its PMID is invisible to it —
+the list is an upper bound, and an entry means either "write the test" or "put
+the identifier in the test that already exists".
+
+Papers read and set aside without producing a test appear in neither table. They
+live in the project's lab notebook, which is not published, and belong in a short
+hand-written *consulted, not asserted* list in the manuscript.
 
 ### The parameter dump is introspected, deliberately
 

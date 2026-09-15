@@ -288,6 +288,17 @@ def main():
               f"`suite_slow.txt` is the actual run.\n\n"
               + out + (f"\n\n(tool exited {code})\n" if code else "\n"))
 
+    # --- source index ------------------------------------------------------
+    # DERIVED, so it costs nothing to keep and cannot drift. The curated
+    # validation table beside it is representative and short enough to read;
+    # this is the complete citation record, generated from the identifiers
+    # already written into the suite.
+    print("  building source index...")
+    p = subprocess.run([sys.executable, "tools/source_index.py", "--markdown"],
+                       cwd=ROOT, capture_output=True, text=True)
+    write("sources.md", p.stdout if p.returncode == 0 else
+          f"# Source index\n\nTOOL FAILED (exit {p.returncode})\n\n{p.stderr}")
+
     # --- the three test tiers ----------------------------------------------
     tiers = [("suite_fast.txt", ["-q"], "fast suite — the ratchet; what CI runs",
               not args.skip_fast)]
