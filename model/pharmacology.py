@@ -269,6 +269,17 @@ def spinal_anaesthesia(block_height: float) -> dict:
       Hill parameters calibrated so that block_height=1.0 gives SVR reduction
       ≈38% (within the Malmqvist 30-40% range at complete block).
     """
+    # CLAMPED, because an out-of-range block DIVERGES rather than saturating.
+    # Measured 2026-09-15: block_height = 4.0 (four times a complete block, an
+    # obvious mis-entry) returned MAP 4.2e47 and CO 0 — the ODE blew up rather
+    # than producing anything a caller could recognise as wrong. A model aimed at
+    # intraoperative use must not do that: a reviewer will not try it, and a
+    # clinician typing into the UI might.
+    # Clamping rather than raising, because the UI passes user input straight
+    # through and a hard failure mid-run is worse than a saturated block. Full
+    # sympathetic denervation is the physiological ceiling; there is nothing
+    # beyond it to represent.
+    block_height    = min(max(float(block_height), 0.0), 1.0)
     svr_reduction   = 0.38 * block_height    # ≈38% SVR reduction at full block
     # Sympathetic venodilation below the block ↑ reservoir V0. e_max 0.12 gives
     # CO −11 % at full block (baroreflex on) — CO preserved per Malmqvist.

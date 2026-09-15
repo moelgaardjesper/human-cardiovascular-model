@@ -388,6 +388,35 @@ class SimParams:
         self.drug_start_s = 0.0
         self.drug_stop_s  = float("inf")
 
+        # Seal the parameter set. Everything above is a real field; anything
+        # assigned after this point is a typo or a misremembered name.
+        self.__dict__["_sealed"] = True
+
+    # ---- typo guard ------------------------------------------------------
+    # WHY THIS EXISTS. `SimParams` is a plain object, so until 2026-09-15 it
+    # accepted ANY attribute silently. `p.duration_s = 90.0` looks exactly like
+    # setting the run length and does nothing whatsoever — run_simulation takes
+    # `duration_s` as a FUNCTION ARGUMENT and defaults to 60 s. That mistake was
+    # made dozens of times in one day's measurement work before anyone noticed
+    # every run had been 60 s.
+    #
+    # It is the same bug class the repo has now hit six times: a mechanism that
+    # looks live and is inert. `venous_tone_factor` assembled into a dead local,
+    # `p_stiffen` silently dropped by patient scaling, the arteriole on the wrong
+    # side of `*_art`, ITP across the aortic valve, PPV's missing compartments —
+    # and now a parameter that was never a parameter.
+    #
+    # Raising here turns a silent no-op into an immediate, named failure.
+    def __setattr__(self, name: str, value) -> None:
+        if getattr(self, "_sealed", False) and name not in self.__dict__:
+            raise AttributeError(
+                f"SimParams has no field {name!r}. If you meant the run length, "
+                f"that is an argument to run_simulation(params, duration_s=...), "
+                f"not a field on SimParams. Setting an unknown attribute here "
+                f"would have been silently ignored."
+            )
+        object.__setattr__(self, name, value)
+
 
 def perturbation_times(params, duration_s: float) -> list[float]:
     """Every moment in this run where something is done TO the patient.

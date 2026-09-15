@@ -146,7 +146,8 @@ import pytest
 from model.circulation import SimParams, run_simulation
 from model.compartments import IDX, default_compartments
 from model.gravity import GravityEnvironment
-from model.patient import build_patient_params, apply_cardiac
+from model.patient import (build_patient_params, apply_cardiac,
+                           REF_HEIGHT_CM, REF_WEIGHT_KG)
 from model.heart import LV_EMAX, RV_EMAX
 from model.pharmacology import combined_drug_factors
 from model.slow_dynamics import CAPILLARY_PRESSURE_FRACTION
@@ -202,16 +203,35 @@ def pct(new: float, old: float) -> float:
 def run_scenario(height_cm, weight_kg, map_mmhg=None, hr_bpm=70,
                  tilt_deg=0.0, tilt_onset=5.0, gravity=GravityEnvironment.EARTH,
                  baroreflex=True, ventilation_mode='spontaneous', resp_rate=14.0,
-                 duration=LIT_DURATION):
+                 duration=LIT_DURATION, age_years=None, sex="male"):
     """
     Run a scenario and return steady-state (last-half mean) outputs.
 
     Default ventilation_mode='spontaneous' because most literature validation
     studies used awake, spontaneously-breathing volunteers. Pass
     ventilation_mode='none' for anaesthetised/apnoeic scenarios.
+
+    **`age_years` added 2026-09-15.** Until then this helper took no age, so
+    EVERY literature scenario ran the 55-year-old reference patient — including
+    comparisons against Schäfers (median 27), Hoff (25 +/- 3) and Fritsch
+    (23-43). Those carried an unacknowledged age mismatch, against the
+    match-the-cohort rule the rest of the project follows.
+
+    The default is `None`, which defers to `build_patient_params`' own
+    `REFERENCE_AGE_YEARS` rather than repeating 55.0 here. **Two copies of one
+    constant is exactly the defect backlog item 50 was opened for** — the
+    reference operating point had been typed twice and the copies had already
+    drifted apart on CVP.
+
+    Passing an age exercises `aging.arterial_compliance_factor`, which is 1.0 at
+    the reference age BY CONSTRUCTION — which is why the age law went untested
+    against absolute pressures for so long: every default run makes it an
+    identity. Validated 2026-09-15 against McEniery Table 1 at ages 25/55/75:
+    central SBP, DBP, central PP and MAP all within 1 SD at every decade.
     """
+    kw = {} if age_years is None else {"age_years": age_years}
     comps, cardiac = build_patient_params(height_cm, weight_kg, map_mmhg=map_mmhg,
-                                          hr_bpm=hr_bpm)
+                                          hr_bpm=hr_bpm, sex=sex, **kw)
     params = SimParams(compartments=comps)
     # apply_cardiac applies EVERY factor the cardiac dict carries. This used to
     # be a hand-written list setting only lv_emax and rv_emax, which is the same
@@ -231,6 +251,41 @@ def run_scenario(height_cm, weight_kg, map_mmhg=None, hr_bpm=70,
     return {k: last_half(r[k]) for k in ("map", "hr", "co", "cvp", "sv",
                                           "cpp", "cop", "buckberg", "dbp", "sbp", "lvedp",
                                           "ankle_p", "brachial_p")}
+
+
+def cohort_params(height_cm=REF_HEIGHT_CM, weight_kg=REF_WEIGHT_KG,
+                  age_years=None, sex="male", hr_bpm=70.0):
+    """A bare `SimParams` for a NAMED STUDY COHORT, scaled to its body and age.
+
+    `run_scenario` above returns steady-state means, which suits a
+    posture/gravity comparison but not a test that needs the raw time series,
+    a drug infusion or a haemorrhage. Those tests built `SimParams()` directly
+    and therefore ran the 55-year-old reference patient whatever cohort they
+    cited. This is the same patient-scaling path in a form they can use.
+
+    **THIS IS THE IDENTITY AT THE REFERENCE PATIENT.** Measured 2026-09-15:
+    `cohort_params()` and `SimParams()` settle to MAP 95.429 / CVP 4.349 /
+    CO 6.056 / HR 69.351 — equal to three decimals, not merely close. That is
+    not automatic; it is true because `BSA_REF` is COMPUTED from the same
+    Mosteller function that measures every patient (see `patient.py`), and
+    because no `map_mmhg` is passed. **Passing a measured MAP would invoke
+    `svr_scale`, which carries the known -14 % self-rescaling of backlog item
+    50** — so do not add one here to "match a cohort's blood pressure" without
+    reading that item first. `test_cohort_params_is_the_reference_identity`
+    guards the identity.
+
+    Age enters through `aging.arterial_compliance_factor` (elastic arteries)
+    and `aging.chamber_age_factors` (the two ventricles). **It does NOT enter
+    the baroreflex** — `BaroreflexController` takes no patient argument of any
+    kind, so a reflex-level test cannot be age-matched at all. See §28.
+    """
+    kw = {} if age_years is None else {"age_years": age_years}
+    comps, cardiac = build_patient_params(height_cm, weight_kg,
+                                          hr_bpm=hr_bpm, sex=sex, **kw)
+    params = SimParams(compartments=comps)
+    apply_cardiac(params, cardiac)
+    params.hr_bpm = hr_bpm
+    return params
 
 
 # ===========================================================================
@@ -1201,11 +1256,10 @@ def test_valsalva_four_phases_and_atrial_emptying_ferguson1989():
     """
     strain_s, dur_s = 30.0, 15.0
     p = SimParams()
-    p.duration_s = 59.0
     p.baroreflex_enabled = True
     p.valsalva_start_s = strain_s
     p.valsalva_duration_s = dur_s
-    r = run_simulation(p)
+    r = run_simulation(p, duration_s=59.0)
 
     t = np.asarray(r["t"])
     ao = np.asarray(r["aortic_intraluminal"])
@@ -1288,8 +1342,7 @@ def test_reference_operating_point_is_self_consistent():
     from model.patient import _svr
 
     p = SimParams()
-    p.duration_s = 70.0
-    r = run_simulation(p)
+    r = run_simulation(p, duration_s=70.0)
     t = np.asarray(r["t"])
     tail = t >= t[-1] - 15.0
     m = lambda k: float(np.mean(np.asarray(r[k])[tail]))
@@ -1304,6 +1357,55 @@ def test_reference_operating_point_is_self_consistent():
         f"{REFERENCE_CVP_MMHG} / CO {REFERENCE_CO_LPM}; the model settles at "
         f"MAP {m('map'):.2f} / CVP {m('cvp'):.2f} / CO {m('co'):.2f}"
     )
+
+
+def test_cohort_params_is_the_reference_identity():
+    """Routing a test through patient scaling must not, by itself, change it.
+
+    `cohort_params()` with no arguments and `SimParams()` must produce the SAME
+    compartment set and the same cardiac parameters — bit for bit, not close.
+
+    THIS GUARDS THE AGE-MATCHING CONVERSION OF 2026-09-15. Three literature
+    tests were moved from `SimParams()` onto the patient-scaling path so they
+    could carry their cohort's age. That move is only honest if the path is an
+    identity at the reference patient; if it were not, every converted test
+    would have silently absorbed a scaling change alongside the age change and
+    the two would be impossible to separate afterwards.
+
+    It is not a free assumption. `BSA_REF` was once the typed constant 1.87
+    while the code measured every patient with Mosteller, which gives 1.8447 —
+    so the reference patient entered by their own height and weight was scaled
+    by 0.9865 instead of 1.0, a 1.4 % shrink applied to the exact case that
+    should have been the identity. Deriving `BSA_REF` from the same function
+    fixed it. This test is what stops it coming back.
+
+    It asserts on PARAMETERS, not on a settled simulation, so it costs
+    milliseconds and cannot be made flaky by an integration tolerance. The
+    settled equality was measured separately on 2026-09-15: both give MAP
+    95.429 / CVP 4.349 / CO 6.056 / HR 69.351.
+    """
+    ref = SimParams()
+    got = cohort_params()
+
+    assert len(got.compartments) == len(ref.compartments)
+    for a, b in zip(ref.compartments, got.compartments):
+        assert a.name == b.name, f"compartment order changed: {a.name} vs {b.name}"
+        for field in ("compliance", "V0", "init_volume", "resistance"):
+            x, y = getattr(a, field, None), getattr(b, field, None)
+            if x is None or not isinstance(x, (int, float)):
+                continue
+            assert abs(x - y) <= 1e-9 * max(1.0, abs(x)), (
+                f"{a.name}.{field}: SimParams() has {x!r}, cohort_params() "
+                f"has {y!r}. Patient scaling is no longer the identity at the "
+                f"reference patient — see BSA_REF in patient.py"
+            )
+
+    for field in ("lv_emax", "rv_emax", "hr_bpm"):
+        x, y = getattr(ref, field), getattr(got, field)
+        assert abs(x - y) <= 1e-9 * max(1.0, abs(x)), (
+            f"cardiac {field}: {x!r} vs {y!r} — patient scaling is not the "
+            f"identity at the reference patient"
+        )
 
 
 def test_reference_operating_point_is_defined_once():
@@ -1363,8 +1465,7 @@ def test_init_volumes_are_the_settled_equilibrium():
     """
     comp = default_compartments()
     p = SimParams()
-    p.duration_s = 90.0
-    r = run_simulation(p)
+    r = run_simulation(p, duration_s=90.0)
     V = np.asarray(r["volumes"])
     t = np.asarray(r["t"])
     settled = V[t >= t[-1] - 5.0].mean(axis=0)
@@ -1413,8 +1514,7 @@ _MCE_AMP  = (1.33, 0.16)     # peripheral PP / central PP
 @pytest.fixture(scope="module")
 def central_pressures():
     p = SimParams()
-    p.duration_s = 90.0
-    r = run_simulation(p)
+    r = run_simulation(p, duration_s=90.0)
     t = np.asarray(r["t"])
     tail = t >= t[-1] - 15.0
     m = lambda k: float(np.mean(np.asarray(r[k])[tail]))
@@ -1530,7 +1630,6 @@ def _venous_return_curve(bleed_ml=0.0):
     cvp, co = [], []
     for airway in (5, 15, 25, 35):
         p = SimParams()
-        p.duration_s = 60.0
         p.baroreflex_enabled = True          # Maas measured in intact patients
         p.ventilation_mode = 'mechanical'
         p.peep_cmh2o = airway
@@ -1540,7 +1639,7 @@ def _venous_return_curve(bleed_ml=0.0):
             p.hemorrhage_rate_mlmin = bleed_ml / (20.0 / 60.0)
             p.hemorrhage_start_s = 10.0
             p.hemorrhage_duration_s = 20.0
-        r = run_simulation(p)
+        r = run_simulation(p, duration_s=60.0)
         t = np.asarray(r["t"])
         tail = t >= t[-1] - 8.0
         cvp.append(float(np.mean(np.asarray(r["ra_intraluminal"])[tail])))
@@ -1640,6 +1739,24 @@ _SCH_DTPR = (+650,  +1270)    # dyn.s/cm5  median +950
 # stayed inside their bands at every dose throughout.
 _PHENYL_PLATEAU = (4.0, 6.0, 8.0)
 
+# THE COHORT'S AGE. Twelve healthy MALE subjects, median 27 (range 22-36).
+# Until 2026-09-15 this fixture ran the 55-year-old reference patient, so the
+# model was a generation older than the men it was being compared with, and the
+# quantity most sensitive to that difference — arterial compliance — is exactly
+# the one an alpha1 agonist acts on.
+#
+# RE-MEASURED AT AGE 27, all three plateau doses, 2026-09-15:
+#     dose       dCO     dHR      dSV     |  Schaefers quartiles
+#     4.0      -0.73   -15.2    +9.9      |  dCO  -1.25 to -0.40
+#     6.0      -0.81   -16.0    +9.9      |  dHR  -19.5 to -14.2
+#     8.0      -0.72   -16.5   +12.3      |  dSV   -0.5 to +18.5
+# against -0.84 / -0.84 / -0.95 on dCO at the reference age. **Every quantity
+# is still in band at every dose, and dCO moved AWAY from Schaefers' median.**
+# That is the physiology: a 27-year-old's arteries are more compliant, so the
+# same vasoconstriction produces less afterload and costs less cardiac output.
+# The bands are untouched and the model was not retuned to recover the margin.
+_SCH_AGE_YEARS = 27.0
+
 
 def _run_phenyl(dose_mcg_kg_min):
     """Settled haemodynamics on a phenylephrine infusion.
@@ -1648,13 +1765,18 @@ def _run_phenyl(dose_mcg_kg_min):
     cardiac output by up to 0.23 L/min between adjacent doses, which is a
     quarter of the band being asserted. At 90/20 the numbers agree with a
     120 s run averaged over 30 s to within 0.03 L/min.
+
+    AGE-MATCHED TO 27 ON 2026-09-15, see the cohort note above. Schaefers gives
+    NO height or weight, so the body stays at the reference 175 cm / 70 kg and
+    only the age moves; his subjects were all male, which the default already
+    is. The effect is real and it makes the agreement WORSE, which is why it
+    was done before the freeze rather than after — see the table in §11b.
     """
-    p = SimParams()
+    p = cohort_params(age_years=_SCH_AGE_YEARS)
     p.baroreflex_enabled = True
-    p.duration_s = 90.0
     if dose_mcg_kg_min:
         p.drug_factors = combined_drug_factors({"phenylephrine": dose_mcg_kg_min})
-    r = run_simulation(p)
+    r = run_simulation(p, duration_s=90.0)
     t = np.asarray(r["t"])
     tail = t >= t[-1] - 20.0
     m = lambda k: float(np.mean(np.asarray(r[k])[tail]))
@@ -3541,6 +3663,18 @@ def test_intraluminal_ra_pressure_is_a_catheter_trace():
     )
 
 
+# HOFF'S COHORT, used by every test in this file that cites him: 20 healthy
+# volunteers, age 25 +/- 3, height 176 +/- 9 cm, weight 69 +/- 8 kg, supine,
+# awake, spontaneously breathing; CVP measured invasively in 10 of them.
+#
+# SEX IS THE ONE THING THAT CANNOT BE MATCHED HERE. Hoff is 11 M / 9 F and the
+# model takes a single sex, so it stays male — the model's default and the
+# majority of his cohort. Recorded rather than corrected.
+_HOFF_AGE_YEARS  = 25.0
+_HOFF_HEIGHT_CM  = 176.0
+_HOFF_WEIGHT_KG  = 69.0
+
+
 def test_spontaneous_respiratory_swing_matches_hoff():
     """[PMID 31560715] The respiratory swing in a CVC trace, against measurement.
 
@@ -3563,7 +3697,12 @@ def test_spontaneous_respiratory_swing_matches_hoff():
     from model.respiration import (SPONTANEOUS_ITP_SWING_CMH2O,
                                    SPONTANEOUS_ITP_BASELINE_CMH2O)
 
-    p = SimParams()
+    # AGE- AND SIZE-MATCHED 2026-09-15 to Hoff's own cohort — see _HOFF_*.
+    # Swing 3.03 -> 2.86 mmHg, both inside the band and both within 0.2 of
+    # Hoff's measured 3.05. The match changes nothing here, which is itself
+    # worth knowing: a respiratory swing is a DIFFERENCE and is far less
+    # age-sensitive than the absolute pressures.
+    p = cohort_params(_HOFF_HEIGHT_CM, _HOFF_WEIGHT_KG, age_years=_HOFF_AGE_YEARS)
     p.ventilation_mode = "spontaneous"
     p.resp_rate_bpm = 10.0
     p.slow_dynamics_enabled = False
@@ -3654,6 +3793,30 @@ def test_raising_the_itp_swing_does_not_destabilise():
 #          nitroprusside   MAP -11 mmHg   R-R 932 ->  820 ms   HR  +8.8 bpm
 #          phenylephrine   MAP +19 mmHg   R-R 932 -> 1251 ms   HR -16.4 bpm
 #      Neither drug is meaningfully chronotropic, so both are reflex responses.
+#
+# FRITSCH CANNOT BE AGE-MATCHED, AND THAT IS A FINDING, NOT AN OMISSION.
+# On 2026-09-15 the three young-cohort comparisons were routed through patient
+# scaling so the model would stop being 55 years old while citing subjects in
+# their twenties. Schaefers and Hoff converted. Fritsch did not, because the
+# two tests below drive `BaroreflexController` DIRECTLY, and that class takes
+# no patient argument of any kind — no age, no body size, no sex. Age reaches
+# only `aging.arterial_compliance_factor` (elastic arteries) and
+# `aging.chamber_age_factors` (the two ventricles).
+#
+# So THE MODEL HAS NO AGE-DEPENDENT BAROREFLEX. Its reflex gain is the same at
+# 25 as at 85. The human literature is not ambiguous about this — baroreflex
+# sensitivity falls steeply with age — so this is a real absent mechanism, not
+# a modelling choice. It is backlog item 51, opened the day it was found, and
+# it is deliberately NOT being built hours before a model freeze: adding an age
+# law to the reflex would move every reflex-mediated number in the suite at
+# once, and the freeze exists to stop exactly that.
+#
+# WHAT IT COSTS TODAY, stated so the manuscript does not overclaim: the gains
+# below are calibrated against a cohort of median age ~33 and applied unchanged
+# to the 55-year-old reference patient. Every reflex magnitude the model
+# reports is therefore a YOUNGER person's reflex. The direction of the error is
+# known — the model's reflex is too brisk for its nominal age — even though the
+# size is not.
 # ===========================================================================
 
 def _reflex_hr_steady(map_held, dt=0.01, steps=30_000):
@@ -3836,7 +3999,12 @@ def test_hypovolaemic_tachycardia_matches_lbnp():
     the arterial arm alone reaches +18.3.
     """
     def run(ml):
-        p = SimParams()
+        # AGE- AND SIZE-MATCHED 2026-09-15 to the LBNP cohort — see _HOFF_*.
+        # dHR +28.5 -> +28.6 bpm: no material change, because the reflex the
+        # test exercises has no age dependence at all (see §28). What DOES move
+        # is the body the litre is taken from — 69 kg rather than 70 — and that
+        # is the part this matching is honest about.
+        p = cohort_params(_HOFF_HEIGHT_CM, _HOFF_WEIGHT_KG, age_years=_HOFF_AGE_YEARS)
         if ml > 0:
             p.hemorrhage_rate_mlmin = ml / 20.0 * 60.0
             p.hemorrhage_start_s    = 10.0
