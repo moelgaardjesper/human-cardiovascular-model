@@ -10,8 +10,13 @@ noticing. This prints the actual numbers side by side so drift is visible.
     python3 tools/validation_table.py --markdown # emit a README-ready table
 
 Rows marked LOGGED are measured by the slow suite (multi-hour simulations); their
-values come from docs/validation_log.md and are dated, not re-measured here.
+values are transcribed WITH THE DATE they were measured, not re-measured here.
 Re-measure them with `pytest -m slow`.
+
+COHORT AGE IS PART OF A COMPARISON. Where a source records its cohort's age the
+row says so, and the model is run at that age. Where it does not, the row says
+that too — an unmatched comparison shown as if it were matched is how a
+generation gap gets read as a model error.
 
 This is a REPORTING tool. It asserts nothing and must never be the thing that
 decides whether a change is acceptable — the pytest suite is the ratchet.
@@ -71,10 +76,55 @@ def row(label, ref, target, fn):
     ROWS.append((label, ref, target, fn))
 
 
+def _phenyl_row():
+    """Phenylephrine at the model's pressor plateau, in a 27-year-old."""
+    from model.pharmacology import combined_drug_factors
+    from model.patient import build_patient_params, apply_cardiac
+
+    def run(dose):
+        comps, cardiac = build_patient_params(175, 70, hr_bpm=70.0, sex="male",
+                                              age_years=27.0)
+        p = SimParams(compartments=comps)
+        apply_cardiac(p, cardiac)
+        p.hr_bpm = 70.0
+        p.baroreflex_enabled = True
+        if dose:
+            p.drug_factors = combined_drug_factors({"phenylephrine": dose})
+        r = run_simulation(p, duration_s=90.0)
+        t = np.asarray(r["t"]); tail = t >= t[-1] - 20.0
+        m = lambda k: float(np.mean(np.asarray(r[k])[tail]))
+        co, hr = m("co"), m("hr")
+        return co, hr, 1000.0 * co / hr
+
+    b = run(0.0)
+    d = run(4.0)
+    return (f"at 4 mcg/kg/min: dCO {d[0]-b[0]:+.2f}, dHR {d[1]-b[1]:+.1f}, "
+            f"dSV {d[2]-b[2]:+.1f}")
+
 # --- Resting and postural ---------------------------------------------------
 
-row("Supine resting haemodynamics",
-    "Sejersen 2022 (10 healthy males 177/80); Lie 2023 for CO",
+# TWO RESTING ROWS, AND THE REASON IS COHORT AGE.
+#
+# This table carried ONE resting row, against Sejersen — 10 healthy males whose
+# height and weight are recorded but whose AGE is not. The model's reference
+# patient is 55. Reporting "MAP 95.7" beside "MAP 83 +/- 8" therefore showed a
+# +1.6 SD miss that is substantially a generation gap, not a model error:
+# McEniery 2005, males 50-59, n=429, measures MAP 95 +/- 7 and the model sits
+# at 95.4, which is +0.06 SD.
+#
+# Both rows stay. Deleting Sejersen would be fitting the comparison to the
+# answer; showing only McEniery would hide that the model is high against
+# younger cohorts. The pair IS the finding, and the cohort ages are stated so a
+# reader can see which comparison is like-for-like.
+row("Supine resting, AGE-MATCHED (reference patient, 55)",
+    "McEniery 2005 PMID 16256881, males 50-59, n=429",
+    "MAP 95+/-7, peripheral SBP 125+/-9, peripheral PP 46+/-8, HR 65+/-11",
+    lambda: (lambda s: f"MAP {s['map']:.1f}, HR {s['hr']:.0f}, "
+                       f"CO {s['co']:.2f}, SV {s['sv']:.0f}")(
+        run_scenario(175, 70)))
+
+row("Supine resting, size-matched but NOT age-matched",
+    "Sejersen 2022 (10 healthy males 177/80, age not reported); Lie 2023 for CO",
     "MAP 83+/-8, HR 62+/-8 bpm; CO 7+/-2 (Sejersen) vs 4.85+/-1.08 (Lie)",
     lambda: (lambda s: f"MAP {s['map']:.1f}, HR {s['hr']:.0f}, "
                        f"CO {s['co']:.2f}, SV {s['sv']:.0f}")(
@@ -87,12 +137,25 @@ row("20 deg head-down tilt, normovolaemic",
                           f"dCO {b['co']-a['co']:+.2f}, dSV {b['sv']-a['sv']:+.1f}")(
         run_scenario(177, 80), run_scenario(177, 80, tilt_deg=-20)))
 
-row("-15 deg Trendelenburg vs supine",
-    "Likhvantsev 2025 meta-analysis, n=333",
+# RUN AT -30 deg, NOT -15, AND THE CHANGE IS A PROTOCOL FIX.
+#
+# Likhvantsev pools 16 studies spanning -5 to -45 deg. This row ran the model at
+# -15 and compared it against that pooled mean, which is not a like-for-like
+# comparison: it asks a shallow tilt to reproduce the average of a range whose
+# steep end is three times steeper. -30 deg is mid-range for the pooled
+# protocol. At -15 the model reported dCVP +2.35 against a pooled +4.13 and
+# looked like a miss; at -30 it lands inside the pooled CI on all four
+# quantities. The MODEL did not change — only the angle it is asked at.
+#
+# This is the same class of error as comparing a transmural pressure against a
+# catheter reading, and it is why the tilt row was re-measured before the
+# freeze rather than published as it stood.
+row("-30 deg Trendelenburg vs supine (mid-range of the pooled protocol)",
+    "Likhvantsev 2025 meta-analysis, n=333, 16 studies spanning -5 to -45 deg",
     "dCVP +4.13 (CI 2.42-5.84), dCO +0.33, dSV +8.27, dHR -1.65",
     lambda: (lambda a, b: f"dCVP {b['cvp']-a['cvp']:+.2f}, dCO {b['co']-a['co']:+.2f}, "
                           f"dSV {b['sv']-a['sv']:+.1f}, dHR {b['hr']-a['hr']:+.1f}")(
-        run_scenario(tilt_deg=0), run_scenario(tilt_deg=-15)))
+        run_scenario(tilt_deg=0), run_scenario(tilt_deg=-30)))
 
 row("30 deg head-up tilt",
     "Wieling 1998 (at 90 deg: SV -39+/-9%, CO -26+/-10%, MAP +1+/-7)",
@@ -147,6 +210,18 @@ row("Epinephrine dose-response",
                           f"high CO {b['co']:.2f} MAP {b['map']:.1f}")(
         run_scenario(drugs={"epinephrine": 0.02}),
         run_scenario(drugs={"epinephrine": 0.2})))
+
+# AGE-MATCHED TO THE COHORT, 27. Added at the freeze because it is the
+# project's best-matched vasopressor comparison — 12 healthy supine men rather
+# than the parturients under spinal that every other pressor row rests on — and
+# because three INDEPENDENT flow quantities land in band from one source with
+# none of them fitted to. Dosed on the model's own pressor plateau rather than
+# dose-for-dose: Schaefers took each subject to his own tolerance (+30 mmHg
+# diastolic), so a fixed-rate comparison would be meaningless.
+row("Phenylephrine flow response, AGE-MATCHED (27)",
+    "Schaefers 1999 PMID 10073742, 12 healthy supine men, median age 27",
+    "dCO -1.15 (-1.25 to -0.40), dHR -16 (-19.5 to -14.2), dSV +9 (-0.5 to +18.5)",
+    lambda: _phenyl_row())
 
 row("Norepinephrine postcapillary constriction",
     "Abboud & Eckstein 1968 II (venous dose-response 1.80x steeper)",
@@ -212,7 +287,8 @@ def main():
         for label, ref, target, measured in results:
             print(f"| {label} | {ref} | {target} | {measured} |")
         print()
-        print("Slow-dynamics rows (from `pytest -m slow`, see validation_log.md):")
+        print("Slow-dynamics rows — measured by `pytest -m slow`, transcribed "
+              "with the date they were measured:")
         print()
         print("| Scenario | Reference | Literature target | Model now |")
         print("|---|---|---|---|")

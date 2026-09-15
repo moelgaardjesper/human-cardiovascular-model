@@ -259,14 +259,33 @@ def main():
     # --- validation table --------------------------------------------------
     if not args.skip_table:
         print("  measuring validation table (several minutes)...")
-        code, out = sh([sys.executable, "tools/validation_table.py", "--markdown"])
+        # STDOUT ONLY. validation_table.py writes per-row progress to stderr,
+        # and merging the streams appended "running: ..." lines to the published
+        # table. A published artefact must not carry the tool's own chatter.
+        p = subprocess.run([sys.executable, "tools/validation_table.py", "--markdown"],
+                           cwd=ROOT, capture_output=True, text=True)
+        code, out = p.returncode, p.stdout
+        if code:
+            out += "\n\nTOOL STDERR\n-----------\n" + (p.stderr or "")
         write("validation_table.md",
               f"# Validation table — {args.tag} ({commit[:12]})\n\n"
               f"Measured fresh at the freeze commit by "
               f"`tools/validation_table.py --markdown`.\n\n"
+              f"**THIS TABLE IS REPRESENTATIVE, NOT EXHAUSTIVE.** It holds the "
+              f"first literature that went into the model, kept as a readable "
+              f"summary. It is NOT the evidence base and a reader should not "
+              f"count its rows as the validation. **`suite_fast.txt`, "
+              f"`suite_slow.txt` and `suite_overnight.txt` in this directory are "
+              f"the complete record** — every assertion, every cited source, "
+              f"every strict xfail. Carrying every paper and how each was used "
+              f"would make reading the table a project in itself.\n\n"
+              f"Where a source records its cohort's age the row says so and the "
+              f"model is run at that age. Where it does not, the row says that "
+              f"too: an unmatched comparison shown as matched is how a "
+              f"generation gap gets read as a model error.\n\n"
               f"Rows in the second table are measured by the slow suite and are "
               f"TRANSCRIBED WITH THEIR DATE, not re-measured by this tool — "
-              f"`suite_slow.txt` in this directory is the actual run.\n\n"
+              f"`suite_slow.txt` is the actual run.\n\n"
               + out + (f"\n\n(tool exited {code})\n" if code else "\n"))
 
     # --- the three test tiers ----------------------------------------------
