@@ -201,10 +201,25 @@ def main():
     ap.add_argument("--skip-slow", action="store_true")
     ap.add_argument("--skip-overnight", action="store_true",
                     help="the overnight tier is ~11 h of wall clock")
+    ap.add_argument("--overnight-from", metavar="PATH",
+                    help="IMPORT an overnight run captured separately instead of "
+                         "spending 11 h re-running it. The file is copied in "
+                         "verbatim and the manifest records that it was imported "
+                         "rather than produced by this invocation, WITH the "
+                         "commit it was run at, so a reader can tell the "
+                         "difference. Emitting an 11 h result requires starting "
+                         "it before the freeze commit exists; pretending "
+                         "otherwise would be the dishonest option.")
     ap.add_argument("--skip-table", action="store_true")
     args = ap.parse_args()
 
-    dirty = git("status", "--porcelain")
+    # THE ARTEFACT DIRECTORY IS NOT "DIRTY WORK". Its own output lives under
+    # freeze/, so a second run saw the first run's files in `git status` and
+    # refused — the tool could not be run twice. Only changes OUTSIDE the
+    # artefact tree mean the code being described is uncommitted.
+    out_rel = os.path.relpath(args.out or os.path.join(ROOT, "freeze", args.tag), ROOT)
+    dirty = "\n".join(l for l in git("status", "--porcelain").splitlines()
+                      if out_rel not in l and "freeze/" not in l)
     if dirty and not args.allow_dirty:
         print("REFUSING: the working tree is dirty. An artefact emitted from "
               "uncommitted code cannot be checked out again, which defeats its "
@@ -214,6 +229,7 @@ def main():
 
     out_dir = args.out or os.path.join(ROOT, "freeze", args.tag)
     os.makedirs(out_dir, exist_ok=True)
+
     written = []
 
     def write(name, text):
@@ -308,6 +324,20 @@ def main():
                   "overnight tier (~11 h wall clock)", not args.skip_overnight))
 
     ran = {}
+    imported = {}
+    if args.overnight_from:
+        raw = open(args.overnight_from, encoding="utf-8", errors="replace").read()
+        write("suite_overnight.txt",
+              f"# overnight tier (~11 h wall clock) — IMPORTED, not run here\n"
+              f"# source: {args.overnight_from}\n"
+              f"# imported into the {args.tag} artefact at {started}\n"
+              f"# An 11 h run must be started BEFORE the freeze commit exists.\n"
+              f"# Verify it against the commit recorded inside the run itself.\n\n"
+              + raw)
+        ran["suite_overnight.txt"] = "IMPORTED"
+        imported["suite_overnight.txt"] = args.overnight_from
+        tiers = [t for t in tiers if t[0] != "suite_overnight.txt"]
+
     for name, flags, label, do_run in tiers:
         if not do_run:
             ran[name] = "SKIPPED"
@@ -331,6 +361,10 @@ def main():
              "## What ran", ""]
     for name, _flags, label, _do in tiers:
         lines.append(f"- {label}: **{ran.get(name, 'not attempted')}**")
+    for name, srcpath in imported.items():
+        lines.append(f"- `{name}`: **IMPORTED** from `{srcpath}` — run separately, "
+                     f"not produced by this invocation. The commit it ran at is "
+                     f"recorded inside the file.")
     lines += ["",
               "## What is NOT here, deliberately", "",
               "`docs/reference_values.md` and `docs/validation_log.md` are the "
