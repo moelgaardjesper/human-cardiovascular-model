@@ -112,7 +112,11 @@ tools/             Utility scripts (generate_diagram.py — regenerates compartm
 
 ## Scientific Basis and References
 
-All references were accessed via PubMed Central, PubMed, or the open Deranged Physiology educational resource. The specific physiological data points extracted from each source are listed.
+References were accessed via PubMed Central, PubMed, or the open Deranged
+Physiology educational resource. **The per-source data points are no longer
+listed here** — that list ran to ~200 lines, duplicated the project's working
+ledger, and went stale. The complete citation record is generated instead: see
+*The sources this model rests on* below.
 
 ---
 
@@ -127,234 +131,73 @@ Worth stating plainly, because "21 compartments expanded to 23" undersells the d
 | Derived perfusion outputs — cerebral (CPP/ICP), coronary (Buckberg) | `perfusion.py` |
 | Intrathoracic pressure, spontaneous and mechanical ventilation, RSA | `respiration.py` |
 | Allometric patient scaling, 3-tier input calibration | `patient.py` |
+| **Patient age** — arterial compliance and chamber volumes by decade | `aging.py` |
 
-That is **1,615 of 3,442 code lines (47 %) in modules Heldt has no equivalent for.** The inherited half has not stood still either: the venous system was rebuilt wholesale to literature values (compliances changed 10–50×), the single lower-body vein was split into three serial segments, limb veins were given a nonlinear collapsible-tube law, and positional intrathoracic-pressure coupling was added.
+That is **1,237 of 2,577 code lines (48 %) in modules Heldt has no equivalent for** (re-counted 2026-09-16; the previous figure counted a wider file set). The inherited half has not stood still either: the venous system was rebuilt wholesale to literature values (compliances changed 10–50×), the single lower-body vein was split into three serial segments, limb veins were given a nonlinear collapsible-tube law, and positional intrathoracic-pressure coupling was added.
 
-The honest description is a **Heldt-derived circuit that has been substantially re-parameterised and extended**, not an implementation of Heldt. It is validated independently against **21 sources** rather than against Heldt's outputs — every number transcribed with its PMID/DOI, cohort and method into `docs/reference_values.md`, including values the model has no use for yet.
+Beyond the module table, the model has since gained **instrumented protocols rather than just mechanisms** — a Valsalva manoeuvre, an inspiratory hold, and a circulatory arrest that measures mean systemic filling pressure the way a human study does, by stopping the heart and reading the equilibration.
 
-Since 2026-08-24 the inherited half has moved again, and further than the parameter table suggests. All four cardiac chambers and the valves were rebuilt against CMR reference data; the intrathoracic-pressure compartment set was corrected; and resistance to venous return was raised to the value measured invasively in humans. Heldt's *topology* survives all of it. Almost none of his numbers do.
+The honest description is a **Heldt-derived circuit that has been substantially re-parameterised and extended**, not an implementation of Heldt. It is validated independently against **62 distinct sources** rather than against Heldt's outputs (counted by `tools/source_index.py`, which derives the list from the identifiers in the suite rather than from a hand-kept tally).
 
----
-
-### Foundational model structure
-
-**Heldt T, Shim EB, Kamm RD, Mark RG** (2002). Computational modeling of cardiovascular response to orthostatic stress. *J Appl Physiol* 92:1239–1254.
-
-The primary structural reference for this simulator. Key elements adopted:
-- 21-compartment lumped-parameter circuit (expanded to 23 here)
-- Time-varying elastance cardiac model (Suga-Sagawa formulation)
-- 4-step baroreflex: (1) integrate pressures → (2) error vs setpoints → (3) convolve with 6 impulse response functions → (4) scale to effectors (HR, SVR, E_max, venous unstressed volume)
-- Baroreflex setpoints: arterial MAP 93 mmHg, pulse pressure 35 mmHg, CVP 3 mmHg
-- Compartment resistance and compliance baseline values
+Heldt's *topology* survives all of it. Almost none of his numbers do — and the one place a Heldt value was still carried, `RV_EMAX`, was replaced the moment anyone checked, because a parameter table from another model is not a measurement.
 
 ---
 
-**Mohammadyari P et al.** (2022). *Sci Rep.* PMC9363491. Cardiovascular model for orthostatic stress and Mars mission planning.
+### The sources this model rests on
 
-The primary implementation reference; directly provided the parameter set used here. Key elements and data adopted:
-- Hydrostatic pressure equation: **ΔP = ρ · g · h · sin(α)**, blood density ρ = 1060 kg/m³
-- Smooth sinusoidal tilt transitions over 5 s (used in `gravity.py`)
-- **Tilt 0° → 90°**: simulated by varying α from supine (0°) to standing (90°)
-- Long-duration spaceflight (>6 months): total blood volume **−22%**, maximum cardiac elastance **−27%**, lower body venous compliance **+27%**, baroreflex setpoint **−15%**
-- Short-duration spaceflight (<10 days): blood volume **−15%**
-- Baroreflex structure: arterial baroreflex (ABR) + cardiopulmonary reflex (CPR), six impulse response functions covering sympathetic fast/slow and parasympathetic components
-- Validation against astronaut stand-test data confirming orthostatic intolerance arises primarily from hypovolemia and cardiac atrophy
+**This is a representative list, not the bibliography.** Five papers are given
+here because they are load-bearing — remove any one and a structural commitment
+of the model loses its justification. The model cites **62 distinct sources** in
+total.
 
----
+**That full list is generated, never hand-maintained.** `tools/source_index.py`
+walks every PMID, PMC and DOI already written into the test docstrings and
+section headers, attributes each to the tests that assert it, and reports whether
+those pass or are strict xfails. It ships in the freeze artefact as
+`freeze/<tag>/sources.md`. A hand-kept bibliography drifts out of step with the
+suite; a derived one cannot.
 
-**Lister J, McNeill IF, Marshall VC, Plzak LF, Dagher FJ, Moore FD** (1963). Transcapillary refilling after hemorrhage in normal man: basal rates and volumes; effect of norepinephrine. *Ann Surg* 158(4):698–712. PMID 14067514.
+| Source | What it is load-bearing for |
+|---|---|
+| **Heldt T et al.** (2002) *J Appl Physiol* 92:1239–1254 | The structural ancestor: compartment topology, time-varying elastance, the 4-step baroreflex, the hydrostatic equation. Its *topology* survives; almost none of its numbers do. Explicitly **not** a validation target — see below. |
+| **Gelman S** (2008) *Anesthesiology* 108(4):735–48. [PMID 18362606](https://pubmed.ncbi.nlm.nih.gov/18362606/) | The compliant/non-compliant venous split. This is why venous tone acts on the splanchnic and upper-body beds alone (`MOBILIZABLE_VENOUS_RESERVOIR`) rather than on every vein, which is what keeps drug magnitudes at literature values. |
+| **Echt M et al.** (1974) *Circ Res* 34(1):61–8. [PMID 4809350](https://pubmed.ncbi.nlm.nih.gov/4809350/) | Effective compliance of the total vascular bed *and* the intrathoracic compartment, measured in man. The model's compliance partition is checked against it — and **still disagrees**, which is recorded rather than tuned away. |
+| **McEniery CM et al.** (2005) *J Am Coll Cardiol*. [PMID 16256881](https://pubmed.ncbi.nlm.nih.gov/16256881/) | Central and peripheral pressures by decade, n=429 for males 50–59. The reference patient's operating point is checked against it, and the age law was validated against it at 25/55/75 with only the age-55 row ever calibrated. |
+| **Lister J et al.** (1963) *Ann Surg*. [PMID 14067514](https://pubmed.ncbi.nlm.nih.gov/14067514/) | Transcapillary refill after haemorrhage in man. The source of the project's strongest result: the model was predicted *in advance* to undershoot 24 h refill because it has no cellular compartment, and an 8 h 37 m simulation confirmed it while the 2 h test on the same mechanism passes. |
 
-The foundational **physiological** reference, as distinct from the two structural ones above. Sixteen healthy men, bled 490–968 mL over 15–20 min, followed for 72 h with Cr-51 red cell volume and T-1824 plasma volume. It is the primary human measurement of how a person actually refills after blood loss, and it anchors the entire fluid-exchange side of the model:
+**Heldt is not ground truth, and this matters enough to state in a README.** It is
+a model with 12 compartments to this one's 23, and its own tables mark several
+values "Estimate". Anchoring on it would validate this model against another
+model's assumptions. Where a Heldt value survived unexamined it was wrong:
+`RV_EMAX` carried his parameter-table figure until someone checked it against
+CMR data.
 
-- Refill rate **27.9 mL/h** mean over 0–24 h (range 18.8–36.7); **11.1 mL/h** over 24–48 h
-- **50–80 %** of the loss replaced at 24 h; complete refilling only at **36–48 h**
-- Norepinephrine in an unbled subject reduces plasma volume **15–19 %**, reversibly — the model reproduces the direction but not the magnitude (see [Limitations](#limitations))
-- Plasma protein held constant against continuing dilution: ~40 g albumin returning per 830 mL refilled
-- Explicit species contrast: dogs refill "in an hour or less", man takes 36–48 hours
+### Related modelling work (referenced, not implemented)
 
-The last point governs how animal data is used throughout this project. See `CLAUDE.md`, "Validation discipline".
-
----
-
-### Venous physiology and blood volume distribution
-
-**Sjöstrand T** (1953). Volume and distribution of blood and their significance in regulating the circulation. *Physiol Rev* 33:202–228. PMID: 13055444. DOI: [10.1152/physrev.1953.33.2.202](https://doi.org/10.1152/physrev.1953.33.2.202)
-
-The quantitative basis for venous pooling calibration:
-- **Standing from supine: ~640 mL redistributes to the lower extremities** (≈11% of total blood volume)
-- This benchmark drove the decision to split the single lower body vein compartment into three serial segments (foot/calf/thigh) with anatomically correct heights (−0.85/−0.55/−0.20 m from heart)
-- Current model achieves ~220 mL at 90° (sedated patients without muscle pump); see [Limitations](#limitations)
-
----
-
-**Rothe CF** (1983). Reflex control of veins and vascular capacitance. *Physiol Rev* 63:1281–1342. DOI: [10.1152/physrev.1983.63.4.1281](https://doi.org/10.1152/physrev.1983.63.4.1281)
-
-The quantitative basis for the venous capacitance model and the venous-tone pathway:
-- Venous **unstressed volume (V0)** — not compliance — is the variable sympathetic tone modulates; venoconstriction lowers V0 and recruits blood centrally
-- Physiological targets used for the venous rebuild: stressed volume ≈ 25–30% of total blood volume, mean systemic filling pressure ≈ 7 mmHg, systemic venous compliance ≈ 100–130 mL/mmHg
-- Established that the **splanchnic bed is the dominant actively mobilizable reservoir**, while the caval conduits and limb veins contribute little — this determines which compartments venous tone is applied to (`MOBILIZABLE_VENOUS_RESERVOIR` in `circulation.py`)
-
----
-
-**Gelman S** (2008). Venous function and central venous pressure: a physiologic story. *Anesthesiology* 108:735–748. DOI: [10.1097/ALN.0b013e3181672607](https://doi.org/10.1097/ALN.0b013e3181672607)
-
-- Confirms the splanchnic capacitance bed as the principal site of reflex and drug-mediated volume recruitment
-- Framework for venous return as a function of mean systemic filling pressure minus right atrial pressure — used to sanity-check the rebuilt venous system (MSFP 13.2 mmHg at rest, against human stop-flow measurements of 10.2 and 12 mmHg and Maas's extrapolated 18.8)
-- Basis for the sign convention on `venous_tone_factor`: α1 agonists venoconstrict, propofol and sympathetic block venodilate
-
----
-
-**Blomqvist CG, Stone HL** (1983/2011). Cardiovascular adjustments to gravitational stress. *Comprehensive Physiology* 1025–1063.
-
-Comprehensive review of gravitational cardiovascular physiology. Key elements used:
-- Theoretical basis for the hydrostatic indifference point (HIP): pressure-neutral level around which postural redistribution occurs
-- Arterial HIP positioned at approximately the aortic root; venous HIP 7 ± 4 cm below the 4th intercostal space
-- Quantitative framework for how gravitational gradient creates pressure differences of **ρ·g·Δh = 0.77 mmHg/cm** of height difference
-- Upper vs lower body compartment height assignments derived from this framework
-
----
-
-**Hinghofer-Szalkay H** (2011). Gravity, the hydrostatic indifference concept and the cardiovascular system. *Eur J Appl Physiol* 111:163–174.
-
-- Detailed positioning of the HIP and its functional role in baroreceptor sensing
-- Baroreceptors positioned away from the HIP (carotid sinus above, cardiopulmonary receptors below) to maximise their sensitivity to hydrostatic redistribution
-- Used to set compartment heights for the SVC, IVC, and cardiac chambers
-
----
-
-### Posture validation — head-down tilt and passive leg raising
-
-**Sejersen C et al.** (2022). To identify normovolemia in humans: the stroke volume response to passive leg raising vs. head-down tilt. *Physiol Rep* PMID: 35854636. PMC9296869. DOI: [10.14814/phy2.15216](https://doi.org/10.14814/phy2.15216)
-
-Randomised study in 10 healthy males (median age 39, height 177 cm, weight 80 kg). The primary validation dataset for resting and tilt haemodynamics:
-
-| Condition | MAP (mmHg) | HR (bpm) | SV (mL) | CO (L/min) |
-|---|---|---|---|---|
-| Supine baseline | 83 ± 8 | 62 ± 8 | 110 ± 16 | 7 ± 2 |
-| **20° HDT** | **85 ± 8 (n.s.)** | **60 ± 8 (n.s.)** | **109 ± 16 (n.s.)** | **7 ± 1 (n.s.)** |
-| Semi-recumbent (45° back-up) | 90 ± 11* | 62 ± 10 | 108 ± 18 | 7 ± 1 |
-| PLR (from semi-recumbent) | n.s. | n.s. | **117 ± 18*** | 7 ± 1 |
-
-Key findings used in model development:
-- **20° HDT causes no significant change in SV or CO** in normovolemic supine subjects — the heart is already on the upper horizontal part of the Frank-Starling curve when supine. This motivated the Frank-Starling plateau implementation (E_max capped above EDV = 130 mL).
-- **PLR from semi-recumbent increases SV ~10%** — restores central blood volume from a reduced semi-recumbent starting position; not equivalent to HDT from supine
-- Total peripheral resistance (TPR) slightly increased with 20° HDT (13 → 13.8 mmHg·L·min⁻¹, p = 0.020)
-
----
-
-**Verdini D et al.** (2019). Cardiovascular responses to leg muscle loading during head-down tilt at rest and after dynamic exercises. *Sci Rep* PMID: 30808948. PMC6391465. DOI: [10.1038/s41598-019-39360-6](https://doi.org/10.1038/s41598-019-39360-6)
-
-Study in 17 healthy males (age 29.7 ± 3.9 y, weight 79.2 kg, height 179 cm) using 6° HDT on a tilted platform with robotic leg-press device.
-
-Key findings used:
-- **6° HDT vs upright standing: MAP, HR significantly lower during HDT** (p < 0.001 for both)
-- **6° HDT with leg muscle loading**: systolic BP restored to values not significantly different from standing (p = 0.132), demonstrating that loss of leg muscle activity partially explains the MAP difference between HDT and upright — not only the gravitational gradient
-- Pulse pressure: not significantly different between HDT and upright conditions
-- Used to validate the directional haemodynamic comparison (HR_HDT < HR_upright) in Test 3
-
----
-
-**Sibbald WJ, Paterson NA, Holliday RL, Baskerville J** (1979). The Trendelenburg position: hemodynamic effects in hypotensive and normotensive patients. *Crit Care Med* 7:218–224. PMID: 467083.
-
-Prospective study in 76 critically ill patients (61 normotensive, 15 hypotensive). **15-20° head-down tilt**:
-
-| Parameter | Normotensive | Hypotensive |
-|---|---|---|
-| Preload (PCWP) | ↑ 3–4 mmHg | No change |
-| Cardiac output | Slightly ↑ | Decreased |
-| SVR | Decreased ~5% | Slightly ↑ |
-| MAP | **Unchanged** | No benefit |
-| Mechanism | Baroreceptor-mediated vasodilation | — |
-
-Key finding used: **Trendelenburg does not reliably increase MAP** even in normotensive patients — the baroreceptor reflex mediates compensatory vasodilation. Used to calibrate the Trendelenburg MAP response and to motivate the baroreflex-mediated SVR decrease with increased preload.
-
----
-
-### Posture physiology — educational synthesis
-
-**Deranged Physiology** — Chapter 5.01: Physiological response to changes in posture. [derangedphysiology.com](https://derangedphysiology.com/main/cicm-primary-exam/cardiovascular-system/Chapter-501/physiological-response-changes-posture)
-
-This educational resource synthesises the primary literature and provided the framework for understanding multiple posture-related effects. Key data points used:
-
-**Standing from supine:**
-- ~640 mL redistributes to lower extremities (Sjöstrand 1953)
-- Net cardiovascular effects: **HR↑, BP↑, SV↓, CO stable or slightly ↓**
-- Baroreflex timing: **parasympathetic withdrawal within 1–2 cardiac cycles** (fast, direct ACh-K⁺ channel); **sympathetic activation within 6–8 cycles** (slow, cAMP-mediated) — source: Olufsen 2005, Borst et al. 1982/1984
-- Implemented in `baroreflex.py` via separate fast (τ = 1.5 s parasympathetic) and slow (τ = 2–10 s sympathetic) impulse response functions
-
-**Trendelenburg position (15–20°):**
-- Blood pressure: **+5%**
-- Cardiac output: **unchanged**
-- Heart rate: **unchanged**
-- SVR: **−5%**
-- PCWP: **+3–4 mmHg**
-- Cerebral blood flow: **−17%** (Shenkin et al. 1949)
-- Used to validate model Trendelenburg outputs and calibrate baroreflex SVR response
-
-**Sedated patients moving from supine to sitting:**
-- Cardiac output: **−12–20%**
-- SVR: **+50–80%**
-- Cerebral blood flow: **−15%**
-- Source: Coonan TJ, Hope CE (1983). *Can Anaesth Soc J* 30:424–437.
-- Used to set expected range for steep upright tilt simulations
-
-**Microgravity:**
-- Central venous pressure: drops from 5–8 mmHg pre-flight to **2.5 mmHg in orbit** (Buckey et al. 1996) — despite a cephalad fluid shift — the CVP paradox
-- Total cephalad fluid shift: **~2 L** (approximately 1 L per leg) — Moore & Thornton 1987
-- Myocardial muscle volume decreases **up to 8%** in first week — Tanaka et al. 2017
-- Used to contextualise microgravity as cardiovascular analogue of prolonged bed-rest
-
----
-
-### Microgravity physiology
-
-**Buckey JC et al.** (1996). Central venous pressure in space. *J Appl Physiol* 81:19–25.
-
-- CVP **pre-flight: 5–8 mmHg**; **in orbit: 2.5 mmHg** — paradoxical decrease despite 2 L of cephalad fluid shift
-- Transmural CVP actually increased; measured decrease reflects reduced intrathoracic pressure in weightlessness
-- Used to understand the microgravity CVP paradox; informs why the model cannot fully reproduce this without intrathoracic pressure coupling
-
-**Fritsch-Yelle JM et al.** (1996). Microgravity decreases heart rate and arterial pressure in humans. *J Appl Physiol* 80:910–914.
-
-- Heart rate: **chronically lower** in microgravity than pre-flight baseline
-- Systolic blood pressure: **lower** in microgravity
-- Used to validate directional microgravity haemodynamic changes
-
-**Norsk P** (2014). Blood pressure regulation IV: adaptive responses to weightlessness. *Eur J Appl Physiol* 114:481–497. PMID: 24390686.
-
-- Decreased baroreflex sensitivity in microgravity (reduced HR response per mmHg pressure change)
-- Chronic sympathetic withdrawal in weightlessness leads to lower resting MAP and HR
-- Used to understand long-duration cardiovascular adaptation; informs future spaceflight parameter sets
-
-**Moore TP, Thornton WE** (1987). Space shuttle inflight and postflight fluid shifts measured by leg volume changes. *Aviat Space Environ Med* 58(9 Pt 2):A91–6.
-
-- Quantified **~1 L fluid shift per leg** (2 L total) in microgravity
-- Used to validate microgravity fluid redistribution assumptions in the model
-
----
-
-### Related modelling work (referenced, not directly implemented)
-
-**Hodneland et al. / VoM-PhyS framework** — DOI: [10.1038/s41598-022-18831-3](https://doi.org/10.1038/s41598-022-18831-3)
-3D multiscale blood-flow and heat-transfer framework (1D Hagen-Poiseuille + 3D porous media capillary model, Dirac distribution coupling). A reference for potential future extension to 3D vascular heat transfer.
-
-**VaMpy** — [openresearchsoftware.metajnl.com/articles/10.5334/jors.159](https://openresearchsoftware.metajnl.com/articles/10.5334/jors.159)
-1D arterial wave propagation model (Lax-Wendroff solver). A reference for future pulse wave velocity and arterial wave modelling extensions.
-
-**Marino M, Sauty B, Vairo G** (2024). Unraveling the complexity of vascular tone regulation: a multiscale computational approach to integrating chemo-mechano-biological pathways with cardiovascular biomechanics. *Biomech Model Mechanobiol* 23(4):1091–1120. PMID: 38507180. DOI: [10.1007/s10237-024-01826-6](https://doi.org/10.1007/s10237-024-01826-6)
-
-Couples a 0D lumped-parameter network (per-heartbeat haemodynamics) to a 2D finite-element arterial cross-section carrying NO/ROS molecular transport, with wall shear stress driving endothelial NO production, NO setting smooth-muscle active stretch, and the resulting vessel mechanics feeding back as altered resistance and compliance. Two elements are directly relevant here:
-
-- **Independent precedent for the two-timescale architecture.** They separate an explicit "fast time scale" (heartbeat) from a "slow time scale" (chemo-biological adaptation over minutes to an hour), solving the fast problem with parameters frozen from the current slow state before advancing it. That is the same operator-splitting design used by `model/slow_dynamics.py`, arrived at independently.
-- **"Adaptive homeostasis"** — their framing for a system that settles into a *new* equilibrium after a perturbation rather than returning to its original setpoint. This is the conceptual case for baroreflex resetting (slow-dynamics Phase 4).
-
-Their regulatory mechanism is *local and mechanically driven* (shear stress → NO → smooth muscle), whereas this model's is *neurohumoral* (baroreflex, drugs, fluid shifts) — so the two are complementary rather than competing. This model has no flow-mediated vasodilation at all; see the backlog for a lumped version of that idea.
+- **VoM-PhyS** — [10.1038/s41598-022-18831-3](https://doi.org/10.1038/s41598-022-18831-3). 3D multiscale blood-flow and heat transfer; a reference for possible 3D extension.
+- **VaMpy** — [10.5334/jors.159](https://openresearchsoftware.metajnl.com/articles/10.5334/jors.159). 1D arterial wave propagation; relevant because this model architecturally **cannot** express pulse wave velocity or augmentation index.
+- **Marino M et al.** (2024) *Biomech Model Mechanobiol* 23(4):1091–1120. [PMID 38507180](https://pubmed.ncbi.nlm.nih.gov/38507180/). Independent precedent for the two-timescale operator-splitting architecture used in `slow_dynamics.py`, and the source of the "adaptive homeostasis" framing behind baroreflex resetting. Their regulation is local and mechanical (shear → NO → smooth muscle); this model's is neurohumoral, so the two are complementary.
 
 ---
 
 ## Validation Summary
 
-Validated against published human physiological data — **95 tests: 85 passing, 0 failing, 2 strict xfails, 8 slow-dynamics tests deselected by default**. Run `pytest` to reproduce the fast suite. The table below summarises the principal literature scenarios; the suite additionally covers propofol, RSA, PEEP, graded hemorrhage/resuscitation, the ankle-brachial postural gradient, venous-tone mechanism guards, chamber volumes and emptying fractions against CMR data, and the venous return curve against invasive human measurement.
+Validated against published human physiological data. **Measured at the v1.0.0
+freeze commit, all three tiers:**
+
+| tier | command | result | wall clock |
+|---|---|---|---|
+| fast — the ratchet, and what CI runs | `pytest` | **92 passed, 8 deselected, 5 xfailed** | 34 min |
+| slow — minutes-to-hours dynamics | `pytest -m slow` | **7 passed** | 2 h 16 m |
+| overnight — 24 h simulation | `pytest -m overnight` | **1 xfailed** (strict, and predicted) | 8 h 37 m |
+
+**Quote all three or none.** `pytest` alone runs the fast suite; seven `slow`
+tests and one `overnight` test are deselected by `pytest.ini`, so the fast count
+on its own silently omits the entire minutes-to-hours arm of the model. The
+overnight xfail is the cellular-compartment result and is the strongest finding
+in the project — it was predicted before it was run.
+
+Every tier's raw output ships in `freeze/v1.0.0/`. The table below summarises the principal literature scenarios; the suite additionally covers propofol, RSA, PEEP, graded hemorrhage/resuscitation, the ankle-brachial postural gradient, venous-tone mechanism guards, chamber volumes and emptying fractions against CMR data, and the venous return curve against invasive human measurement.
 
 **On the two strict xfails.** They are known gaps carried deliberately, with the assertion left exactly as it was — only the pass/fail bookkeeping is marked. `strict=True` means each flips to a hard *failure* the day it starts passing, so a gap cannot close silently. This is a ratchet, not a way of hiding a number: **nothing here has been made to pass by widening a band to fit the model.**
 
@@ -381,7 +224,16 @@ The mechanism works in both directions. On 2026-08-26 two xfails fired as XPASS 
 | 15 | Epinephrine: CO monotonically↑ with dose; MAP_high > MAP_low (α dominance) | [Freyschuss 1986](https://doi.org/10.1042/cs0700199) — n=11 healthy, stepwise IV ADR | Concentration-dependent ↑SV and ↑CO; marked ↓vascular resistance at low dose | CO monotonically↑; MAP_high > MAP_low | ✓ |
 | 16 | PLR: CO ≥+10% identifies fluid-responsive patient (preload-dependent) | [Monnet, Marik & Teboul 2016](https://doi.org/10.1007/s00134-015-4134-1) — meta-analysis 21 studies, 991 patients | PLR-induced CO ≥+10% threshold: sens 0.85, spec 0.91, AUC 0.95 | Normovolemic: ΔCO +5.2% (<10%, non-responder) ✓; hypovolemic 1200 mL: ΔCO +12.6% (≥10%, responder) ✓ | ✓ |
 
-### What has been settled since the chamber rebuild *(2026-08-24 → 2026-09-10)*
+### How gaps actually close here — five worked examples
+
+*(These were previously headed "what has been settled since the chamber rebuild",
+which dated the section to an internal milestone a reader has no reason to know
+about and needed re-dating every month. The examples are the point, not the
+window they happened in.)*
+
+**None of the five closed by adjusting the number that was wrong.** Four were
+structural errors found by measuring an internal quantity, and one was not a
+model error at all. That pattern is the project's central methodological claim.
 
 **The pulmonary circulation.** Every endpoint now lands within 0.4 SD of its source
 ([Chemla 2004](https://pubmed.ncbi.nlm.nih.gov/15486398/), 9 controls aged 45; Claessen for
@@ -403,7 +255,8 @@ target** — visible in the screenshot above.
 opposing tanh terms into a net authority of about 5 bpm. Rebuilt against
 [Fritsch 1989](https://pubmed.ncbi.nlm.nih.gov/2916705/) (0.85 bpm/mmHg, measured in both
 directions in one cohort) with a separate cardiopulmonary arm at 3.8 bpm per mmHg of filling
-pressure. A 1000 mL bleed now produces **+27.8 bpm** against a human +25.3 to +38.
+pressure. A 1000 mL bleed now produces **+28.6 bpm** against a human +25.3 to +38
+(re-measured 2026-09-16, age- and size-matched to the source cohort).
 
 **Two claimed defects were retired rather than fixed.** A central-venous-pressure gap that had
 looked real for over a week was a measurement-site artefact — the cited catheter tip was in the
@@ -456,7 +309,19 @@ planned until the receiving compartment has a source.
 
 ### Known literature disagreements
 
-Every scenario passes on direction, and as of 2026-09-10 **every scenario in the table above also passes quantitatively** — the two rows that used to fail have closed. What follows records the gaps that were, how they closed, and the ones that remain open elsewhere in the model.
+Every scenario passes on direction, and **every scenario in the table above also
+passes quantitatively.** What follows records the gaps that were, how they
+closed, and the ones that remain open elsewhere in the model.
+
+**One correction to how that was checked, made 2026-09-15.** The Trendelenburg
+row was being run at −15° and compared against Likhvantsev's pooled mean, but
+that meta-analysis pools 16 studies spanning −5° to −45°. Asking the model at
+−15° to reproduce their average is not like-for-like, and it made the model look
+wrong: ΔCVP +2.35 against a pooled +4.13. At −30°, mid-range for the pooled
+protocol, it gives ΔCVP **+4.65** (CI 2.42–5.84), ΔCO +0.48, ΔSV +10.1 and
+ΔHR −2.6 — inside the interval on all four. **The model did not change; the
+angle it was asked at did.** A reporting tool had no test watching it, so
+nothing caught the mismatch for months.
 
 **Scenario 1 — Baseline CO and SV** *(resolved 2026-09-10; a different gap opened in its place)*
 
@@ -547,6 +412,13 @@ The previous ΔCVP gap (+0.39 vs +4.13 mmHg) was a measurement-mode mismatch: th
 ---
 
 ## Limitations
+
+**The dated, frozen list is in [`FREEZE.md`](FREEZE.md)** — that is the one the
+v1.0.0 artefact is built against, and if the two ever disagree, `FREEZE.md` wins.
+What follows is the live view.
+
+Known gaps are carried as **strict `xfail` tests**, so none can close silently:
+an xfail that starts passing fails the suite and forces someone to look.
 
 ### Venous muscle pump not implemented
 The most significant current gap. In a standing conscious patient, rhythmic calf muscle contractions compress the deep veins and return 200–400 mL to the central circulation per minute. Without this:
@@ -690,6 +562,43 @@ between the arterial and venous compartments where the arterioles physically sit
 `*_art` compartments hold only small conduit resistances. Anything scaling systemic vascular
 resistance must act on `ARTERIOLAR_SEGMENTS`; `drain_resistance` is a separate, postcapillary
 quantity and must not be scaled by an arteriolar factor.
+
+### The baroreflex has no age dependence
+
+Reflex gain is identical at 25 and at 85. `BaroreflexController` takes no patient
+argument of any kind — age reaches only arterial compliance and the two
+ventricles. Human baroreflex sensitivity falls steeply with age, so this is an
+absent mechanism rather than a modelling choice. The heart-rate gains are
+calibrated against a cohort of median age ~33 and applied unchanged to the
+55-year-old reference patient, so **every reflex magnitude the model reports is a
+younger person's reflex.** The direction of the error is known; its size is not.
+
+### Intracranial pressure is flat above about 29° head-up
+
+`intracranial_pressure()` clamps its position term, so the model reports the same
+5.00 mmHg at 30°, 45° and 90° — posture stops mattering exactly where the
+beach-chair question lives. Normal upright ICP is also frequently *negative*
+([Norager 2021](https://doi.org/10.1186/s12987-021-00253-4) gives an upright
+reference interval of −5.9 to 8.3 mmHg) and the model cannot go below 5.0.
+Cerebral perfusion pressure is therefore **understated** head-up by up to ~4 mmHg
+— conservative against a 50 mmHg risk threshold, but the model must not be used
+to rank two head-up postures against each other.
+
+### Pulse pressure amplification is inverted
+
+Brachial pulse pressure must exceed central; McEniery measures a ratio of
+1.33 ± 0.16 in males 50–59. The model reads 0.88, and raising arterial compliance
+makes it *worse*. Amplification requires wave travel, transit time and
+reflection, which a lumped-parameter model does not have. **Consequence: central
+and peripheral pulse pressure cannot both be right at once. Do not split the
+difference.** Carried as a strict xfail.
+
+### No cellular compartment
+
+24 h transcapillary refill undershoots by design — 41 % of the deficit replaced
+against a measured 50–80 %, while the 2 h test on the same mechanism passes. This
+was predicted in advance of the run and is the project's strongest structural
+result rather than an embarrassment. Carried as a strict `overnight` xfail.
 
 ### CVP paradox in microgravity not fully reproduced
 Measured CVP decreases in orbit despite a cephalad fluid shift (Buckey 1996). Positional ITP coupling is now implemented (`positional_itp_mmhg()` in `gravity.py`), which partially explains the effect, but the full paradox requires changes in lung/chest-wall compliance under weightlessness that are not yet modelled.

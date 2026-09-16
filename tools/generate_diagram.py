@@ -170,7 +170,9 @@ ax.text(HRX+0.1, 9.95, 'mitral', fontsize=6,
 
 # LV → Aorta
 arr(HRX, 9.19, RX, 9.15, ART, lw=1.8, rad=-0.2)
-ax.text((HRX+RX)/2+0.1, 8.78, 'aortic valve', fontsize=6.0,
+# MOVED (2026-09-16): (7.9, 8.78) overlapped the Aorta box (x 7.88-9.53,
+# y 8.64-9.16). Dropped below both the Aorta box and the LV->Aorta bow.
+ax.text(7.80, 8.32, 'aortic valve', fontsize=6.0,
         color=ART, ha='center', va='center', fontstyle='italic', zorder=5)
 
 # ── Pulmonic valve label near RV→PA ──────────────────────────────────────────
@@ -193,7 +195,10 @@ arr(RX - 0.83, 8.90, PCX + 0.75, 8.65, COR, lw=1.4, rad=0.2)
 
 # ── Coronary back to RA ───────────────────────────────────────────────────────
 arr(PCX - 0.75, 8.65, HLX + 0.9, 10.2, COR, lw=1.4, rad=0.25)
-ax.text(4.15, 9.15, 'coronary\nsinus→RA', fontsize=5.8,
+# MOVED (2026-09-16): (4.15, 9.15) overlapped the Right Ventricle box
+# (x 3.20-5.00, y 9.19-9.71). Now in the clear channel between the two
+# ventricles (RV ends x 5.00, LV starts x 6.00).
+ax.text(5.50, 9.45, 'coronary\nsinus→RA', fontsize=5.8,
         color=COR, ha='center', va='center', fontstyle='italic', zorder=5)
 
 # ── Upper body cap bed: UBA → UBV ────────────────────────────────────────────
@@ -209,7 +214,10 @@ arrow_on_line(LX,  6.65, 0, -0.18, VEIN)  # abdominal veins to IVC
 
 # ── SVC → RA (explicit arrow from SVC box downward to RA) ────────────────────
 arr(LX + 0.65, 12.89, HLX - 0.90, 10.71, VEIN, lw=1.6, rad=0.15)
-ax.text(2.82, 11.95, 'SVC → RA', fontsize=6.2,
+# MOVED (2026-09-16): at (2.82, 11.95) this sat INSIDE the Upper Body Vein box,
+# which spans x 1.48-3.13, y 11.89-12.41. Now above that box and right of SVC
+# (which ends at x 2.95), hugging the arrow it labels.
+ax.text(3.50, 12.70, 'SVC → RA', fontsize=6.2,
         color=VEIN, ha='left', va='center', fontstyle='italic', zorder=5)
 
 # ── Abdominal arteries: AAO branches ─────────────────────────────────────────
@@ -259,12 +267,19 @@ ax.text(LX - 0.18, 4.05, '▶', fontsize=7, color=VEIN, ha='right',
 ax.text(LX - 0.55, 1.65, 'valved', fontsize=6.0, color=VEIN,
         ha='right', va='center', fontstyle='italic', rotation=90, zorder=5)
 
-# Column headers
-ax.text(LX,  15.1, 'VENOUS', ha='center', va='bottom',
+# Column headers.
+# MOVED DOWN 15.1 -> 14.55 (2026-09-16). 'PULMONARY\n& HEART' is TWO lines drawn
+# upward from its anchor, so at 15.1 it reached ~15.45 and ran straight through
+# the subtitle at 15.25. The other two headers are one line and looked fine,
+# which is why it read as a mysterious one-off rather than a layout error.
+# 14.55 clears the tallest boxes in the row below (SVC/brachiocephalic top out
+# at 13.41) and leaves the title block alone.
+_HDR_Y = 14.55
+ax.text(LX,  _HDR_Y, 'VENOUS', ha='center', va='bottom',
         fontsize=9, color=VEIN, fontweight='bold', zorder=5)
-ax.text(RX,  15.1, 'ARTERIAL', ha='center', va='bottom',
+ax.text(RX,  _HDR_Y, 'ARTERIAL', ha='center', va='bottom',
         fontsize=9, color=ART, fontweight='bold', zorder=5)
-ax.text(PCX, 15.1, 'PULMONARY\n& HEART', ha='center', va='bottom',
+ax.text(PCX, _HDR_Y, 'PULMONARY\n& HEART', ha='center', va='bottom',
         fontsize=9, color=HEART, fontweight='bold', zorder=5)
 
 # Title
@@ -282,11 +297,18 @@ leg_entries = [
     (LUNG,  'Pulmonary circuit'),
     (COR,   'Coronary'),
 ]
-leg_x0, leg_y0 = 0.65, 0.30
+# THE SECOND LEGEND ROW WAS OFF THE CANVAS. leg_y0 0.30 minus a 0.50 row step
+# put row 2 at y = -0.20, outside ylim (0, 16). The swatch PATCHES were clipped
+# away while the TEXT still rendered, so 'Pulmonary circuit' and 'Coronary'
+# appeared as labels with no colour beside them — which looks like a missing
+# colour rather than a row drawn off the bottom of the figure.
+# Rows are now 0.55 and 0.18; both sit inside the canvas and clear the Foot Vein
+# box, whose lower edge is 0.84.
+leg_x0, leg_y0, leg_dy = 0.65, 0.55, 0.37
 cols = 3
 for i, (col, lbl) in enumerate(leg_entries):
     bx = leg_x0 + (i % cols) * 3.45
-    by = leg_y0 - (i // cols) * 0.50
+    by = leg_y0 - (i // cols) * leg_dy
     b = FancyBboxPatch((bx, by - 0.17), 0.32, 0.34,
                         boxstyle='round,pad=0.03',
                         facecolor=col, edgecolor='white', linewidth=1, zorder=5)
