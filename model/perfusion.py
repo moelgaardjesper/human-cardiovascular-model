@@ -60,7 +60,50 @@ from .gravity import BLOOD_DENSITY, MMHG_PER_PA
 # Anatomical constants
 # ---------------------------------------------------------------------------
 H_BRAIN_M   = 0.25    # m — brain centre above heart (supine reference)
-ICP_BASE    = 10.0    # mmHg — normal supine ICP (Marmarou 2005)
+
+# NORMAL SUPINE ICP. [PMID 33849603, PMC8045192,
+# DOI 10.1186/s12987-021-00253-4 — Norager NH, Olsen MH, Pedersen SH, Riedel CS,
+# Czosnyka M, Juhler M. "Reference values for intracranial pressure and lumbar
+# cerebrospinal fluid pressure: a systematic review." Fluids Barriers CNS
+# 18(1):19, 2021.]
+#
+# Replaces a bare "Marmarou 2005" that carried no identifier, and it is a better
+# source for what this constant IS: a systematic review reporting 90 % reference
+# intervals BY BODY POSITION, which is exactly the axis this model moves along.
+#   ICP supine    0.9 to 16.3 mmHg   (midpoint  8.6)
+#   ICP upright  -5.9 to  8.3 mmHg   (midpoint  1.2)
+#   lumbar CSF, lateral recumbent 7.2-16.8; supine 5.7-15.5 mmHg
+# It also separates INTRACRANIAL pressure from LUMBAR CSF pressure, which the
+# previous reference values did not — and this model wants the intracranial one.
+#
+# The review's own warning is worth repeating: only NINE studies reported ICP in
+# normal subjects, and the authors emphasise "the scarcity of normal pressure
+# measures". These intervals are wide because the evidence is thin, not because
+# the quantity varies freely.
+ICP_BASE    = 10.0    # mmHg — supine; inside Norager's 0.9-16.3, above its 8.6 midpoint
+
+# THE POSITION TERM, AND A MEASURED DISAGREEMENT — see backlog item 52.
+# Measured against Norager 2026-09-16:
+#   position      model      Norager 90 % RI        verdict
+#   supine        10.00      0.9 to 16.3            inside, above midpoint
+#   upright        5.00     -5.9 to  8.3            inside, well above midpoint
+#   supine->up    -5.00      about -7.4 (midpoints) too small
+#
+# TWO PROBLEMS, BOTH IN THE CLAMP RATHER THAN THE SLOPE.
+# (1) ICP IS FLAT FOR EVERY HEAD-UP TILT BEYOND ~29 deg. The slope term reaches
+#     -17.5 mmHg at 90 deg and is clamped to -5.0, so the model reports the same
+#     5.00 mmHg at 30, 45 and 90 degrees. Posture stops mattering exactly where
+#     the beach-chair question lives.
+# (2) THE FLOOR IS 5 mmHg, BUT NORMAL UPRIGHT ICP IS OFTEN NEGATIVE. Norager's
+#     upright interval runs down to -5.9 mmHg; the model cannot go below 5.0, so
+#     it excludes the whole lower half of the measured normal range.
+#
+# NOT CHANGED BEFORE THE FREEZE. CPP = MAP_brain - ICP, so relaxing the clamp
+# moves every cerebral-perfusion output at once, including the beach-chair
+# scenario in the README and the CPP row of the validation table. The error's
+# direction is known — ICP too high when head-up, so CPP UNDERSTATED by up to
+# ~4 mmHg at 45 deg, which is conservative for a risk threshold of 50 mmHg but
+# still wrong.
 ICP_SLOPE   = 0.07    # mmHg/mm of head-below-heart in HDT
 
 

@@ -319,10 +319,7 @@ def combined_drug_factors(drugs: dict) -> dict:
         "rv_emax_factor": 1.0,
         "venous_tone_factor": 1.0,
         # Drugs without a sourced postcapillary ratio return 1.0 and so leave this
-        # untouched. Deliberately NOT populated for vasopressin (Quillen 1977 in cat
-        # ileum reports AVP raising the PRE/post ratio, i.e. the opposite sign — but
-        # that paper has not been read in full, so no number is entered),
-        # epinephrine, propofol or spinal block.
+        # untouched: vasopressin, epinephrine, propofol and spinal block.
         "postcap_factor": 1.0,
     }
     for drug_name, dose in drugs.items():
