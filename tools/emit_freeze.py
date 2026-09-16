@@ -331,8 +331,9 @@ def main():
               f"# overnight tier (~11 h wall clock) — IMPORTED, not run here\n"
               f"# source: {args.overnight_from}\n"
               f"# imported into the {args.tag} artefact at {started}\n"
-              f"# An 11 h run must be started BEFORE the freeze commit exists.\n"
-              f"# Verify it against the commit recorded inside the run itself.\n\n"
+              f"# An 11 h run must be started BEFORE the freeze commit exists,\n"
+              f"# so its provenance is stated in the source file's own header\n"
+              f"# rather than inferred here.\n\n"
               + raw)
         ran["suite_overnight.txt"] = "IMPORTED"
         imported["suite_overnight.txt"] = args.overnight_from
