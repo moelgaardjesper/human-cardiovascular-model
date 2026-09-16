@@ -1,0 +1,6 @@
+# slow-dynamics suite
+# v1.0.0  90cc1d0f2955b5a1e934bc128844985922d10d91
+# command: pytest -q -m slow
+
+[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m.[0m[32m                                                                  [100%][0m
+[32m[32m[1m7 passed[0m, [33m98 deselected[0m[32m in 7541.29s (2:05:41)[0m[0m

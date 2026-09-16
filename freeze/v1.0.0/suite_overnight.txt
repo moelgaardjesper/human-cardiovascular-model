@@ -1,0 +1,43 @@
+# overnight tier (~11 h wall clock) — IMPORTED, not run here
+# source: /home/jesper/.claude/jobs/7d606e2c/tmp/overnight_annotated.txt
+# imported into the v1.0.0 artefact at 2026-09-16 19:35:29 UTC
+# An 11 h run must be started BEFORE the freeze commit exists,
+# so its provenance is stated in the source file's own header
+# rather than inferred here.
+
+PROVENANCE OF THIS RUN
+======================
+command      pytest -q -m overnight
+started      2026-09-15 22:55 local
+finished     8:37:43 later
+run at commit 902fdd6 (HEAD when the run was launched)
+
+WHY IT IS NOT RUN AT THE FREEZE COMMIT, AND WHY THAT IS SOUND.
+An 8-9 hour run must be started before the freeze commit exists; there is no
+ordering in which one command both creates the commit and produces an
+eight-hour result for it. Between 902fdd6 and the freeze commit, five commits
+touched model/ and tests/ — all of them comments, docstrings and citation
+identifiers.
+
+That was VERIFIED MECHANICALLY rather than by eye: each changed file was parsed
+at both commits with ast.parse, docstrings were stripped from every module,
+class and function, and the resulting ast.dump strings were compared.
+
+    6 files compared, 0 with executable differences
+    model/baroreflex.py  model/circulation.py  model/compartments.py
+    model/patient.py     model/respiration.py  tests/test_circulation.py
+
+Two later comment-only commits (5027ee5 and its predecessor) were checked the
+same way, also SAME. The executable content that produced this result is
+therefore identical to the freeze commit's.
+
+WHAT THE RESULT MEANS. One xfailed, and that is the intended outcome:
+test_refill_over_24h_matches_lister_tabulated_rates is a STRICT xfail recording
+a known, measured gap — the model has no cellular compartment, so 24 h
+transcapillary refill undershoots Lister. An XPASS would have failed the suite
+and would mean the gap had closed.
+
+RAW PYTEST OUTPUT
+=================
+x                                                                        [100%]
+104 deselected, 1 xfailed in 31063.18s (8:37:43)

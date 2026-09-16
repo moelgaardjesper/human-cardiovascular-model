@@ -83,6 +83,42 @@ hold the same constant name with different values, the dump says so in bold —
 that is the shape of backlog item 50, where the reference operating point was
 typed twice and the copies had drifted apart on CVP.
 
+## What the tag points at, and why it sits after the commit it describes
+
+A freeze has an ordering problem that cannot be designed away: **the artefact
+describes a commit, and committing the artefact creates a new one.** The tag
+therefore sits *after* the code it measures — for v1.0.0, two commits after,
+because a documentation pass landed in between.
+
+    90cc1d0     the state the artefact measures; its hash is in MANIFEST.md
+    b7bd46c     README and diagram fixes. No code change.
+    <tag>       adds freeze/v1.0.0/. No code change.
+
+**The count is not the invariant — the empty diff is.** What has to be true is
+that nothing between the measured commit and the tag can alter a simulation, and
+that is checkable rather than promised:
+
+```bash
+git diff 90cc1d0 v1.0.0 -- model/ tests/ api/   # must be empty
+```
+
+Verified empty before tagging. Everything in between was README prose, the
+compartment diagram, and the script that draws it.
+
+The same problem in a larger form applies to the **overnight tier**, which takes
+eight to nine hours. A run that long must be started *before* the freeze commit
+exists. It is therefore IMPORTED rather than produced by the emitting run, and
+labelled as imported in both the file and the manifest.
+
+Its validity does not rest on trust. The imported file carries its own
+provenance block: the commit it ran at, and a **mechanical verification that the
+executable content is unchanged** — every file that differs between that commit
+and the freeze commit was parsed with `ast.parse`, docstrings stripped from every
+module, class and function, and the `ast.dump` strings compared. Six files, zero
+executable differences; every change was a comment, a docstring or a citation
+identifier. **Comments cannot change a simulation, and the comparison proves the
+changes were only comments.**
+
 ## The environment is part of the model
 
 - **Python 3.14.4.** Development and every published measurement happened here.
