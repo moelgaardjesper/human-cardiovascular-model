@@ -13,7 +13,7 @@ Regenerate with:
 
 - fast suite — the ratchet; what CI runs: **exit 0**
 - slow-dynamics suite: **exit 0**
-- `suite_overnight.txt`: **IMPORTED** from `/home/jesper/.claude/jobs/7d606e2c/tmp/overnight_annotated.txt` — run separately, not produced by this invocation. The commit it ran at is recorded inside the file.
+- `suite_overnight.txt`: **IMPORTED** from `overnight_annotated.txt` — run separately, not produced by this invocation. The commit it ran at is recorded inside the file.
 
 ## What is NOT here, deliberately
 
@@ -27,6 +27,6 @@ Regenerate with:
 | `parameters.md` | `eb65a041aa1b191e3c9bfc99f39a4991b2fbe7f4c6cc9bf8e5fe8869258fc829` |
 | `validation_table.md` | `05086bb440ac15961dab7a810403b6f6153951aeb8c89c9efdb0524b4ef2a9e2` |
 | `sources.md` | `88819d405fcc013e20ef68523715996a8d1f5eca231b521983938bc209508b69` |
-| `suite_overnight.txt` | `ebac2b0c3bb535f9ac540df3ce50f44d88cd04293246786285d65e2155bc00f9` |
+| `suite_overnight.txt` | `967d33bdcb3cd163cc75616dd2f277c8f12043c93fe9290bb7cac21f8ab77cbb` |
 | `suite_fast.txt` | `b3d666854789b90e344574d70e80607c66c947b92484daee89b9a800628c2046` |
 | `suite_slow.txt` | `c5b21cb4da728f8df3d0b9e011872faeb24fce073ae18af26e653509dfab923e` |

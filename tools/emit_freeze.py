@@ -327,16 +327,24 @@ def main():
     imported = {}
     if args.overnight_from:
         raw = open(args.overnight_from, encoding="utf-8", errors="replace").read()
+        # BASENAME ONLY. The full path is a LOCAL FILESYSTEM PATH and this file
+        # gets published: the first emission wrote
+        # "/home/<user>/.claude/jobs/<id>/tmp/..." into both the manifest and the
+        # imported file, leaking a username and an internal job id into a public
+        # artefact. The basename is all a reader can use anyway — they cannot
+        # open a path on someone else's machine — and the provenance that
+        # matters (the commit, and the AST check) lives inside the file.
+        src_label = os.path.basename(args.overnight_from)
         write("suite_overnight.txt",
               f"# overnight tier (~11 h wall clock) — IMPORTED, not run here\n"
-              f"# source: {args.overnight_from}\n"
+              f"# source: {src_label}\n"
               f"# imported into the {args.tag} artefact at {started}\n"
               f"# An 11 h run must be started BEFORE the freeze commit exists,\n"
               f"# so its provenance is stated in the source file's own header\n"
               f"# rather than inferred here.\n\n"
               + raw)
         ran["suite_overnight.txt"] = "IMPORTED"
-        imported["suite_overnight.txt"] = args.overnight_from
+        imported["suite_overnight.txt"] = src_label
         tiers = [t for t in tiers if t[0] != "suite_overnight.txt"]
 
     for name, flags, label, do_run in tiers:

@@ -1,5 +1,5 @@
 # overnight tier (~11 h wall clock) — IMPORTED, not run here
-# source: /home/jesper/.claude/jobs/7d606e2c/tmp/overnight_annotated.txt
+# source: overnight_annotated.txt
 # imported into the v1.0.0 artefact at 2026-09-16 19:35:29 UTC
 # An 11 h run must be started BEFORE the freeze commit exists,
 # so its provenance is stated in the source file's own header

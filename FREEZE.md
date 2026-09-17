@@ -83,6 +83,22 @@ hold the same constant name with different values, the dump says so in bold —
 that is the shape of backlog item 50, where the reference operating point was
 typed twice and the copies had drifted apart on CVP.
 
+## Checking an artefact
+
+```bash
+python3 tools/verify_freeze.py freeze/v1.0.0
+```
+
+Recomputes every sha256 in `MANIFEST.md`, reports any file present but unlisted,
+and **refuses an artefact containing a local filesystem path.**
+
+That last check exists because the first v1.0.0 emission wrote an absolute
+`/home/<user>/.claude/jobs/<id>/...` path into both the manifest and the imported
+overnight run — a username and an internal job id, on their way to a public
+repository. It was caught by a pre-publication scan, which is to say by someone
+remembering to look. Checks that depend on remembering are the ones that fail,
+so it is now a check that runs.
+
 ## What the tag points at, and why it sits after the commit it describes
 
 A freeze has an ordering problem that cannot be designed away: **the artefact
