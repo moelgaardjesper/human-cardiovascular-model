@@ -411,6 +411,31 @@ The previous ΔCVP gap (+0.39 vs +4.13 mmHg) was a measurement-mode mismatch: th
 
 ---
 
+## Blind validation (in progress)
+
+Every comparison in `freeze/v1.0.0/` was made against literature available while
+the model was being built. That is the ordinary condition of a modelling paper,
+and it is why such papers persuade so little.
+
+[`preregistration/`](preregistration/) fixes the ordering. For each new study,
+a prediction — direction *and* magnitude, with an interval — is committed and
+**pushed before the result is seen**. A file on the author's disk proves
+nothing; a commit in a public repository carries a timestamp nobody involved can
+move. The model is frozen at `v1.0.0` and does not change during the phase.
+
+Studies the model cannot be asked are logged in
+[`preregistration/EXCLUDED.md`](preregistration/EXCLUDED.md) with the mechanical
+reason. **That list is a result too** — it maps the architecture's limits using
+real published protocols rather than the authors' own account of them.
+
+Whether a study is genuinely out-of-sample is decided mechanically, not from
+memory: `python3 tools/check_insample.py <PMID or DOI>` searches every
+identifier already cited in the model and its suite. Sixty-two sources is well
+past what anyone recalls reliably, and that failure would be silent and
+self-serving.
+
+---
+
 ## Limitations
 
 **The dated, frozen list is in [`FREEZE.md`](FREEZE.md)** — that is the one the
