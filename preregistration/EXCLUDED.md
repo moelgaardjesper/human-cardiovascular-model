@@ -25,5 +25,9 @@ would be one whose limits nobody had tested.
 - **NO COMPARABLE OUTPUT** — the model runs the protocol but reports nothing
   that corresponds to what was measured, and no convention mapping exists.
   Distinct from CONVENTION, where a mapping exists but differs.
+- **NO SPREAD REPORTED** — *not* an exclusion. The study is registered, but
+  quantities with no reported spread can only reach tier C or F, and are counted
+  separately from the tiered ones. Listed here only when a study reports no
+  spread for *any* quantity, which makes the whole comparison direction-only.
 - **RESULT SEEN** — the result reached the model author before registration.
   Excluded regardless of everything else, and recorded rather than hidden.

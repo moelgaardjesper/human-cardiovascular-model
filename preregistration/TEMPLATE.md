@@ -3,7 +3,7 @@
 - **Registered:** YYYY-MM-DD
 - **Model:** `v1.0.0`, artefact commit `90cc1d0`
 - **Identifier:** PMID / DOI
-- **In-sample check:** `tools/check_insample.py <id>` → NOT FOUND *(paste output)*
+- **In-sample check:** `tools/check_insample.py <id>` → NOT FOUND *(paste the output)*
 - **Verdict:** YES / CONVENTION
 - **Status:** REGISTERED — no results seen
 
@@ -11,35 +11,41 @@
 
 ## The study, as supplied
 
-**Cohort.** n, age, sex, height/weight, health status, medication, posture.
-Anything that changes what the model should be set to.
+**Cohort.** n, age, sex, height/weight, health status, medication, posture —
+anything that changes what the model must be set to.
 
 **Protocol.** The intervention, its magnitude, its timing, and what was measured
-when. Include the respiratory state and the measurement site — both have caused
-false disagreements here before.
+when. Include **respiratory state** and **measurement site**: both have produced
+false disagreements in this project before.
 
-**Reported quantities.** *(Names only — no values.)*
+**Reported quantities.** *(Names and their comparator type only — no values.)*
+
+| quantity | study reports | comparator for scoring |
+|---|---|---|
+| e.g. ΔCO | mean ± SD, n=20 | between-subject SD |
+| e.g. ΔHR | median (Q1–Q3) | IQR |
+| e.g. ΔMAP | point value, no spread | **direction-only** |
 
 ---
 
 ## The model scenario
 
-Exact and runnable, so a reader can reproduce it without interpreting prose.
+Exact and runnable, so a reader reproduces it without interpreting prose.
 
 ```python
 # parameters, verbatim
 ```
 
-**Cohort matching.** Age and body size set to the study's, or a statement of why
-not. If the study reports no age, say so — the reference patient is 55 and that
-must not pass silently.
+**Cohort matching.** Age and body size set to the study's — or a statement of
+why not. If the study reports no age, say so explicitly: the reference patient
+is 55 and that must never pass silently.
 
-**Settling and averaging.** Run length, the window averaged over, and why that
-window is long enough.
+**Settling and averaging.** Run length, the averaging window, and why that
+window is long enough to be stable.
 
 ---
 
-## Quantity convention — pin this before predicting
+## Quantity convention — pin this BEFORE running
 
 | study measured | site / phase | model output | convention |
 |---|---|---|---|
@@ -51,35 +57,38 @@ development were this and nothing else.
 
 ---
 
-## PREDICTION
+## THE MODEL'S OUTPUT — this is the prediction
 
-One row per quantity. Direction and magnitude, with an interval.
+Run the frozen model at the scenario above, reading the quantities above.
+Record what it produces. **This is not an estimate and carries no interval:**
+the model is deterministic, so these numbers are what it says.
 
-| quantity | predicted direction | predicted magnitude | interval | basis |
-|---|---|---|---|---|
-| ΔCO | falls | −0.8 L/min | −0.4 to −1.2 | the model's own response, measured at registration |
+| quantity | model output | comparator declared |
+|---|---|---|
+| ΔCO | −0.73 L/min | between-subject SD |
 
-**Basis** says where the number came from: a scenario actually run at
-registration time, an extrapolation from a neighbouring validated case, or a
-structural argument. An unrun prediction is weaker and must say so.
+**Command used, and its output pasted verbatim:**
 
-**Confidence, stated honestly.** Which of these am I least sure of, and why?
+```
+$ PYTHONPATH=. python3 ...
+```
 
-**What would make this fail, and what that would mean.** If the miss would
-implicate a specific mechanism, name it now — a diagnosis written in advance is
-worth far more than one produced after seeing the answer.
+**What a miss would implicate.** If the model is wrong here, which mechanism is
+the likely cause? A diagnosis written in advance is worth far more than one
+produced after seeing the answer — and if the eventual miss matches it, that is
+a much stronger result than a hit.
 
 ---
 
-## RESULTS — appended in a LATER commit, after the prediction is pushed
+## RESULTS — appended in a LATER commit, after registration is pushed
 
 *(leave empty at registration)*
 
-| quantity | predicted | interval | reported | hit/miss |
-|---|---|---|---|---|
+| quantity | model | study reported | distance (SD) | distance (SEM) | tier |
+|---|---|---|---|---|---|
 
-**Verdict:**
+**Tier summary:** A · B · C · F, and separately the direction-only quantities.
 
 **What it means.** For a miss: which mechanism, and does it match the failure
-mode named above? For a hit: is it load-bearing, or would a wide interval have
-caught anything?
+mode named above? For a hit: is it load-bearing, or would any plausible value
+have landed inside a wide spread?
