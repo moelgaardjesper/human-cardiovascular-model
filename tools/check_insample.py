@@ -33,12 +33,37 @@ author-year citation is ever reintroduced, this check goes blind to it. Run
 `tools/source_index.py --unasserted` occasionally to confirm that has not
 happened.
 """
+import glob
 import os
 import re
 import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-SEARCH_DIRS = ("model", "tests", "tools")
+
+# CODE — a hit here is decisive. The study is cited by the model or its suite,
+# so it was available during development and cannot test the model built to
+# match it.
+CODE_DIRS = ("model", "tests", "tools")
+
+# THE LEDGER — a hit here is a WARNING, not a verdict, and this distinction was
+# the whole point of adding the search.
+#
+# `reference_values.md` holds 63 PMIDs with their tables TRANSCRIBED. Many of
+# those informed a parameter without any test ever citing the identifier, so a
+# code-only search returns "NOT FOUND, safe to register" for a study whose
+# numbers are sitting in the ledger and were used for calibration. That is
+# exactly the silent, self-serving failure this tool exists to prevent: forget
+# the paper, register it as unseen, predict well because the model was shaped by
+# it, report a success.
+#
+# But a hard fail here would over-exclude in the other direction. The backlog
+# lists papers as FUTURE candidates — mentioned, never read for values, and
+# never used. Ruling those out would discard legitimate targets for no reason.
+#
+# So: print the evidence and let a human judge, with the two kinds of document
+# weighted differently.
+LEDGER_FILES = ("docs/reference_values.md", "docs/validation_log.md")
+MENTION_GLOBS = ("docs/*.md", "preregistration/*.md")
 
 
 def normalise(raw):
@@ -66,42 +91,84 @@ def main(argv):
               f"Give a PMID, a PMCID or a DOI.", file=sys.stderr)
         return 2
 
-    hits = []
-    for d in SEARCH_DIRS:
+    def scan(p):
+        out = []
+        try:
+            for i, line in enumerate(
+                    open(p, encoding="utf-8", errors="replace"), start=1):
+                if needle in line.lower():
+                    out.append((os.path.relpath(p, ROOT), i, line.strip()))
+        except OSError:
+            pass
+        return out
+
+    code_hits = []
+    for d in CODE_DIRS:
         base = os.path.join(ROOT, d)
-        if not os.path.isdir(base):
-            continue
-        for dirpath, _dirs, files in os.walk(base):
+        for dirpath, _dirs, files in os.walk(base) if os.path.isdir(base) else ():
             if "__pycache__" in dirpath:
                 continue
             for fn in files:
-                if not fn.endswith(".py"):
-                    continue
-                p = os.path.join(dirpath, fn)
-                for i, line in enumerate(
-                        open(p, encoding="utf-8", errors="replace"), start=1):
-                    if needle in line.lower():
-                        hits.append((os.path.relpath(p, ROOT), i, line.strip()))
+                if fn.endswith(".py"):
+                    code_hits += scan(os.path.join(dirpath, fn))
+
+    ledger_hits, mention_hits = [], []
+    for rel in LEDGER_FILES:
+        ledger_hits += scan(os.path.join(ROOT, rel))
+    ledger_names = set(LEDGER_FILES)
+    for pattern in MENTION_GLOBS:
+        for p in sorted(glob.glob(os.path.join(ROOT, pattern))):
+            if os.path.relpath(p, ROOT) not in ledger_names:
+                mention_hits += scan(p)
+
+    def show(hits, limit=8):
+        for path, ln, text in hits[:limit]:
+            print(f"  {path}:{ln}")
+            print(f"      {text[:150]}")
+        if len(hits) > limit:
+            print(f"  … and {len(hits) - limit} more")
 
     print(f"{kind} {needle}\n")
-    if not hits:
-        print("NOT FOUND in model/, tests/ or tools/.")
-        print("\nSafe to register as OUT-OF-SAMPLE.")
-        print("Caveat: this matches identifiers, not author names. If the study "
-              "could have been used under a bare author-year citation, check by "
-              "hand before registering.")
-        return 0
 
-    print(f"FOUND — {len(hits)} occurrence(s). THIS STUDY IS IN-SAMPLE.\n")
-    for path, ln, text in hits[:12]:
-        print(f"  {path}:{ln}")
-        print(f"      {text[:150]}")
-    if len(hits) > 12:
-        print(f"  … and {len(hits) - 12} more")
-    print("\nEXCLUDE IT. Record it in preregistration/EXCLUDED.md as IN-SAMPLE.")
-    print("A study used during development cannot test the model that was built "
-          "to match it, however good a test it would otherwise be.")
-    return 1
+    if code_hits:
+        print(f"IN-SAMPLE — {len(code_hits)} occurrence(s) in code.\n")
+        show(code_hits, 12)
+        print("\nEXCLUDE IT. Record it in preregistration/EXCLUDED.md as IN-SAMPLE.")
+        print("A study used during development cannot test the model that was "
+              "built to match it, however good a test it would otherwise be.")
+        return 1
+
+    print("Not cited in model/, tests/ or tools/.")
+
+    if ledger_hits:
+        print(f"\n*** WARNING — {len(ledger_hits)} occurrence(s) IN THE LEDGER. "
+              f"READ THESE BEFORE REGISTERING. ***\n")
+        show(ledger_hits)
+        print("\nThe ledger records papers that were READ, and often their "
+              "tables transcribed. If any of those numbers informed a parameter, "
+              "this study is IN-SAMPLE even though no test cites it — and a "
+              "code-only search would have called it safe.")
+        print("Judge it on the lines above: a transcribed table used for "
+              "calibration means EXCLUDE; a bare 'candidate, not yet read' "
+              "mention does not.")
+
+    if mention_hits:
+        print(f"\nNoted — {len(mention_hits)} mention(s) in other working "
+              f"documents (backlog, notes, registrations):\n")
+        show(mention_hits, 5)
+        print("\nA mention as a future candidate does not make a study "
+              "in-sample. Listing a paper is not reading it.")
+
+    if not ledger_hits and not mention_hits:
+        print("\nNot mentioned anywhere in docs/ or preregistration/ either.")
+
+    print("\nVERDICT: no code citation found. "
+          + ("CHECK THE LEDGER HITS ABOVE before registering."
+             if ledger_hits else "Safe to register as OUT-OF-SAMPLE."))
+    print("Caveat: this matches identifiers, not author names. If the study "
+          "could have been used under a bare author-year citation, check by "
+          "hand before registering.")
+    return 0
 
 
 if __name__ == "__main__":
