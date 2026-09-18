@@ -23,7 +23,7 @@ would be one whose limits nobody had tested.
 | 1 | Knee arthroscopy, Trendelenburg vs PLR before tourniquet release | [10.21608/ijma.2021.62396.1262](https://doi.org/10.21608/ijma.2021.62396.1262) | Three absent mechanisms — see below | NO MECHANISM *(temporary)* |
 | 2 | Parabolic flight, seated and supine, with thigh-cuff venous occlusion | [PMID 21636570](https://pubmed.ncbi.nlm.nih.gov/21636570/) | Gravity acts only through the tilt term; seated posture, cuffs and transients all unrepresentable | NO MECHANISM |
 | 3 | ICU postural manoeuvres and fluid challenge, responders | *(supplied 2026-09-18)* | Passed the screen, then could not be configured to the cohort's baseline | CANNOT BE CONFIGURED *(temporary)* |
-| 4 | Major GI surgery, open vs laparoscopic, steep Trendelenburg | [PMID 40770328](https://pubmed.ncbi.nlm.nih.gov/40770328/) | Tilt beyond the validated range; no pneumoperitoneum input; MAP clinician-controlled and timing undefined | OUT OF VALIDATED RANGE + NO MECHANISM *(permanent)* |
+| 4 | Major GI surgery, open vs laparoscopic, steep Trendelenburg | [PMID 40770328](https://pubmed.ncbi.nlm.nih.gov/40770328/) | MAP held at 65-80 by the clinician, so the reported haemodynamics cannot be attributed to posture | CONTROLLED VARIABLE *(permanent)* |
 
 ---
 
@@ -206,23 +206,40 @@ until the end. Measurement times given only as "regular intervals".
 **Only methods were supplied. No results were seen.**
 `tools/check_insample.py 40770328` -> NOT FOUND.
 
-### Three blockers, of two different kinds
+### The reason, after two of the original three were withdrawn
 
-**Tilt beyond the validated range, in BOTH arms.** The envelope is -30 deg
-head-down to +45 deg head-up. A Trendelenburg steeper than 45 deg sits well past
-where outputs mean anything — and the model will still return numbers, which is
-the danger rather than the safeguard.
+**THE BLOCKER IS THE CONTROLLED VARIABLE.** MAP was actively held at 65-80 mmHg
+with individualised fluids and vasoactive agents, so the reported haemodynamics
+cannot be attributed to posture. See the rule below.
 
-**Pneumoperitoneum has no input.** Abdominal pressure is DERIVED from pleural
-pressure through `ABDOMINAL_TRANSMISSION = 0.21`; it is a downstream consequence
-of ventilation, not a settable quantity. Insufflation to 12-15 mmHg independent
-of the ventilator cannot be applied, which removes the laparoscopic arm's
-defining intervention — and with it the open-versus-laparoscopic comparison the
-study exists to make.
+**Pneumoperitoneum blocks only the LAPAROSCOPIC arm.** Abdominal pressure is
+DERIVED from pleural pressure through `ABDOMINAL_TRANSMISSION = 0.21`, a
+consequence of ventilation rather than a settable quantity, so insufflation
+cannot be applied — and with it the open-versus-laparoscopic comparison. **The
+open arm has no pneumoperitoneum and is unaffected.** Backlog item 59.
 
-**MAP was actively held at 65-80 mmHg, and the timing is undefined.** See the
-rule below. Combined with "regular intervals" and no stated measurement points,
-there is no scenario to build: nothing says what the model should report, or when.
+### TWO REASONS WITHDRAWN, 2026-09-18 — recorded because both were mine
+
+**"Tilt beyond the validated range" was wrong, and it cited a limit whose own
+rationale points the other way.** The paper says 45 deg exactly in its methods,
+not "greater than 45" as the abstract has it. More importantly,
+`known_model_limitations.md` §2 argues the envelope entirely from EXTREME UPRIGHT
+posture — at 90 deg head-up the hydrostatic penalty exceeds transmural venous
+pressure and leg venous return collapses. The -30 deg head-down end is stated but
+never argued: it is simply the steepest head-down angle any test uses. **So 45
+deg head-down is an extrapolation beyond what has been TESTED, not a mechanism
+boundary** — and it extrapolates in the direction with no documented failure
+mode. That is a registrable caveat, not an exclusion.
+
+**"Timing undefined" was overstated.** "Regular intervals" describes sampling,
+not reporting. If the paper gives a supine value and a Trendelenburg value, those
+are two defined states the model can produce.
+
+**The pattern is worth recording.** This was the second consecutive study
+rejected on an accumulation of margins rather than on impossibility, after the
+screening standard had already been rewritten to stop exactly that. Defaulting to
+exclusion and calling it rigour protects the model from being tested, which is
+the opposite of the point.
 
 ### THE RULE THIS STUDY ESTABLISHED
 
@@ -233,13 +250,17 @@ so cardiac output and stroke volume are confounded by administration the paper
 does not quantify. **Check for a controlled variable early** — it is common in
 intraoperative work and invalidates more than it first appears to.
 
-### Not temporary
+### Not temporary, but for one reason only
 
-Entries 1, 2 and 3 are marked temporary: build the mechanism, or fix the
-calibration, and they become usable. **This one is not.** Pneumoperitoneum and a
-steeper validated range could both be built, but the undefined measurement times
-and the clinician-controlled MAP are properties of the STUDY. A perfect simulator
-could not be tested against it either.
+Entries 1, 2 and 3 are temporary: build the mechanism, or fix the calibration,
+and they become usable. **This one is not — because the controlled variable is a
+property of the STUDY.** Pneumoperitoneum could be built and the tested tilt
+range could be widened, and neither would help: a perfect simulator could not be
+tested against haemodynamics that were held where the clinician wanted them.
+
+**Without the MAP protocol the open arm would have been registrable**, with the
+45 deg tilt and the desflurane substitution as stated caveats. It is worth being
+clear that the model was not the limiting factor here.
 
 ### Lesser notes, recorded but not decisive
 
