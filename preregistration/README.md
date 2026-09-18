@@ -20,8 +20,10 @@ prediction misses, that is the finding.
 
 1. **Protocol in, results withheld.** Jesper supplies a study's *methods and
    cohort only*. No results, no figures, no abstract conclusions.
-2. **Feasibility screen.** Can the model mechanically run this protocol? Three
-   verdicts: **YES**, **NO**, **CONVENTION** — see below.
+2. **Feasibility screen.** Can the model be ASKED this study's question?
+   **YES**, **YES APPROXIMATED**, **CONVENTION** or **NO** — see below. Reject
+   only for the three shapes listed there; an imperfect setup is registered, not
+   refused.
 3. **In-sample check.** `python3 tools/check_insample.py <PMID or DOI>`. If the
    paper is already cited in `model/`, `tests/` or `tools/`, it is **not**
    out-of-sample and is excluded. Mechanical, not a matter of memory.
@@ -62,52 +64,66 @@ So a registration does not say *"I expect roughly −0.8"*. It says:
 Falsifiable without ambiguity, and impossible to sandbag, because the author
 does not choose it. You run the model and write down what it says.
 
-## The three verdicts
+## The verdicts
 
-**YES** — the protocol maps onto parameters the model already has, and every
-quantity the study reports has a model counterpart.
+**Reject only when the model cannot be ASKED the study's question. Not when the
+setup is imperfect.**
 
-**NO** — the model cannot be asked this question. Record *which missing
-mechanism* makes it impossible: no cellular compartment, no 1-D wave propagation
-(so no pulse wave velocity, no augmentation index), no skeletal-muscle pump (so
-no posture beyond −30°/+45°), no age-dependent baroreflex, no pregnancy or
-sepsis physiology.
+That sentence is the whole standard, and it replaced a much stricter one on
+2026-09-18 after three consecutive rejections, of which one was wrong.
 
-**CONVENTION** — the model can run the protocol, but reports a *different
-quantity* than the study measured. Transmural versus intraluminal pressure;
-lumen versus outer-wall diameter; a cycle mean versus an end-expiratory reading.
-**Four apparent model defects during development dissolved into exactly this**,
-so these are registered with the convention pinned explicitly and the comparison
-flagged as convention-sensitive.
+**YES** — the model can be asked the study's question. Some inputs will differ
+from the study; say which, and register the difference. This is the NORMAL case,
+not a concession.
 
-The verdict concerns **mechanics only** — can the ODE be driven this way, do the
-required outputs exist. Never whether the model would look good. The moment
-"can it?" becomes "would it do well?", the screen has become the fitting step
-this procedure exists to prevent.
+**YES, APPROXIMATED** — as above, but a substitution is material enough to name
+in the result. Crystalloid standing in for albumin. A subgroup standing in for a
+mixed cohort. A patient matched on measured haemodynamics rather than on the
+disease that produced them. **Register what was substituted and in which
+direction it is likely to matter.**
 
-### DO NOT RUN THE MODEL WHILE SCREENING
+**CONVENTION** — the model can run the protocol but reports a *different
+quantity* than the study measured: transmural versus intraluminal pressure,
+lumen versus outer-wall diameter, a cycle mean versus an end-expiratory reading.
+Four apparent defects during development dissolved into exactly this. Register
+with the convention pinned and the comparison flagged as convention-sensitive.
 
-**Feasibility is decided by reading the code, not by running scenarios.** If a
-protocol is rejected, no simulation of it should ever have been performed.
+**NO** — the model cannot be asked the question at all. Three shapes, and
+nothing else qualifies:
 
-**Why, in Jesper's words:** if the model is run on a study that is then rejected,
-and the output happens to look plausible, there is pressure to reclassify the
-study as feasible — and pressure the other way when the output looks poor. That
-makes the feasibility verdict depend on the answer, which selects studies by how
-well the model does on them. **It is the fitting step re-entering through the
-screen**, which is precisely what the previous paragraph forbids and precisely
-what is easiest to do without noticing.
+- **A required mechanism is absent.** No reactive hyperaemia after tourniquet
+  release, because nothing accumulates ischaemic metabolites.
+- **The quantity collapses into another one**, so the model answers by
+  arithmetic rather than physiology. At tilt zero the gravitational term
+  vanishes, so 0 G is identical to supine and a microgravity prediction is
+  "no change" by construction.
+- **The comparison itself is unrepresentable.** Passive leg raise is implemented
+  as head-down tilt, so a study contrasting the two is asking the model to
+  distinguish a thing from itself.
 
-**This rule was added because it had already been broken twice**, on the first
-two studies screened. Both times the run was also unnecessary: each blocker was
-established by reading a single expression in `model/gravity.py` or
-`model/circulation.py`. **If you need to run the model to find out whether it can
-do something, you are already measuring** — stop, and look at the mechanism
-instead.
+### The failure mode this standard exists to prevent
 
-Once a study passes the screen, running the model is not merely allowed but
-required: the registered prediction *is* its output. The line falls at the
-verdict, not at the keyboard.
+The first three studies screened were all rejected, and the third was rejected on
+an accumulation of margins: a colloid the model substitutes with crystalloid, a
+cohort that was 13/21 on the ventilation mode the model has, a tilt sequence
+wrongly believed impossible, and a patient configurable from measured MAP, CVP
+and CI.
+
+**"Every element matches or reject" is not a screen — it is a way of never being
+tested**, and it fails in the flattering direction, because a model that is never
+asked a question is never wrong. That is the opposite of what a freeze is for.
+
+**An imperfect comparison, with the imperfections registered in advance, is worth
+far more than a perfect comparison that never happens.** If a substitution turns
+out to matter, the miss says so, and the registered caveat is what lets a reader
+tell a substitution artefact from a model defect.
+
+### Caveats are registered, never used afterwards
+
+A caveat written before the result explains a miss. The same words written after
+it excuse one. Everything that might be blamed later must be named at
+registration — and a caveat that was *not* registered cannot be introduced once
+the result is known.
 
 ## Scoring
 
@@ -194,3 +210,14 @@ This scheme was argued into shape by Jesper, and two layers were removed:
 
 Both were mine. Both made the scheme weaker while looking more rigorous, which
 is worth recording as its own small lesson.
+
+3. **The screening standard itself**, rewritten 2026-09-18 after three
+   consecutive rejections. The third was wrong: it rested on an accumulation of
+   margins plus one plain factual error — that a tilt sequence could not be run,
+   when `LiveSession.update_params()` changes tilt mid-run and is directly
+   scriptable. **A screen that demands every element match is a way of never
+   being tested.** The standard is now "can the model be ASKED this question",
+   and imperfections are registered rather than refused.
+
+The pattern across all three is the same: each version looked more rigorous than
+its replacement while protecting the model from being tested.
