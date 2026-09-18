@@ -21,6 +21,7 @@ would be one whose limits nobody had tested.
 | # | study | identifier | reason | category |
 |---|---|---|---|---|
 | 1 | Knee arthroscopy, Trendelenburg vs PLR before tourniquet release | [10.21608/ijma.2021.62396.1262](https://doi.org/10.21608/ijma.2021.62396.1262) | Three absent mechanisms — see below | NO MECHANISM *(temporary)* |
+| 2 | Parabolic flight, seated and supine, with thigh-cuff venous occlusion | *(supplied 2026-09-18)* | Gravity acts only through the tilt term; seated posture, cuffs and transients all unrepresentable | NO MECHANISM |
 
 ---
 
@@ -75,6 +76,63 @@ matters for a validation target: if a source is unreliable, a disagreement does
 not cleanly implicate the model. Better used as a shape target — how fast, how
 deep, how long to recover — than a magnitude one.
 
+
+## 2 — Parabolic flight, seated and supine, with thigh-cuff venous occlusion
+
+**Screened 2026-09-18.** Healthy volunteers, age 35. Thirty parabolic
+manoeuvres: the first twenty seated, the last ten supine. MAP (Portapres) and HR
+continuous; CO by rebreathing over 20-second windows at either 1 G or 0 G.
+Seated conditions randomised across 1 G, 0 G, 0 G with bilateral thigh cuffs
+inflated to 60 mmHg from before the 1.8 G pull-up, and 0 G with the cuffs
+released on entering 0 G.
+
+**Only methods, cohort and timing were supplied. No results were seen.**
+
+### Why the model cannot be asked this
+
+**Gravity reaches the model only through the tilt term**, as
+`rho * g * h * sin(tilt)`. At tilt zero the sine is zero and the term vanishes
+whatever the gravity is. Measured: supine at 1 G, 0 G and 1.8 G returns
+**95.40 / 6.04 / 4.40 / 69.3 — identical to two decimals in all three.**
+
+So the supine arm, which looked like the salvageable half, is the clearest
+failure. **The model answers "no change" by construction**, and a prediction of
+identically zero is arithmetic rather than physiology. Presenting it as agreement
+if the study found little change would be dishonest.
+
+**The seated arm is unrepresentable for two separate reasons** — it is beyond the
+validated posture range of −30° to +45°, and a seated posture needs hip
+articulation the model does not have, since one tilt angle is applied to every
+compartment through a fixed height.
+
+**Thigh-cuff venous occlusion is not a model parameter.** The cuffs are
+bilateral, so limb laterality is not the obstacle here; occlusion simply does not
+exist as a mechanism. This is also why the live-mode UI has no cuff control —
+there is nothing in the model for it to expose.
+
+**Every measurement is a transient.** Twenty-second 0 G windows, a 1.8 G pull-up,
+and cuff release timed to 0 G entry. Live mode can step gravity mid-run but only
+between four named environments, so 1.8 G is unreachable, and it cannot vary
+regional resistance at all.
+
+**Convention flag, recorded although it is not the blocker:** Portapres measures
+finger arterial pressure; the model reports a time-integrated central MAP.
+
+### What was learned by screening it
+
+**Every microgravity result in the suite is really a supine result.** The finding
+generalises well beyond this study: `GravityEnvironment.MICROGRAVITY` at tilt
+zero is bit-identical to Earth gravity at tilt zero, so the Buckey 1996 row in
+the validation table is comparing supine CVP against upright CVP under a
+different name. The README already carried the symptom — "CVP paradox in
+microgravity not fully reproduced" — but attributed it to unmodelled chest-wall
+compliance. **That is incomplete: fixing chest-wall compliance would not help,
+because the gravitational term is gone before any of it applies.** Opened as
+backlog item 57.
+
+This is the second time a screen has found that a named scenario is a synonym for
+another one. The first was passive leg raise, which is implemented as head-down
+tilt.
 
 ## Categories
 
