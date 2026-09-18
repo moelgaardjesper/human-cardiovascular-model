@@ -54,14 +54,6 @@ wash out and no reactive hyperaemia. Compartment resistance is also fixed at
 setup, so even the release *event* cannot be staged, let alone the ten minutes of
 physiology that follow it.
 
-### What was learned by screening it anyway
-
-**Leg laterality turned out not to matter for postural questions.** Running both
-extremes — both legs perfused, both occluded — brackets the unrepresentable
-middle. On ΔMAP for a 20° tilt the bracket is **0.61 mmHg wide**. A limitation
-that looked fatal is immaterial whenever the question is postural. That was not
-the expected answer.
-
 ### Status, and two honest notes
 
 **Temporarily excluded, not permanently.** The blockers are missing mechanisms,
@@ -91,14 +83,13 @@ released on entering 0 G.
 ### Why the model cannot be asked this
 
 **Gravity reaches the model only through the tilt term**, as
-`rho * g * h * sin(tilt)`. At tilt zero the sine is zero and the term vanishes
-whatever the gravity is. Measured: supine at 1 G, 0 G and 1.8 G returns
-**95.40 / 6.04 / 4.40 / 69.3 — identical to two decimals in all three.**
+`rho * g * h * sin(tilt)` in `model/gravity.py`. At tilt zero the sine is zero,
+so the term vanishes whatever the gravity is. **This is readable from the code
+and needs no simulation to establish.**
 
 So the supine arm, which looked like the salvageable half, is the clearest
 failure. **The model answers "no change" by construction**, and a prediction of
-identically zero is arithmetic rather than physiology. Presenting it as agreement
-if the study found little change would be dishonest.
+identically zero is arithmetic rather than physiology.
 
 **The seated arm is unrepresentable for two separate reasons** — it is beyond the
 validated posture range of −30° to +45°, and a seated posture needs hip
@@ -121,14 +112,13 @@ finger arterial pressure; the model reports a time-integrated central MAP.
 ### What was learned by screening it
 
 **Every microgravity result in the suite is really a supine result.** The finding
-generalises well beyond this study: `GravityEnvironment.MICROGRAVITY` at tilt
-zero is bit-identical to Earth gravity at tilt zero, so the Buckey 1996 row in
-the validation table is comparing supine CVP against upright CVP under a
-different name. The README already carried the symptom — "CVP paradox in
-microgravity not fully reproduced" — but attributed it to unmodelled chest-wall
-compliance. **That is incomplete: fixing chest-wall compliance would not help,
-because the gravitational term is gone before any of it applies.** Opened as
-backlog item 57.
+generalises well beyond this study: at tilt zero, `GravityEnvironment.MICROGRAVITY`
+and Earth gravity enter the equations identically, so the Buckey 1996 row in the
+validation table compares supine CVP against upright CVP under a different name.
+The README already carried the symptom — "CVP paradox in microgravity not fully
+reproduced" — but attributed it to unmodelled chest-wall compliance. **That is
+incomplete: fixing chest-wall compliance would not help, because the
+gravitational term is gone before any of it applies.** Opened as backlog item 57.
 
 This is the second time a screen has found that a named scenario is a synonym for
 another one. The first was passive leg raise, which is implemented as head-down

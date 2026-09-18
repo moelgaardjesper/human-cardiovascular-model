@@ -85,6 +85,30 @@ required outputs exist. Never whether the model would look good. The moment
 "can it?" becomes "would it do well?", the screen has become the fitting step
 this procedure exists to prevent.
 
+### DO NOT RUN THE MODEL WHILE SCREENING
+
+**Feasibility is decided by reading the code, not by running scenarios.** If a
+protocol is rejected, no simulation of it should ever have been performed.
+
+**Why, in Jesper's words:** if the model is run on a study that is then rejected,
+and the output happens to look plausible, there is pressure to reclassify the
+study as feasible — and pressure the other way when the output looks poor. That
+makes the feasibility verdict depend on the answer, which selects studies by how
+well the model does on them. **It is the fitting step re-entering through the
+screen**, which is precisely what the previous paragraph forbids and precisely
+what is easiest to do without noticing.
+
+**This rule was added because it had already been broken twice**, on the first
+two studies screened. Both times the run was also unnecessary: each blocker was
+established by reading a single expression in `model/gravity.py` or
+`model/circulation.py`. **If you need to run the model to find out whether it can
+do something, you are already measuring** — stop, and look at the mechanism
+instead.
+
+Once a study passes the screen, running the model is not merely allowed but
+required: the registered prediction *is* its output. The line falls at the
+verdict, not at the keyboard.
+
 ## Scoring
 
 Tiers are computed from the data. **Nobody nominates a target beforehand**, for
