@@ -35,9 +35,10 @@ pytest tests/test_circulation.py::test_resting_baseline -v
 python -m api.app
 ```
 
-Simulation runs at roughly **3x real time**, so a 2-hour scenario costs ~38 min of wall
-clock per arm. Budget accordingly before launching long validation runs, and run them in
-the background.
+Simulation runs at roughly **2.2x real time** (measured 2026-08-30; this file said 3x until
+2026-09-18, and the model has grown since the original figure). Budget from 2.2x: a 2 h
+scenario costs ~55 min per arm, 12 h costs ~5.5 h, 24 h costs ~11 h. Run long validation in
+the background. `pytest.ini` carries the same table.
 
 ## Architecture
 
@@ -72,8 +73,17 @@ frontend/
   vendor/           Vendored Plotly — the UI must run fully offline, so no CDN
                     assets. Removing this leaves the UI with no plots
 
-tools/
+tools/                 Reporting and audit tools. NONE of them is asserted by a test —
+                       see step 7 of the validation discipline, which exists because of it
   generate_diagram.py  Regenerates the README compartment diagram (PNG + SVG)
+  validation_table.py  Literature target vs model value. REPRESENTATIVE, not exhaustive
+  source_index.py      Every cited PMID/PMC/DOI and the test asserting it — derived
+  check_insample.py    Is a study already in the model? Gate for the blind phase
+  emit_freeze.py       Emits the whole frozen artefact from one command
+  verify_freeze.py     Checks an artefact against its manifest; refuses local paths
+  state_dump.py        Full model state with expected values beside every number
+  parameter_audit.py   Provenance and constraint status of every parameter
+  sensitivity_map.py, resistance_split.py, venous_return_curve.py, venous_state.py
 ```
 
 ### Key data flow
@@ -129,6 +139,8 @@ Every change that touches physiology follows the same loop:
 5. **The full suite must still pass — without loosening any existing assertion.**
 6. **Re-measure the headline claim of any open backlog item touching the same
    compartments**, and annotate the entry with a dated claim-versus-measured table.
+7. **Re-measure every number the change touches in `README.md`** — and withdraw,
+   in the README itself, any claim the change refutes.
 
 The regression suite is a ratchet. If a change cannot leave it green without weakening a
 test, that is a finding to report, not a licence to retune.
@@ -145,6 +157,36 @@ measurement disagreed with the entry.
 
 Staleness is not all-or-nothing: item 30 in the same audit had an exactly-correct pressure
 claim beside a volume claim that was 35x out. Check each number, not the entry.
+
+**Step 7 exists because the README is the document with the widest readership and the
+weakest defences.** Steps 5 and 6 both assume something is watching — a test that fails, or
+a backlog entry someone re-reads before acting on it. **Nothing watches published prose.**
+
+The instance that put this rule here, 2026-09-18: the README stated that resting MAP ~96 sat
+against "a literature expectation nearer 77 ± 14 for a 55-year-old" and called it *the
+largest open discrepancy in the resting operating point*. That claim had been refuted days
+earlier — the 77 ± 14 came from a cohort aged 25 ± 3, and age-matched against McEniery the
+model sits inside 0.1 SD. The correction reached the backlog and the working notes. It never
+reached the README, so **the repository's front page advertised a defect the project had
+already disproved, while the private notes were correct.** Fixing a claim privately is not
+withdrawing it publicly.
+
+Found in the same pass: baseline haemodynamics in `docs/known_model_limitations.md` two
+months stale (MAP 88 / CO 4.5 / CVP 3.2 against a measured 95.4 / 5.99 / 4.36), a limitation
+that had silently RESOLVED while the document still warned readers away from the output
+(absolute `ankle_p`, ~24 mmHg when written, 82.6 now), and a validation table comparing a
+−15° tilt against a meta-analysis pooling −5° to −45°.
+
+**The general rule this generalises to: anything that REPORTS numbers but ASSERTS nothing
+rots undetected.** That includes `README.md`, `FREEZE.md`, the reporting tools in `tools/`,
+and every document written to be dropped into a manuscript. The ratchet does not reach them.
+Re-measure them on a schedule, because nothing will fail to remind you.
+
+**What survives such a pass is as informative as what breaks.** The ankle–brachial section
+recommended validating the Δ-gradient rather than absolute pressures. Every absolute in that
+table moved 50–65 mmHg across a year of structural change; the Δ at 45° moved 1.8 mmHg. A
+target chosen because it *ought* to be robust turned out to be robust — which is an argument
+for choosing validation targets that way in the first place.
 
 ### Model the physiology, not the result
 
