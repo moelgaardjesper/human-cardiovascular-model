@@ -304,8 +304,8 @@ Two attempts to sweep it have failed, in opposite and instructive ways. Holding 
 volume fixed while lowering unstressed volume merely relabels the same blood as stressed and
 overdrives the circulation. Letting total volume fall instead removes the blood from the model
 altogether — and changes **nothing** haemodynamically, which is precisely what "unstressed"
-means. Neither does the thing that has to happen: move it somewhere. No further sweep is
-planned until the receiving compartment has a source.
+means. Neither does the thing that has to happen: move it somewhere — and no compartment
+has a sourced basis for receiving it.
 
 ### Known literature disagreements
 
@@ -334,11 +334,28 @@ recalibrating the Starling curve — the chambers and valves were oversized and 
 stenotic, which is what was capping stroke volume.
 
 **A different gap is now the honest one to state: the model overshoots the MAP it is given.**
-Asked for MAP 83, it settles at **92.0**. The reference patient asked for nothing settles at
-96.4 against a literature expectation nearer 77 ± 14 for a 55-year-old. Cardiac output falls
-with age, so a 55-year-old model should sit *below* a young cohort and instead sits above it.
-This is carried as backlog item 37 and is **not** a measurement artefact — it is the largest
-open discrepancy in the resting operating point.
+Asked for MAP 83, it settles at **92.0**.
+
+**The rest of what this paragraph used to say was WITHDRAWN on 2026-09-15.** It
+claimed the resting MAP of ~96 sat against "a literature expectation nearer
+77 ± 14 for a 55-year-old", and called that the largest open discrepancy in the
+model. It was neither. **The 77 ± 14 came from a cohort aged 25 ± 3** — the
+model was being compared against people a generation younger than the patient it
+simulates. Age-matched against McEniery 2005 (PMID 16256881), males 50–59,
+n = 429: MAP 95 ± 7, and the model sits at **95.4 — inside 0.1 SD.** Peripheral
+systolic, peripheral pulse pressure and heart rate are all within one SD of the
+same cohort.
+
+So the resting operating point was never the problem. What was real, and was
+fixed separately on 2026-09-14, was CENTRAL pulse pressure: +2.9 SD too wide,
+now +0.3 SD. **The model's peripheral haemodynamics were right throughout; only
+the central ones were wrong.** Two confounds had been stacked — cohort age, and
+convention, since a time-integrated central MAP is not a cuff reading and the
+difference is worth roughly 9 mmHg on its own.
+
+The MAP-overshoot on a *requested* blood pressure is a separate matter and is
+carried as a strict xfail: entered by its own measured haemodynamics, the
+reference patient rescales itself by −14 %.
 
 **All scenarios — a ~2% measurement correction** *(2026-08-07)*
 
@@ -467,8 +484,8 @@ and it belongs in the limbs. This is the model's worst deviation and no fix is a
 the receiving compartment is sourced.
 
 ### Single-compartment splanchnic and upper-body veins
-Currently single lumped compartments, which would benefit from distributed height modelling at
-large tilt angles. The splanchnic compartment is declared to **include the liver** (~618 mL in
+Currently single lumped compartments. Each therefore has one height, so the hydrostatic
+gradient across the length of the bed is not represented, and the error grows with tilt angle. The splanchnic compartment is declared to **include the liver** (~618 mL in
 a healthy adult); the model had never decided this, and the ambiguity was worth 600 mL. A
 future split must place the liver in **series** (gut → liver → IVC), not in parallel, since it
 would insert resistance into the venous return path. Note also that the two sub-beds move in
@@ -571,10 +588,7 @@ unexplained rather than merely unaddressed:
   at 79–84. See *Resistance topology* below.
 
 Neither closed the gap. Every literature anchor still passes (Guyton, Lister refill,
-RAAS/ADH), so the residual is not a calibration drift in those. The most likely remaining
-candidate is that the drug pathway still acts on the venous drainage path, whereas the
-Abboud mechanism is a shift in the pre/post split **inside** the exchange segment — a lever
-that only became meaningful once the artery-to-vein gradient went from 1.7 to ~76 mmHg.
+RAAS/ADH), so the residual is not a calibration drift in those. **The gap remains open.**
 
 Deliberately **not** patched by inflating K<sub>f</sub> or the drug parameter: both have
 sourced values, and refill agrees with Lister to within a factor of ~1.6.
