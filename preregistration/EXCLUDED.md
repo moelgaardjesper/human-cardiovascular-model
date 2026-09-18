@@ -22,7 +22,7 @@ would be one whose limits nobody had tested.
 |---|---|---|---|---|
 | 1 | Knee arthroscopy, Trendelenburg vs PLR before tourniquet release | [10.21608/ijma.2021.62396.1262](https://doi.org/10.21608/ijma.2021.62396.1262) | Three absent mechanisms — see below | NO MECHANISM *(temporary)* |
 | 2 | Parabolic flight, seated and supine, with thigh-cuff venous occlusion | [PMID 21636570](https://pubmed.ncbi.nlm.nih.gov/21636570/) | Gravity acts only through the tilt term; seated posture, cuffs and transients all unrepresentable | NO MECHANISM |
-| 3 | ICU postural manoeuvres and fluid challenge, responders | *(supplied 2026-09-18)* | Passed the screen, then could not be configured to the cohort's baseline | CANNOT BE CONFIGURED *(temporary)* |
+| 3 | ICU postural manoeuvres and fluid challenge, responders | [PMID 41721238](https://pubmed.ncbi.nlm.nih.gov/41721238/) | Passed the screen, then could not be configured to the cohort's baseline | CANNOT BE CONFIGURED *(temporary)* |
 | 4 | Major GI surgery, open vs laparoscopic, steep Trendelenburg | [PMID 40770328](https://pubmed.ncbi.nlm.nih.gov/40770328/) | MAP held at 65-80 by the clinician, so the reported haemodynamics cannot be attributed to posture | CONTROLLED VARIABLE *(permanent)* |
 
 ---
@@ -139,7 +139,8 @@ Trendelenburg -13 deg for 1 min, supine 1 min, then 4 mL/kg of 5 % albumin over
 15 min. CI, CVP, MAP, PPV and SVV reported.
 
 **Baseline: MAP 79.2 +/- 14.7, CI 3.1 +/- 1.5, CVP 6.4 +/- 4.6. No outcome data
-was seen.**
+was seen.** [PMID 41721238](https://pubmed.ncbi.nlm.nih.gov/41721238/).
+`tools/check_insample.py 41721238` -> NOT FOUND.
 
 ### This one failed at a different stage from entries 1 and 2
 
