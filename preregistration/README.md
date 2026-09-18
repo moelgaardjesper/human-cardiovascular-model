@@ -101,6 +101,23 @@ nothing else qualifies:
   as head-down tilt, so a study contrasting the two is asking the model to
   distinguish a thing from itself.
 
+### Check for a controlled variable before anything else
+
+**A variable the clinician actively controls cannot be used to validate the
+model.** If a protocol says blood pressure was *maintained* in some range with
+fluids and vasoactive agents, then blood pressure is not an outcome — it is a
+set-point held by a feedback loop the paper does not record.
+
+It is worse than losing that one variable. The loop acts through fluids and
+vasopressors, so **cardiac output, stroke volume and filling pressures are all
+confounded** by administration that is usually described only as
+"individualised".
+
+This is common in intraoperative studies and invalidates more than it first
+appears to, so check for it early — before spending effort on mechanisms. It is
+also a property of the STUDY, which makes it permanent: no amount of model
+development makes such a protocol testable.
+
 ### The failure mode this standard exists to prevent
 
 The first three studies screened were all rejected, and the third was rejected on

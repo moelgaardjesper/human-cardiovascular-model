@@ -21,8 +21,9 @@ would be one whose limits nobody had tested.
 | # | study | identifier | reason | category |
 |---|---|---|---|---|
 | 1 | Knee arthroscopy, Trendelenburg vs PLR before tourniquet release | [10.21608/ijma.2021.62396.1262](https://doi.org/10.21608/ijma.2021.62396.1262) | Three absent mechanisms — see below | NO MECHANISM *(temporary)* |
-| 2 | Parabolic flight, seated and supine, with thigh-cuff venous occlusion | *(supplied 2026-09-18)* | Gravity acts only through the tilt term; seated posture, cuffs and transients all unrepresentable | NO MECHANISM |
+| 2 | Parabolic flight, seated and supine, with thigh-cuff venous occlusion | [PMID 21636570](https://pubmed.ncbi.nlm.nih.gov/21636570/) | Gravity acts only through the tilt term; seated posture, cuffs and transients all unrepresentable | NO MECHANISM |
 | 3 | ICU postural manoeuvres and fluid challenge, responders | *(supplied 2026-09-18)* | Passed the screen, then could not be configured to the cohort's baseline | CANNOT BE CONFIGURED *(temporary)* |
+| 4 | Major GI surgery, open vs laparoscopic, steep Trendelenburg | [PMID 40770328](https://pubmed.ncbi.nlm.nih.gov/40770328/) | Tilt beyond the validated range; no pneumoperitoneum input; MAP clinician-controlled and timing undefined | OUT OF VALIDATED RANGE + NO MECHANISM *(permanent)* |
 
 ---
 
@@ -191,6 +192,61 @@ three measured values are met, rather than accepting whatever falls out.
 
 **Temporarily excluded.** If calibration is fixed this study becomes usable —
 only methods, cohort and baseline were read, so it stays clean.
+
+## 4 — Major GI surgery, open vs laparoscopic, steep Trendelenburg
+
+**Screened 2026-09-18.** [PMID 40770328](https://pubmed.ncbi.nlm.nih.gov/40770328/).
+n = 80, major gastrointestinal surgery, open against laparoscopic. Desflurane
+anaesthesia. Oesophageal Doppler cardiac measurements supine and in Trendelenburg
+steeper than 45 deg. MAP held at 65-80 mmHg with individualised fluids and
+vasoactive agents. Laparoscopic arm measured after pneumoperitoneum and
+Trendelenburg were established; open arm supine at the start, then Trendelenburg
+until the end. Measurement times given only as "regular intervals".
+
+**Only methods were supplied. No results were seen.**
+`tools/check_insample.py 40770328` -> NOT FOUND.
+
+### Three blockers, of two different kinds
+
+**Tilt beyond the validated range, in BOTH arms.** The envelope is -30 deg
+head-down to +45 deg head-up. A Trendelenburg steeper than 45 deg sits well past
+where outputs mean anything — and the model will still return numbers, which is
+the danger rather than the safeguard.
+
+**Pneumoperitoneum has no input.** Abdominal pressure is DERIVED from pleural
+pressure through `ABDOMINAL_TRANSMISSION = 0.21`; it is a downstream consequence
+of ventilation, not a settable quantity. Insufflation to 12-15 mmHg independent
+of the ventilator cannot be applied, which removes the laparoscopic arm's
+defining intervention — and with it the open-versus-laparoscopic comparison the
+study exists to make.
+
+**MAP was actively held at 65-80 mmHg, and the timing is undefined.** See the
+rule below. Combined with "regular intervals" and no stated measurement points,
+there is no scenario to build: nothing says what the model should report, or when.
+
+### THE RULE THIS STUDY ESTABLISHED
+
+**A variable the clinician actively controls cannot be used to validate the
+model.** MAP here is not an outcome, it is a set-point maintained by an
+unrecorded feedback loop. Worse, the loop acts through fluids and vasopressors,
+so cardiac output and stroke volume are confounded by administration the paper
+does not quantify. **Check for a controlled variable early** — it is common in
+intraoperative work and invalidates more than it first appears to.
+
+### Not temporary
+
+Entries 1, 2 and 3 are marked temporary: build the mechanism, or fix the
+calibration, and they become usable. **This one is not.** Pneumoperitoneum and a
+steeper validated range could both be built, but the undefined measurement times
+and the clinician-controlled MAP are properties of the STUDY. A perfect simulator
+could not be tested against it either.
+
+### Lesser notes, recorded but not decisive
+
+Desflurane has no counterpart — propofol is the model's only anaesthetic. And
+oesophageal Doppler estimates cardiac output from descending aortic flow through
+a nomogram, so it is not the total cardiac output the model reports; that would
+be a convention flag if the study were ever otherwise usable.
 
 ## Categories
 
