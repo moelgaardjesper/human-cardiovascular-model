@@ -22,6 +22,7 @@ would be one whose limits nobody had tested.
 |---|---|---|---|---|
 | 1 | Knee arthroscopy, Trendelenburg vs PLR before tourniquet release | [10.21608/ijma.2021.62396.1262](https://doi.org/10.21608/ijma.2021.62396.1262) | Three absent mechanisms — see below | NO MECHANISM *(temporary)* |
 | 2 | Parabolic flight, seated and supine, with thigh-cuff venous occlusion | *(supplied 2026-09-18)* | Gravity acts only through the tilt term; seated posture, cuffs and transients all unrepresentable | NO MECHANISM |
+| 3 | ICU postural manoeuvres and fluid challenge, responders | *(supplied 2026-09-18)* | Passed the screen, then could not be configured to the cohort's baseline | CANNOT BE CONFIGURED *(temporary)* |
 
 ---
 
@@ -124,6 +125,73 @@ This is the second time a screen has found that a named scenario is a synonym fo
 another one. The first was passive leg raise, which is implemented as head-down
 tilt.
 
+## 3 — ICU postural manoeuvres and fluid challenge, responders
+
+**Screened and accepted 2026-09-18, then excluded at configuration the same day.**
+
+ICU patients, lightly sedated, mechanically ventilated with spontaneous breathing
+activity, with signs of inadequate tissue perfusion. Responders only: age
+69.3 +/- 14.2, BMI 22.5 +/- 2.5, sex about 1:1, noradrenaline in 66.6 % at
+< 0.1 mcg/kg/min, fentanyl in 81 %, PEEP 5, PIP median 14, tidal volume
+8.9 +/- 1.8 mL/kg. Supine baseline, reverse Trendelenburg +10 deg for 1 min,
+Trendelenburg -13 deg for 1 min, supine 1 min, then 4 mL/kg of 5 % albumin over
+15 min. CI, CVP, MAP, PPV and SVV reported.
+
+**Baseline: MAP 79.2 +/- 14.7, CI 3.1 +/- 1.5, CVP 6.4 +/- 4.6. No outcome data
+was seen.**
+
+### This one failed at a different stage from entries 1 and 2
+
+**It passed the feasibility screen**, as YES APPROXIMATED. The protocol maps onto
+parameters the model has: both tilt angles sit inside the validated range, the
+four-stage sequence runs through `LiveSimulator`, PEEP and PIP are settable and
+match the cohort exactly, and noradrenaline exists. The substitutions —
+crystalloid for albumin, one sex for a mixed cohort, a single noradrenaline dose,
+no opioid — were registrable rather than disqualifying.
+
+**It failed when the patient was built.** Configured through the Tier 3 path on
+the study's own baseline, the model settled a long way from what it was asked
+for:
+
+| | requested | model settled at |
+|---|---|---|
+| MAP | 79.2 | 94.07 |
+| CVP | 6.4 | 2.52 |
+| CI | 3.1 | 2.77 |
+
+MAP overshoots by about 15 mmHg and CVP undershoots by nearly 4. **"Matched on
+operating point" was the entire justification for accepting this study, and the
+model is not at that operating point.**
+
+The direction compounds it. The model's patient sits at a much lower filling
+pressure, so further up the steep part of its Starling curve, and should
+therefore be MORE fluid-responsive than the cohort — biasing precisely the
+comparison the study exists to make.
+
+**The reason for exclusion: there is no way to test this quantitatively, only
+direction could be compared.** A direction-only comparison is worth little here,
+because the postural directions are already established in-sample.
+
+### What informed the exclusion, stated because it matters
+
+**Only the baseline mismatch.** The model's responses to the manoeuvres played no
+part in the decision. That distinction is the difference between a defensible
+exclusion and a biased one: discarding a study because its outputs looked
+unfavourable is exactly what this log exists to prevent, whereas discarding one
+because the patient cannot be built is a fact about the model, settled before any
+comparison is attempted.
+
+### The finding is worth more than the study would have been
+
+**The frozen model cannot be configured to a measured MAP, CI and CVP.** This is
+out-of-sample evidence for a defect previously visible only against the model's
+own reference patient. Opened as backlog item 58, high priority: the calibration
+should adjust other operating parameters within physiological bounds until all
+three measured values are met, rather than accepting whatever falls out.
+
+**Temporarily excluded.** If calibration is fixed this study becomes usable —
+only methods, cohort and baseline were read, so it stays clean.
+
 ## Categories
 
 - **IN-SAMPLE** — already cited in `model/` or `tests/`; was available during
@@ -147,5 +215,12 @@ tilt.
   quantities with no reported spread can only reach tier C or F, and are counted
   separately from the tiered ones. Listed here only when a study reports no
   spread for *any* quantity, which makes the whole comparison direction-only.
+- **CANNOT BE CONFIGURED** — the protocol is representable and the study passed
+  the feasibility screen, but the model cannot be set up AS the cohort. Distinct
+  from NO MECHANISM: nothing about the intervention is missing, the PATIENT
+  cannot be built. **Record which inputs were requested and what the model
+  settled at, and state explicitly that the model's outputs on the protocol
+  played no part in the decision** — otherwise this category becomes a route for
+  quietly discarding studies whose results looked unpromising.
 - **RESULT SEEN** — the result reached the model author before registration.
   Excluded regardless of everything else, and recorded rather than hidden.
