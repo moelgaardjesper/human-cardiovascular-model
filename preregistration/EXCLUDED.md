@@ -25,6 +25,7 @@ would be one whose limits nobody had tested.
 | 3 | ICU postural manoeuvres and fluid challenge, responders | [PMID 41721238](https://pubmed.ncbi.nlm.nih.gov/41721238/) | Passed the screen, then could not be configured to the cohort's baseline | CANNOT BE CONFIGURED *(temporary)* |
 | 4 | Major GI surgery, open vs laparoscopic, steep Trendelenburg | [PMID 40770328](https://pubmed.ncbi.nlm.nih.gov/40770328/) | MAP held at 65-80 by the clinician, so the reported haemodynamics cannot be attributed to posture | CONTROLLED VARIABLE *(permanent)* |
 | 5 | Isometric handgrip, supine vs 10 deg head-down tilt, healthy volunteers | [PMID 29595918](https://pubmed.ncbi.nlm.nih.gov/29595918/) | No exercise pressor reflex; stroke volume derived from a peripheral waveform the model cannot reproduce | NO MECHANISM *(temporary)* |
+| 6 | Phenylephrine vs noradrenaline under propofol/remifentanil anaesthesia | *(supplied 2026-09-19)* | No opioid — at remifentanil Ce 8 the missing drug IS the anaesthetic state, and the titration degenerated | NO MECHANISM *(temporary)* |
 
 ---
 
@@ -325,6 +326,93 @@ This one is purely the model's limit.** Marked temporary: the exercise pressor
 reflex is a bounded, well-characterised human mechanism rather than a sub-model,
 and building it would unlock a whole class of volunteer studies of this quality.
 Backlog item 60, low priority. Only methods were read, so this stays clean.
+
+## 6 — Phenylephrine vs noradrenaline under propofol/remifentanil anaesthesia
+
+**Screened and accepted 2026-09-19, then excluded the same day when the scenario
+would not build.** 29 vs 28 patients, age 57 vs 58, slightly male-majority,
+BMI 27.7 and 25.5. Hypertension on beta blockers or antihypertensives in 9/29
+and 13/28. Target-controlled infusion: remifentanil Ce 8 ng/mL (Minto), propofol
+Ce 2.5 mcg/mL (Schnider). Volume-control ventilation, TV 8 mL/kg, PEEP 5,
+FiO2 0.4, rate set to end-tidal CO2. Vasopressor by 1 mL bolus then
+0.3 mL/kg/h, titrated to 80-100 % of the awake MAP, anaesthetist blinded.
+Outcomes HR, SV, CI, SctO2, SptO2 and rate-pressure product, from 3 s before to
+240 s after administration.
+
+**Only methods and cohort were supplied. No results seen.**
+
+### The design that nearly worked
+
+The study titrates both drugs to the SAME pressure target, so the comparison is
+at matched MAP rather than matched dose. That is reproducible: bisect each
+drug's dose in the model until it reaches the same target, then compare flow.
+**Matching on pressure makes the drug concentrations unnecessary** — the paper
+gives doses only in mL, with no dilution stated — and it largely cancels the
+setpoint defect of backlog item 62, since both arms start from the same
+anaesthetised state.
+
+It was accepted on that basis, with a long but stated caveat list.
+
+### Why it failed, and how the failure showed itself
+
+**The titration degenerated.** Both drugs bisected to the floor of the dose
+range and still overshot the target:
+
+| | awake MAP | anaesthetised | target (90 %) | achieved, phenylephrine |
+|---|---|---|---|---|
+| female | 93.12 | 83.14 | 83.81 | 83.95 |
+| male | 95.39 | **85.96** | **85.85** | 86.65 |
+
+**The model's anaesthetised patient does not need a vasopressor.** In the male
+arm the anaesthetised pressure is already ABOVE the target before any drug is
+given. There is nothing to titrate, so the study's central manoeuvre cannot be
+staged.
+
+**The cause is the missing opioid.** Propofol at 2.0 mg/kg drops MAP by 11 %.
+The real patients required vasopressors, which by the protocol means their
+pressure had fallen below 80 % of awake — and the agent responsible is
+remifentanil at Ce 8 ng/mL, a high effect-site concentration that dominates the
+haemodynamic picture. **The model has no opioid at all.**
+
+**A second sign in the same output confirms it is qualitative, not just
+quantitative.** The model's anaesthetised heart rate RISES, 69.9 to 83.2, because
+propofol vasodilates and the baroreflex answers with tachycardia. Patients under
+remifentanil Ce 8 are BRADYCARDIC. The anaesthetic baseline is wrong in
+direction, not merely in depth — and heart rate was among the few comparators
+that had survived the other caveats.
+
+### Why a deeper propofol proxy was rejected
+
+Raising propofol to 4-5 mg/kg would reach a realistic anaesthetised pressure and
+would be protocol-driven rather than result-driven, since "below 80 % of awake"
+comes from the methods. **It was still rejected: propofol's profile is not
+remifentanil's.** It would produce tachycardia where the patients are
+bradycardic, so the baseline would remain qualitatively wrong while looking
+quantitatively repaired — which is worse than an honest exclusion.
+
+### The other caveats, recorded since they remain true
+
+Cardiac index and stroke volume were measured by Nexfin, which derives them from
+the finger pressure waveform assuming fixed aortic properties — **the very
+property an alpha1 agonist changes.** SctO2 and SptO2 have no counterpart: there
+is no oxygen transport anywhere in the model. The 240 s trajectory needs
+pharmacokinetics the model does not have; its drug window is a step function.
+Hypertension on beta blockers or antihypertensives in 31 % and 46 % of the two
+groups is comorbidity, which this project treats as uncorrectable. And the
+noradrenaline-versus-phenylephrine ordering is already calibrated in the suite
+against Ngan Kee 2015, so this would have been a generalisation test rather than
+a test of unfitted structure.
+
+### Status
+
+**Temporary.** An opioid is a bounded, well-characterised addition rather than a
+sub-model, and remifentanil is among the best-described drugs in anaesthesia.
+Built, this study becomes answerable — and only methods and cohort were read, so
+it stays clean. **Backlog item 63.**
+
+**The exclusion rests on the failed titration, not on a judgement.** The model's
+outputs on the comparison itself were never examined; the scenario could not be
+constructed at all.
 
 ## Categories
 

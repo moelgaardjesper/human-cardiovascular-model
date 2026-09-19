@@ -13,8 +13,9 @@ where you see whether that has happened.
 | E3 | ICU postural manoeuvres and fluid challenge | [41721238](https://pubmed.ncbi.nlm.nih.gov/41721238/) | excluded — cannot be configured *(temporary)* | 2026-09-18 |
 | E4 | Major GI surgery, open vs laparoscopic | [40770328](https://pubmed.ncbi.nlm.nih.gov/40770328/) | excluded — controlled variable *(permanent)* | 2026-09-18 |
 | E5 | Isometric handgrip vs head-down tilt | [29595918](https://pubmed.ncbi.nlm.nih.gov/29595918/) | excluded — no mechanism *(temporary)* | 2026-09-18 |
+| E6 | Phenylephrine vs noradrenaline under propofol/remifentanil | *(supplied 2026-09-19)* | excluded — no opioid, titration degenerated *(temporary)* | 2026-09-19 |
 
-**Seven screened, two taken forward.** Detail for exclusions is in
+**Eight screened, two taken forward.** Detail for exclusions is in
 `EXCLUDED.md`; registrations have their own file.
 
 **Nothing is removed from this table**, including studies that turn out badly.
