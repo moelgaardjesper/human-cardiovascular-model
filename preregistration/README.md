@@ -18,23 +18,39 @@ prediction misses, that is the finding.
 
 ## The procedure
 
-1. **Protocol in, results withheld.** Jesper supplies a study's *methods and
-   cohort only*. No results, no figures, no abstract conclusions.
-2. **Feasibility screen.** Can the model be ASKED this study's question?
-   **YES**, **YES APPROXIMATED**, **CONVENTION** or **NO** — see below. Reject
-   only for the three shapes listed there; an imperfect setup is registered, not
-   refused.
-3. **In-sample check.** `python3 tools/check_insample.py <PMID or DOI>`. If the
-   paper is already cited in `model/`, `tests/` or `tools/`, it is **not**
-   out-of-sample and is excluded. Mechanical, not a matter of memory.
-4. **Register.** Scenario, quantity convention, comparator, and **the model's
-   measured output**. Commit and **push**.
-5. **Then results.** Appended to the same file in a later commit, so the git
-   history proves the ordering. Tier computed.
+**The order of these steps is the whole mechanism. Step 4 in particular is later
+than it looks, and deliberately so.**
 
-Studies that fail the screen go in `EXCLUDED.md` with the mechanical reason.
-**That list is evidence, not waste** — it maps the architecture's boundary using
-real studies rather than the authors' own account of its limits.
+1. **Protocol in, results withheld, AND NO IDENTIFIER YET.** Jesper supplies a
+   study's *methods and cohort only*. No results, no figures, no abstract
+   conclusions — and no PMID or DOI.
+2. **Feasibility screen**, by reading the code. **The model is not run.** Verdicts
+   and the three rejection shapes are below.
+3. **If it passes: build the scenario, run the frozen model, record its output.**
+   That output is the prediction.
+4. **NOW ask for the identifier**, and run
+   `python3 tools/check_insample.py <PMID or DOI>`. If the study is already cited
+   in `model/`, `tests/` or `tools/`, discard the comparison and log it as
+   IN-SAMPLE.
+5. **Commit and PUSH the registration**, outputs included.
+6. **Then results**, appended in a later commit so the history proves the
+   ordering.
+
+### Why the identifier comes AFTER the run, not before
+
+**A PMID is a key to the results.** Anyone holding one can fetch the abstract,
+and an abstract carries the findings. Requesting it early — which an earlier
+version of this file did, precisely to keep identifier requests and results
+requests distinct — creates the contamination route it was trying to close.
+
+Running first costs nothing that matters. If the in-sample check then fails, a
+few minutes of computation is discarded; **the prediction was already fixed, so
+nothing can flow backwards into it.** The check protects the VALIDITY of a
+comparison, not the independence of the prediction, and it does that equally well
+after the fact.
+
+**Exclusions are different.** A study rejected at screening is never run, so its
+identifier can be requested whenever — there is no prediction left to protect.
 
 ## THE MODEL'S OUTPUT IS THE PREDICTION
 

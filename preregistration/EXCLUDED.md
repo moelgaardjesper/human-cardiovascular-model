@@ -24,6 +24,7 @@ would be one whose limits nobody had tested.
 | 2 | Parabolic flight, seated and supine, with thigh-cuff venous occlusion | [PMID 21636570](https://pubmed.ncbi.nlm.nih.gov/21636570/) | Gravity acts only through the tilt term; seated posture, cuffs and transients all unrepresentable | NO MECHANISM |
 | 3 | ICU postural manoeuvres and fluid challenge, responders | [PMID 41721238](https://pubmed.ncbi.nlm.nih.gov/41721238/) | Passed the screen, then could not be configured to the cohort's baseline | CANNOT BE CONFIGURED *(temporary)* |
 | 4 | Major GI surgery, open vs laparoscopic, steep Trendelenburg | [PMID 40770328](https://pubmed.ncbi.nlm.nih.gov/40770328/) | MAP held at 65-80 by the clinician, so the reported haemodynamics cannot be attributed to posture | CONTROLLED VARIABLE *(permanent)* |
+| 5 | Isometric handgrip, supine vs 10 deg head-down tilt, healthy volunteers | [PMID 29595918](https://pubmed.ncbi.nlm.nih.gov/29595918/) | No exercise pressor reflex; stroke volume derived from a peripheral waveform the model cannot reproduce | NO MECHANISM *(temporary)* |
 
 ---
 
@@ -269,6 +270,61 @@ Desflurane has no counterpart — propofol is the model's only anaesthetic. And
 oesophageal Doppler estimates cardiac output from descending aortic flow through
 a nomogram, so it is not the total cardiac output the model reports; that would
 be a convention flag if the study were ever otherwise usable.
+
+## 5 — Isometric handgrip, supine vs 10 deg head-down tilt
+
+**Screened 2026-09-18.** [PMID 29595918](https://pubmed.ncbi.nlm.nih.gov/29595918/).
+Healthy volunteers supine on a tilt bed, neck neutral. Recordings horizontal and
+at 10 deg head-down. After 3 min of rest, isometric handgrip at 30 % of maximum
+voluntary contraction for 3 min with continuous dynamometer feedback, then 5 min
+rest before changing tilt and repeating. Run twice per subject, first round
+randomised to start horizontal or head-down, second round reversed. Outcomes:
+MAP by Finometer, stroke volume estimated from the pressure curve, and heart rate.
+
+**Only methods were supplied. No results were seen.**
+`tools/check_insample.py 29595918` -> NOT FOUND.
+
+### Why the model cannot be asked this
+
+**There is no exercise pressor reflex.** No metaboreflex, no mechanoreflex, no
+central command — nothing driven by muscle afferents anywhere in the model.
+Isometric handgrip raises arterial pressure through group III/IV muscle afferents
+and central command, and that pathway does not exist here.
+
+**`muscle_pump_pressure` is not it**, and the distinction matters because the
+name invites the mistake. That parameter is rhythmic calf compression,
+`sin^2(2*pi*f*t)`, applied to the LEG venous drainage path — the walking pump.
+Wrong limb, wrong mechanism, mechanical rather than neural. Sustained handgrip at
+30 % MVC involves almost no rhythmic pumping and would not act on leg veins in
+any case.
+
+**The response could only be produced by imposing it.** Raising SVR and heart
+rate by hand would prescribe the study's outcome rather than predict it.
+
+### A second, independent blocker
+
+**Stroke volume estimated from a peripheral pressure waveform is a quantity this
+model is architecturally unable to reproduce.** Pulse-contour methods derive
+stroke volume from the SHAPE of a peripheral pressure wave, and the model's
+peripheral waveform is known-wrong in exactly that respect: pulse pressure
+amplification is inverted, 0.88 against a measured 1.33 +/- 0.16, and correcting
+it needs wave travel and reflection a lumped model does not have. **This would
+bite even if handgrip existed.** Finometer MAP carries a milder version of the
+same convention problem — finger pressure against a time-integrated central MAP.
+
+### Recorded because it is the best-designed study screened so far
+
+No clinician in the loop, a fixed protocol, defined time points, randomised order
+with sequence reversal to control for drift — and a **non-additive interaction**
+at its centre: does head-down tilt modulate the handgrip response? That is
+precisely the out-of-sample criterion the blind phase was designed around, two
+interventions fitted separately and tested together.
+
+**The first four exclusions were the studies' designs meeting the model's limits.
+This one is purely the model's limit.** Marked temporary: the exercise pressor
+reflex is a bounded, well-characterised human mechanism rather than a sub-model,
+and building it would unlock a whole class of volunteer studies of this quality.
+Backlog item 60, low priority. Only methods were read, so this stays clean.
 
 ## Categories
 
