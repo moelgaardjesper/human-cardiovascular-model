@@ -163,6 +163,92 @@ fall is over-predicted here, that is the first place to look.
 
 ---
 
-## RESULTS — appended in a LATER commit, after this is pushed
+## RESULTS — appended 2026-09-19, after the registration was pushed at `56d235e`
 
-*(empty at registration)*
+Study reports medians with interquartile ranges.
+
+### PRIMARY: the interaction — HIT
+
+| | registered | study |
+|---|---|---|
+| **relative Δ(ΔCO)** | **−2.08 to −5.35 pp** | **−5.56 pp** |
+| absolute Δ(ΔCO) | +0.01 to +0.09 L/min | −0.20 L/min |
+
+**The relative prediction lands.** PPV cost 0 % of cardiac output at
+normovolaemia and 5.56 % under hypovolaemia. The model's 1000 mL bracket end
+predicted −5.35 (male) and −4.78 (female). Direction right, magnitude right,
+just outside the top of the bracket.
+
+**The absolute prediction missed its direction** — registered slightly positive,
+measured −0.20 L/min. Both were registered, and the relative was named primary
+in advance precisely because the two diverge; but the absolute is a registered
+quantity and it missed.
+
+### Effect of hypovolaemia alone, spontaneous breathing
+
+| | study | model 500 mL | model 1000 mL |
+|---|---|---|---|
+| ΔCO | **−1.00** | **−0.90 / −0.99** | −1.77 / −2.00 |
+| ΔHR | **+5.8** | **+6.5 / +6.8** | +13.5 / +14.3 |
+| ΔMAP | **+2.90** | −3.74 / −3.85 | −8.54 / −9.09 |
+
+**The registered bracket caveat was right.** It was recorded in advance that
+500 mL would over-represent −30 mmHg and the hypovolaemic responses would be
+over-stated. Cardiac output and heart rate match the 500 mL end almost exactly,
+and the 1000 mL end is roughly double the measured effect. **−30 mmHg LBNP
+behaves like 500 mL or a little less in this model.**
+
+**ΔMAP fails on direction.** The subjects' mean pressure ROSE 2.9 mmHg under
+hypovolaemia; the model's fell by 3.7 to 9.1.
+
+### Absolute baselines, normovolaemic spontaneous
+
+| | model M | model F | study median (IQR) | tier |
+|---|---|---|---|---|
+| SV | 82.10 | 72.50 | 80.4 (72.5–84.4) | **A / A** |
+| CO | 5.83 | 5.25 | 4.6 (4.0–4.9) | miss / B |
+| MAP | 94.77 | 92.55 | 75.8 (70.2–78.8) | miss / miss |
+| HR | 71.10 | 72.20 | 58.0 (51.6–60.2) | miss / miss |
+
+**A registered caveat was WRONG.** It was recorded that absolute cardiac output
+would be LOW, on the strength of comparison 001 where the model gave 4.33
+against a measured 6.9 at the same age. Here the model runs **high** — 5.83
+against 4.6. The two cohorts genuinely differ (001 was hyperdynamic at 30°
+head-up; this one is a resting group with HR 58), and the model sits between
+them. The expectation was stated in advance and it did not hold.
+
+---
+
+## What this replicates, and what it points at
+
+**THE MAP FAILURE IS NOW SEEN TWICE, OUT OF SAMPLE, IN INDEPENDENT STUDIES.**
+
+| | stress | subjects | model |
+|---|---|---|---|
+| 001 | 30°→60° head-up | MAP **+2.5** | **−7.8** |
+| 002 | −30 mmHg LBNP | MAP **+2.9** | **−3.7 to −9.1** |
+
+Young subjects RAISE mean arterial pressure under central hypovolaemia. The
+model lowers it, every time. **This was registered in advance here** — "if the
+hypovolaemic MAP fall is over-predicted, that is the first place to look" — and
+it happened.
+
+**The mechanism is visible in the baselines and it is not the age law.**
+`aging.py` scales arterial compliance and chamber volumes, but
+**`MAP_SETPOINT = 93.0` in `baroreflex.py` carries no age dependence at all.**
+So a 22-year-old model defends 93 mmHg while real 22-year-olds in both cohorts
+sit near 76. The model is not merely mis-calibrated at rest — **it is defending
+the wrong number**, which is exactly what would produce a pressure that starts
+too high and then falls when a real young person's would hold or rise.
+
+Resting heart rate points the same way: 71 against a measured 58.
+
+**Stroke volume is the quantity the model gets right** — tier A for both sexes,
+and the only absolute that lands. The model's stroke volume is right while its
+pressure and rate are not, which localises the problem to the reflex operating
+point rather than to cardiac mechanics.
+
+**Opened as backlog item 62** — the baroreflex setpoint does not scale with age —
+and it now has out-of-sample evidence from two independent cohorts rather than an
+argument from first principles.
+
