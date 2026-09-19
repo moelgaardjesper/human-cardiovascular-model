@@ -35,3 +35,11 @@ docs/*
 # Frozen artefacts are committed deliberately — they are the evidence a paper
 # cites. Only the dry-run scratch directory is ignored.
 freeze/dryrun*/
+
+# Blind-phase scenario runners stay LOCAL. The registration DOCUMENTS carry the
+# public record and hold enough parameter detail to reconstruct a scenario; the
+# runners are iterated on and sometimes abandoned, and committing each attempt
+# locks a working process into the repository. See CLAUDE.md, "Committing and
+# pushing". 001_run.py and 002_run.py predate this rule and stay tracked.
+preregistration/0[3-9]*_run.py
+preregistration/00[3-9]_run.py

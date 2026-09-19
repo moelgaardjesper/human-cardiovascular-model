@@ -257,6 +257,46 @@ plus per-mechanism switches.
   rest of the observed effect. Check the validation log before "fixing" a phase to match a
   literature figure on its own.
 
+## Committing and pushing
+
+**Accumulate work; push at boundaries. Do not push per message.**
+
+**Exactly one thing has timing pressure:** a blind-phase registration must be
+public *before* that study's results arrive, because the whole mechanism is a
+timestamp outside the author's control. See `preregistration/README.md`.
+
+**Nothing else does.** Exclusions, results, backlog entries, documentation fixes,
+process changes and tooling can all wait for a batch. An exclusion has no
+prediction to protect; results are appended after the fact by definition.
+
+So: **push when a registration needs its timestamp, or when Jesper asks.**
+Otherwise let the work build and land it as one reviewed change.
+
+**Name files explicitly when staging. Never `git add <directory>`.** That is how
+`preregistration/003_run.py` — a runner for a study that had just been excluded —
+reached a public commit, needing a second commit three minutes later to remove
+it.
+
+**Runners belong with registrations, never with exclusions.** Attached to a
+registration a runner lets a reader reproduce a prediction. Attached to an
+exclusion it only invites them to run a scenario the entry has explained cannot
+be built. **Registration DOCUMENTS carry the public record; the `.py` runners
+stay local**, so a scenario can be iterated on — and abandoned — without locking
+each attempt into the repository. This puts the burden on the documents: they
+must carry enough parameter detail (patient, ventilation, doses, timing,
+averaging window) to reconstruct the scenario without the code.
+
+### Why this is a rule and not a preference
+
+A history whose last four commits read *add entry, correct entry, remove file
+added by mistake* looks less careful than one where a batch lands complete — and
+it undercuts the exact thing the pre-registration record exists to demonstrate.
+**The mess becomes an argument against the work.**
+
+This was asked for three times before it was written down. An intention was not
+sufficient; that is why it lives here, in the file that gets read before work
+starts, rather than in a memory of a preference.
+
 ## References
 
 - PMC9363491 — primary model basis (21-compartment orthostatic stress model, Heldt-based; expanded to 23 compartments here)  

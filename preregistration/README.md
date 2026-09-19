@@ -158,6 +158,51 @@ it excuse one. Everything that might be blamed later must be named at
 registration — and a caveat that was *not* registered cannot be introduced once
 the result is known.
 
+## Using reported data as INPUT — a value is spent once
+
+**A study's reported values may be used to configure the scenario. Better a
+comparison built on some of a study's data than a study discarded.** The model
+is validated on a short list of quantities — cardiac output, cardiac index, mean
+arterial pressure, heart rate, stroke volume — and everything else a paper
+reports is available as setup.
+
+**The rule that keeps this honest: a value is SPENT ONCE.** Use it to configure,
+or score it, never both.
+
+1. **Any reported value may be used as configuration input.**
+2. **A value used as input cannot be scored.** It is no longer a prediction; the
+   model was told the answer.
+3. **Nor can anything trivially derived from it.** Cardiac index is cardiac
+   output over body surface area, so spending one spends the other. Mean
+   pressure spent as input compromises systolic and diastolic. Ask whether a
+   reader could recompute the "prediction" from the input; if so, it is spent.
+4. **Declare at registration which values were spent**, in the registration
+   itself rather than in a footnote, so a reader can see exactly what the model
+   was given and what it had to produce.
+
+### Why this is not a loophole
+
+The worry is obvious: given enough of a study's data as "configuration", a model
+can be walked to any answer. Three things stop that.
+
+**The spent values are declared**, so the reader sees the size of the input.
+**The scored quantities are fixed before the result**, so nothing can be
+reclassified afterwards. And **a between-group or before-after difference is
+usually the primary**, which is insensitive to a configuration that is common to
+both arms — registration 004 spends PPV to build its two groups, and the
+grouping cannot manufacture a difference in how each group responds to a drug.
+
+### Precedents
+
+**Exclusion entry 3** — the ICU study's baseline MAP, CVP and CI were to be spent
+configuring the patient. It failed for an unrelated reason: the model could not
+be configured to them at all.
+
+**Registration 004** — the study's PPV medians, 17 % and 8 %, were spent
+constructing the two groups. **PPV is therefore not scored there**, and the
+registration says so in its opening section. The drug responses, which were never
+supplied, are what it predicts.
+
 ## Scoring
 
 Tiers are computed from the data. **Nobody nominates a target beforehand**, for

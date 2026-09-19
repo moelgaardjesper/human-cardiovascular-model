@@ -25,7 +25,7 @@ would be one whose limits nobody had tested.
 | 3 | ICU postural manoeuvres and fluid challenge, responders | [PMID 41721238](https://pubmed.ncbi.nlm.nih.gov/41721238/) | Passed the screen, then could not be configured to the cohort's baseline | CANNOT BE CONFIGURED *(temporary)* |
 | 4 | Major GI surgery, open vs laparoscopic, steep Trendelenburg | [PMID 40770328](https://pubmed.ncbi.nlm.nih.gov/40770328/) | MAP held at 65-80 by the clinician, so the reported haemodynamics cannot be attributed to posture | CONTROLLED VARIABLE *(permanent)* |
 | 5 | Isometric handgrip, supine vs 10 deg head-down tilt, healthy volunteers | [PMID 29595918](https://pubmed.ncbi.nlm.nih.gov/29595918/) | No exercise pressor reflex; stroke volume derived from a peripheral waveform the model cannot reproduce | NO MECHANISM *(temporary)* |
-| 6 | Phenylephrine vs noradrenaline under propofol/remifentanil anaesthesia | *(supplied 2026-09-19)* | No opioid — at remifentanil Ce 8 the missing drug IS the anaesthetic state, and the titration degenerated | NO MECHANISM *(temporary)* |
+| 6 | Phenylephrine vs noradrenaline under propofol/remifentanil anaesthesia | [PMID 25760679](https://pubmed.ncbi.nlm.nih.gov/25760679/) | No opioid — at remifentanil Ce 8 the missing drug IS the anaesthetic state, and the titration degenerated | NO MECHANISM *(temporary)* |
 
 ---
 
@@ -340,6 +340,13 @@ Outcomes HR, SV, CI, SctO2, SptO2 and rate-pressure product, from 3 s before to
 240 s after administration.
 
 **Only methods and cohort were supplied. No results seen.**
+[PMID 25760679](https://pubmed.ncbi.nlm.nih.gov/25760679/).
+`tools/check_insample.py 25760679` -> NOT FOUND in code, docs or registrations.
+
+**The check matters here because the entry is TEMPORARY.** Had the study turned
+out to be in-sample, building an opioid would not have made it usable, and the
+entry would be permanent rather than a target worth returning to. It is clean, so
+it stays available.
 
 ### The design that nearly worked
 
