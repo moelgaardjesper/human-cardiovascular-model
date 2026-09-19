@@ -206,6 +206,130 @@ airway pressure, and this is a model-derived argument that they should not be.
 
 ---
 
-## RESULTS — appended in a LATER commit, after this is pushed
+## RESULTS — appended 2026-09-19, after registration was pushed at `c90ceed`
 
-*(empty at registration)*
+### Two results, and both matter
+
+**Every individual group prediction landed. The between-group difference failed
+on direction.** Neither of those displaces the other, and the combination is
+more informative than either alone.
+
+**1. ALL EIGHT individual predictions fell inside the study's reported spread** —
+five within one SD, three within two, no misses. The model's phenylephrine
+response is the right size, in both groups, in an anaesthetised comorbid cohort
+against a response calibrated on healthy volunteers.
+
+**2. The between-group difference came out backwards.** The model has the right
+magnitudes attached to the wrong preload state.
+
+**So the failure is specific, not general: the model is not wrong about
+phenylephrine, it is wrong about which preload state responds which way.** That
+is a far more useful finding than "the model failed", and it is only visible
+because the difference was registered as primary.
+
+### PRIMARY: FAILED ON DIRECTION
+
+| | model | study | |
+|---|---|---|---|
+| **Δ(ΔCI), pp** | **−10.9** | **+16.0** | **F — direction wrong** |
+| **Δ(ΔSV), pp** | **−14.6** | **+17.0** | **F — direction wrong** |
+| Δ(ΔHR), pp | +1.2 | +1.0 | direction right |
+| Δ(ΔMAP), pp | +12.6 | +5.0 | direction right |
+
+**The model predicted phenylephrine would cost preload-dependent patients MORE
+cardiac output. It costs them LESS** — cardiac index fell 3 % in the dependent
+group against 19 % in the independent group.
+
+**And the stroke-volume prediction failed in the cleanest possible way.** The
+registration called it "the sharpest and most falsifiable thing here" and
+predicted **opposite signs** between the groups. The signs ARE opposite — and
+**assigned to the wrong groups.** Registered: SV rises in preload-independent,
+falls in preload-dependent. Measured: SV **+5 %** in dependent, **−12 %** in
+independent.
+
+The registration explicitly said this ran against the common clinical
+expectation that preload-dependent patients benefit most from an α1 agonist's
+venous recruitment, and that the model predicted the reverse. **The clinical
+expectation was right and the model was wrong.**
+
+### Individual responses: 8/8 inside the study's spread
+
+| | group | model % | study % (SD) | tier |
+|---|---|---|---|---|
+| CI | dependent | −19.5 | −3 (17) | A |
+| | independent | −8.6 | −19 (12) | A |
+| SV | dependent | −4.2 | +5 (13) | A |
+| | independent | +10.4 | −12 (12) | B |
+| HR | dependent | −16.0 | −8 (8) | B |
+| | independent | −17.2 | −9 (10) | A |
+| MAP | dependent | +28.5 | +38 (18) | A |
+| | independent | +15.9 | +33 (15) | B |
+
+**Five tier A, three tier B, no misses.** By the scoring rule agreed before any
+result, that is a good performance on the individual responses — and it is worth
+stating plainly rather than burying under the primary's failure.
+
+**Two honest qualifications.** The study's standard deviations are wide — CI in
+the dependent group is −3 (17) — so tier A is a generous door there. And wide
+spreads are exactly what allows a model with the two groups SWAPPED to score
+well on each group taken separately.
+
+**That is the argument for a paired primary, and this result is the evidence for
+it.** Had the individual responses been the headline, a model that gets the
+central physiological question backwards would have been reported as a success.
+
+### THE DIAGNOSIS — and it is mechanistic, not a get-out
+
+**The model was given the wrong KIND of preload-dependence.**
+
+The registration built the dependent group by **bleeding 650 mL**. That removes
+volume: the mobilizable venous reservoir is drawn down, so phenylephrine's
+venoconstriction has little left to recruit and the afterload rise dominates —
+SV falls. **That is correct physiology for haemorrhage.**
+
+The study's patients are preload-dependent because of **anaesthetic
+venodilation**. Propofol and remifentanil expand the unstressed volume, so blood
+is **sequestered, not lost** — it is still in the body, in dilated veins.
+Phenylephrine's venoconstriction recruits precisely that, so SV rises.
+
+**Volume removed and volume sequestered have opposite implications for
+recruitability**, and that is the whole of the failure.
+
+**The baselines prove it independently, and the signature is unambiguous:**
+
+| dependent group | MAP | CI | reading |
+|---|---|---|---|
+| study | **57** | **2.1** | low pressure, preserved flow — **vasodilated** |
+| model | **72** | **1.53** | higher pressure, low flow — **hypovolaemic** |
+
+The registration had already predicted the CI half of this would fail, and said
+why: *"reaching PPV 17 % required a 650 mL bleed, which leaves the model at CI
+1.53 — more compromised than a typical surgical patient at that PPV."* Measured
+2.1. **Confirmed.**
+
+### Registered caveats that fired
+
+**Beta blockade and calcium antagonism blunt the response — registered
+direction: the model should show a LARGER response than the cohort.** Model HR
+fell 16–17 %; the cohort fell 8–9 %. Roughly double, as registered.
+
+**The over-bleeding prediction.** Stated in advance, confirmed above.
+
+### A POST-HOC HYPOTHESIS, labelled as such and not counted
+
+The diagnosis makes a new, testable claim: **construct preload-dependence by
+VENODILATION rather than haemorrhage — `venous_tone_factor` above 1, or a deeper
+propofol effect — and the stroke-volume sign should flip.** The model already has
+the machinery; only the scenario was wrong.
+
+**This is post-hoc and carries no weight here.** It is recorded so that it can be
+registered in advance against a future study, which is the only way it could
+count.
+
+### What this result is worth
+
+**A pre-registered prediction, publicly timestamped, that failed on direction —
+with a mechanistic diagnosis that is itself falsifiable.** The model was not
+wrong about phenylephrine; it was wrong about what preload-dependence *is* in an
+anaesthetised patient. That distinction is invisible without a blind test, and it
+would have been reported as a success on the individual responses alone.

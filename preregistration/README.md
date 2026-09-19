@@ -262,6 +262,23 @@ A wrong direction is **F** however small the numerical gap. A model that moves
 cardiac output the wrong way has failed, and being wrong by a little is not a
 partial success.
 
+## Reporting a result — over-stating failure is also a distortion
+
+**Report what landed and what did not, at equal weight.** A write-up that leads
+with the failure and treats the successes as footnotes is as distorted as the
+reverse, and it is the easier mistake to make while feeling scrupulous.
+
+Registration 004 is the example. The first draft of its results led with the
+direction failure, described eight individual predictions inside the study's
+spread as "six of eight" (an undercount), and framed them as a caveat — *"and
+the primary still fails"*. **All eight landed, five within one standard
+deviation.** The honest headline is narrower and more useful than "the model
+failed": the model is not wrong about phenylephrine, it is wrong about which
+preload state responds which way.
+
+**A precise failure is worth more than a dramatic one**, and precision requires
+saying what worked.
+
 ## Integrity rules
 
 - **Nothing is removed from this directory.** A registration that turns out
