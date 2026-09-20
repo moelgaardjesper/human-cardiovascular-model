@@ -357,3 +357,160 @@ slow-dynamics path does less over ten minutes than its time constant suggests.
 **The distinction is not resolved here and must not be asserted** — the model is
 frozen, and chasing it now would be measuring rather than registering. Noted for
 after the phase.
+
+---
+
+## RESULTS — appended 2026-09-20, after registration was pushed at `74f0e62`
+
+**Comparator confirmed as s.e.m., not SD.** The registration had fixed SD on the
+information available at screening. The paper reports mean ± s.e.m. throughout,
+which the cohort line ("23 ± 1 years, mean ± s.e.m.") already indicated and
+which an SD of 3 mmHg for systolic pressure across 11 men would not survive.
+**SD is recovered as s.e.m. × √n** — ×3.32 young, ×3.16 older — and every tier
+below uses it. This was confirmed from the paper before any tier was assigned,
+not chosen afterwards.
+
+### The study
+
+| | young control | young HDT | young Δ | older control | older HDT | older Δ |
+|---|---|---|---|---|---|---|
+| systolic | 117 ± 3 | 120 ± 3 | +3 ± 1 | 130 ± 4 | 133 ± 4 | +2 ± 1 |
+| **MAP** | **84 ± 3** | **85 ± 3** | **+2 ± 1** | **89 ± 3** | **90 ± 2** | **+1 ± 1** |
+| diastolic | 67 ± 3 | 68 ± 3 | +1 ± 1 | 68 ± 3 | 69 ± 3 | +1 ± 1 |
+| pulse pressure | 51 ± 2 | 53 ± 2 | +2 ± 1 | 62 ± 4 | 64 ± 4 | +2 ± 1 |
+| **heart rate** | **63 ± 3** | **62 ± 2** | **−1 ± 1** | **58 ± 2** | **58 ± 2** | **0 ± 1** |
+
+### Every scored quantity landed. Six tier A, two tier B, no misses.
+
+| quantity | model | study | SD | distance | SD units | s.e.m. units | tier |
+|---|---|---|---|---|---|---|---|
+| ΔMAP young | +0.36 | +2 | 3.32 | 1.64 | 0.49 | 1.64 | **A** |
+| ΔMAP older | +0.34 | +1 | 3.16 | 0.66 | 0.21 | 0.66 | **A** |
+| ΔHR young | −0.80 | −1 | 3.32 | 0.20 | 0.06 | 0.20 | **A** |
+| ΔHR older | −0.76 | 0 | 3.16 | 0.76 | 0.24 | 0.76 | **A** |
+| resting MAP young | 94.97 | 84 | 9.95 | **10.97** | 1.10 | 3.66 | **B** |
+| resting MAP older | 95.20 | 89 | 9.49 | **6.20** | 0.65 | 2.07 | **A** |
+| resting HR young | 70.80 | 63 | 9.95 | 7.80 | 0.78 | 2.60 | **A** |
+| resting HR older | 68.90 | 58 | 6.32 | **10.90** | 1.72 | 5.45 | **B** |
+
+### AND IT IS WORTH ALMOST NOTHING. READ THIS BEFORE THE TABLE ABOVE.
+
+**A model that predicted exactly zero for all four tilt responses would also
+have scored tier A on all four.**
+
+| quantity | study | a null model's distance | tier it would score |
+|---|---|---|---|
+| ΔMAP young | +2 ± 1 | 2.00 | 0.60 SD → **A** |
+| ΔMAP older | +1 ± 1 | 1.00 | 0.32 SD → **A** |
+| ΔHR young | −1 ± 1 | 1.00 | 0.30 SD → **A** |
+| ΔHR older | 0 ± 1 | 0.00 | 0.00 SD → **A** |
+
+**The study's tilt effects are 0 to 2 units against between-subject SDs of 3.2.**
+Ten degrees of head-down tilt in a healthy man barely moves mean pressure or
+heart rate, so **the test has essentially no power to discriminate between
+models.** Four tier A results here are not evidence that the model is right;
+they are evidence that the question was easy.
+
+**This is registration 004's lesson in a new form.** There, wide spreads let a
+model with the two groups swapped score well on each group separately. Here,
+small effects let any model land. **Both are failures of the COMPARISON, not of
+the model — and both are only visible because the scoring rule forces the
+distance to be printed beside the tier.**
+
+### PRIMARY — tier A, and uninformative exactly as registered
+
+Model **+0.02**, study **+1** (young +2 minus older +1). Distance 0.98 mmHg,
+which is 0.69 × the combined standard error of the difference.
+
+**The study's own difference sits 0.71 SE from zero, so it did not find an age
+difference either.** The registration said, before any result was seen:
+
+> *"A tier A here would be uninformative and must be reported as such, because a
+> model that cannot produce ANY age difference is not being tested by a study
+> that happens not to find one."*
+
+**That is precisely what happened, and it is recorded as a non-result.** The
+direction is nominally right — both values positive — but claiming direction on
+a predicted +0.02 against a measured +1 would be generous to the point of
+dishonesty. **Item 51 remains untested by this study.** A study with enough
+power to resolve an age difference in the reflex response would still be worth
+finding.
+
+### THE INFORMATIVE PART IS THE RESTING ABSOLUTES
+
+Both tilt responses and the primary were flat. The four resting values were not.
+
+**The model runs high on mean pressure in both groups, and FURTHER OUT IN THE
+YOUNG: +10.97 mmHg against +6.20.** That is the pattern behind backlog item 62,
+appearing for a fourth time and for the first time with both age groups measured
+by one instrument in one laboratory — which removes the cohort-and-method
+confound that weakened the earlier evidence.
+
+**The model also under-predicts the age gap itself.** The study's groups differ
+by **+5 mmHg** in resting MAP across 41 years; the model produces **+0.23**.
+
+Resting heart rate is high in both, and worst in the older group: 68.90 against
+58 ± 2, a distance of 10.90 and 5.45 s.e.m.
+
+### AN EXPECTATION I WITHDREW BEFORE REGISTERING WAS RIGHT, AND THE WITHDRAWAL WAS THE ERROR
+
+The original expectation, stated during screening, was that the model's resting
+MAP would be badly wrong in the young group and closer in the older. **It was
+withdrawn before this document was pushed**, citing Franklin 1997's MAP slope of
++0.016 mmHg/year, and the registered expectation was replaced with
+near-invariance near 95 in both groups.
+
+**Measured: +10.97 in the young and +6.20 in the older. The original expectation
+was correct.**
+
+**The mistake is specific and worth naming: Franklin's slope is LONGITUDINAL and
+this study is CROSS-SECTIONAL, and one was applied to the other.** Backlog item
+48 already documents exactly that divergence — Franklin followed men who were
+normotensive at entry, while cross-sectional cohorts exclude at measurement the
+people whose pressure rose, which is why the two designs disagree about ageing.
+This cohort differs by +0.12 mmHg/year where Franklin gives +0.016.
+
+**What the withdrawal did and did not cost.** The registered statement's second
+clause — *"if the study's two groups differ substantially in resting MAP, the
+model misses in BOTH"* — is borne out: the model is high in both. Both values
+still land inside 2 SD, so "miss" is stronger than the scoring supports. The
+withdrawal therefore changed the FRAMING of a correct prediction rather than
+producing a wrong one. **It is recorded because a correction that makes a right
+answer look surprising is a defect in the reasoning even when the score is
+unaffected** — and because the error was made while attempting to be more
+rigorous, which is the pattern this project has now hit three times.
+
+### Quantities excluded in advance — reported, NOT scored
+
+Systolic, diastolic and pulse pressure were excluded at registration because
+the model's pulse-pressure amplification is inverted and the convention error is
+age-dependent. **The exclusion was correct:** the model's central pulse pressure
+is 24.85 and 37.84 against the study's finger values of 51 and 62.
+
+**One observation, offered as unscored and confounded.** The model's PP widens
+by **+12.99 mmHg** across the age span against the study's **+11**. That looks
+like agreement, but peripheral amplification falls with age, which compresses
+the measured widening relative to a central one — so the two errors push in
+opposite directions and the agreement may be coincidental. **It cannot be
+claimed either way and is not counted.** It would be worth a proper look against
+a study reporting CENTRAL pressures by age.
+
+**Also recorded:** the runner read the model's `sbp`/`dbp` outputs, which are
+aortic. The model also exposes `brachial_sbp`/`brachial_dbp`, which would have
+been the nearer convention for a finger measurement. This changes no tier,
+because none of these quantities is scored, but a future registration comparing
+peripheral pressures should use the brachial outputs.
+
+### What this registration is worth
+
+**A pre-registered null that behaved as declared, a set of tier A results that
+the document itself argues should not be counted as success, and one real
+finding: the age asymmetry in resting mean pressure, now measured within a
+single cohort and a single instrument.**
+
+The most useful output is methodological. **Two registrations in a row have now
+produced tier A results that a broken model would also have earned** — 004 by
+wide spreads, 005 by small effects. **A power check belongs in the screen:** can
+this study's spread and effect size distinguish the model from a null? It would
+have flagged this study before an hour of computation, and it would not have
+excluded it — it would have set the expectation correctly in advance.
