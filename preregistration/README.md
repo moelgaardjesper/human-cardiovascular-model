@@ -18,22 +18,27 @@ prediction misses, that is the finding.
 
 ## The procedure
 
-**The order of these steps is the whole mechanism. Step 4 in particular is later
+**The order of these steps is the whole mechanism. Step 5 in particular is later
 than it looks, and deliberately so.**
 
 1. **Protocol in, results withheld, AND NO IDENTIFIER YET.** Jesper supplies a
    study's *methods and cohort only*. No results, no figures, no abstract
    conclusions — and no PMID or DOI.
 2. **Feasibility screen**, by reading the code. **The model is not run.** Verdicts
-   and the three rejection shapes are below.
-3. **If it passes: build the scenario, run the frozen model, record its output.**
+   and the three rejection shapes are below, together with three checks to make
+   first: a controlled variable, a supplied independent variable, and — at
+   step 3 — a patient that cannot be built.
+3. **Baseline gate: build the patient and check where it lands.** This is the
+   one stage that runs the model, and it is decided on the BASELINE ALONE. See
+   below for why that is not a contradiction of step 2.
+4. **If it passes: build the scenario, run the frozen model, record its output.**
    That output is the prediction.
-4. **NOW ask for the identifier**, and run
+5. **NOW ask for the identifier**, and run
    `python3 tools/check_insample.py <PMID or DOI>`. If the study is already cited
    in `model/`, `tests/` or `tools/`, discard the comparison and log it as
    IN-SAMPLE.
-5. **Commit and PUSH the registration**, outputs included.
-6. **Then results**, appended in a later commit so the history proves the
+6. **Commit and PUSH the registration**, outputs included.
+7. **Then results**, appended in a later commit so the history proves the
    ordering.
 
 ### Why the identifier comes AFTER the run, not before
@@ -133,6 +138,75 @@ This is common in intraoperative studies and invalidates more than it first
 appears to, so check for it early — before spending effort on mechanisms. It is
 also a property of the STUDY, which makes it permanent: no amount of model
 development makes such a protocol testable.
+
+### Does the model COMPUTE what the study varies, or is it TOLD?
+
+**Ask this of the study's independent variable.** It is read from the code and
+takes a minute, so ask it alongside the controlled-variable check.
+
+If the quantity the study manipulates is a model **input** rather than something
+the model derives, then the two arms differ only by what the modeller assigns
+them, and the comparison prescribes its own answer.
+
+**Exclusion entry 7 is the case that put this here.** Ten degrees of head-up
+tilt during spinal anaesthesia works by changing the cephalad spread of the
+local anaesthetic. `spinal_anaesthesia(block_height)` takes the block level as
+an argument — there is no cerebrospinal fluid, no baricity, no drug
+distribution — so posture cannot move it. The two arms would have differed by
+two numbers chosen by hand.
+
+**THIS IS NOT A FOURTH REJECTION SHAPE. It is a detector for the first and the
+third**, in the one case where they are easy to miss. The absent mechanism here
+is intrathecal drug spread, which is shape 1 — but because the quantity it would
+have produced happens to be a settable argument, the absence can be papered over
+without noticing, by typing a number in.
+
+**That is what makes it worth a check of its own.** Shape 1 usually announces
+itself: ask for reactive hyperaemia and the model does nothing at all. Here the
+model answers fluently, with a plausible difference between arms, and **nothing
+about the output looks wrong.** Silence is easy to spot; fluency is not.
+
+Compare the two synonym cases, which are shape 2. Passive leg raise IS head-down
+tilt and 0 G IS supine (backlog items 53 and 57) — there, two named scenarios
+collapse into one and the model returns a difference of zero. **A zero is
+visible. A fabricated non-zero is not.**
+
+**It is not the same as a spent value.** A spent value is a legitimate
+configuration input that is then barred from scoring. This is worse: the
+supplied quantity IS the study's mechanism, so nothing downstream of it is a
+prediction at all.
+
+### Can the patient be built? — the baseline gate
+
+**Screening checks the MANOEUVRE and misses the PATIENT.** Two of seven
+exclusions passed the feasibility screen and then failed when the starting state
+would not build:
+
+- **Entry 3** could not reach the cohort's operating point. Asked for MAP 79.2,
+  CVP 6.4 and CI 3.1, the model settled at 94.07, 2.52 and 2.77.
+- **Entry 6** could not reach the anaesthetic state. The model's anaesthetised
+  patient never became hypotensive enough to need the vasopressor the protocol
+  titrates, so the study's central manoeuvre could not be staged.
+
+Both were real work spent after a verdict of YES. So configuration is its own
+gate, between the screen and the prediction.
+
+**This is the one stage that RUNS the model, and that does not contradict "do
+not run the model while screening".** That rule protects the prediction.
+Building a patient does not touch the prediction: a baseline is a starting
+state, and the model's response to the protocol is still unmeasured when this
+gate is decided.
+
+**THE INTEGRITY CONDITION IS NOT OPTIONAL.** The decision must rest on the
+**baseline alone**. The model's output on the study's manoeuvre must play no
+part, and the exclusion entry must say so explicitly, as entry 3 does. Without
+that sentence this gate becomes a route for quietly discarding studies whose
+results looked unpromising — the exact failure the exclusion log exists to
+prevent.
+
+**Record what was requested and what the model settled at, as a table.** That
+turns a rejected study into a measurement of the calibration rather than a lost
+afternoon: entry 3's table is the evidence behind backlog item 58.
 
 ### The failure mode this standard exists to prevent
 

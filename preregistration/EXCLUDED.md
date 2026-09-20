@@ -26,6 +26,7 @@ would be one whose limits nobody had tested.
 | 4 | Major GI surgery, open vs laparoscopic, steep Trendelenburg | [PMID 40770328](https://pubmed.ncbi.nlm.nih.gov/40770328/) | MAP held at 65-80 by the clinician, so the reported haemodynamics cannot be attributed to posture | CONTROLLED VARIABLE *(permanent)* |
 | 5 | Isometric handgrip, supine vs 10 deg head-down tilt, healthy volunteers | [PMID 29595918](https://pubmed.ncbi.nlm.nih.gov/29595918/) | No exercise pressor reflex; stroke volume derived from a peripheral waveform the model cannot reproduce | NO MECHANISM *(temporary)* |
 | 6 | Phenylephrine vs noradrenaline under propofol/remifentanil anaesthesia | [PMID 25760679](https://pubmed.ncbi.nlm.nih.gov/25760679/) | No opioid — at remifentanil Ce 8 the missing drug IS the anaesthetic state, and the titration degenerated | NO MECHANISM *(temporary)* |
+| 7 | Head-up tilt 10 deg during spinal anaesthesia in parturients | [PMID 29952519](https://pubmed.ncbi.nlm.nih.gov/29952519/) | Blood pressure defended with ephedrine; and the block level, which is the study's mechanism, is a model INPUT | CONTROLLED VARIABLE *(permanent)* |
 
 ---
 
@@ -420,6 +421,110 @@ it stays clean. **Backlog item 63.**
 **The exclusion rests on the failed titration, not on a judgement.** The model's
 outputs on the comparison itself were never examined; the scenario could not be
 constructed at all.
+
+## 7 — Head-up tilt 10 deg during spinal anaesthesia in parturients
+
+**Screened 2026-09-19.** [PMID 29952519](https://pubmed.ncbi.nlm.nih.gov/29952519/).
+Parturients allocated equally to 10 deg head-up tilt or the horizontal position
+during conduction of spinal anaesthesia, the position continued through the
+operation. Outcomes: blood pressure, heart rate, incidence of hypotension,
+ephedrine consumption, and anaesthesia level.
+
+**Only the protocol and the outcome list were supplied. No results were seen.**
+`tools/check_insample.py 29952519` -> NOT FOUND in code, docs or registrations.
+
+### The tilt is not the problem, and that is worth saying first
+
+**10 deg head-up is well inside the validated -30 to +45 deg range**, and a
+two-arm posture contrast held through a procedure is exactly the shape this
+phase wants. Nothing below is about the manoeuvre.
+
+### Why the model cannot be asked this
+
+Four blockers. Two are decisive on their own.
+
+**DECISIVE 1 — THE BLOCK LEVEL IS A MODEL INPUT, AND IT IS THE STUDY'S OWN
+MECHANISM.** `spinal_anaesthesia(block_height)` in `pharmacology.py` takes the
+block as given and clamps it to [0, 1]. There is no cerebrospinal fluid, no
+baricity, no drug distribution — **nothing through which posture could change
+the level a spinal reaches.** But cephalad spread is WHY 10 deg head-up is used,
+and the block level sets the extent of the sympathectomy that produces the
+hypotension. So the two arms differ, in the model, only by whatever block height
+the modeller assigns them. **That prescribes the study's result instead of
+predicting it**, and no amount of care in choosing the numbers repairs it.
+
+**DECISIVE 2 — BLOOD PRESSURE IS A CONTROLLED VARIABLE.** Ephedrine is given to
+treat hypotension as it appears, so the reported pressures are not what these
+circulations did; they are what they did after being corrected toward a target.
+This is the rule established by entry 4, and here it takes MAP, heart rate and
+the hypotension incidence together, because all three sit downstream of one
+unrecorded feedback loop. **There is also no ephedrine in the model** — six
+drugs only, and ephedrine's indirect mixed alpha/beta action is none of them —
+so the rescue cannot even be reproduced in order to be reasoned about.
+
+**Ephedrine consumption is not the clean outcome it looks like.** It is the
+better-founded of the study's endpoints, because it records the untreated
+tendency rather than the treated pressure. But producing it needs the drug the
+model lacks AND a clinician applying an unstated threshold, so the model cannot
+generate the quantity at all.
+
+**LESSER 3 — TERM PREGNANCY, and the missing mechanism sits on the study's own
+independent variable.** There is no pregnancy physiology anywhere in the model
+(backlog item 12, Tier 5 — a genuinely new sub-model, not a bounded mechanism).
+The suite already states this about itself at `tests/test_circulation.py:175`:
+Ngan Kee's parturients are *"the least transferable cohort in the suite, and it
+is also the one test currently failing."* What raises it above an ordinary
+cohort caveat here is **aortocaval compression** — a POSTURE-DEPENDENT mechanism
+the model does not have, in a study whose entire design is a posture contrast.
+
+**LESSER 4 — INCIDENCE IS NOT A QUANTITY THIS MODEL PRODUCES.** The model is
+deterministic, with no random number generation anywhere, and it runs one
+representative patient. It yields a pressure trace, not a rate across a
+population. An incidence needs between-subject variability that does not exist
+here, and manufacturing one would be fabrication.
+
+### What is left once those are removed
+
+A 10 deg tilt, applied to a non-pregnant patient, at a block height chosen by
+the modeller. **Both halves of that are already in-sample** — the block is
+calibrated against Malmqvist 1987 and tilt is calibrated throughout the suite.
+So the residue is not a weak out-of-sample comparison; it is not out-of-sample
+at all.
+
+### Status: PERMANENT, and the model is not the limiting factor
+
+Pregnancy could be built, and intrathecal drug spread could in principle be
+modelled. **Neither would help.** A perfect simulator cannot be tested against
+pressures that were held where the anaesthetist wanted them. This is the second
+permanent exclusion and it has the same single cause as the first: **a
+controlled variable is a property of the STUDY**, and no model development
+reaches it.
+
+### What would make this class of study usable
+
+Recorded because the design is otherwise good — randomised, a fixed protocol, a
+position held throughout, and a genuine two-arm contrast. **Tilt during spinal
+in NON-PREGNANT patients, with no rescue vasopressor until after a defined
+measurement window, reporting MAP with a spread and STATING the block level
+rather than measuring it.** That is registrable today, with no new mechanism.
+
+### A pattern worth recording
+
+**This is the third time a screen has found the model answering by construction
+rather than by physiology.** Passive leg raise IS head-down tilt (item 53); 0 G
+IS supine (item 57); and now the block level is whatever it is set to.
+
+**The first two return a ZERO, and this one would not.** A synonym makes the two
+arms identical, so the difference comes out at exactly zero and the artefact
+announces itself. Here the absent mechanism — intrathecal drug spread — happens
+to correspond to a settable argument, so the gap gets filled by hand and the
+model produces a confident, plausible difference instead. **Silence is easy to
+spot; fluency is not.**
+
+**Added to the screen as its own question**, in `README.md`: *does the model
+COMPUTE the thing the study varies, or is it TOLD?* It is not a fourth rejection
+shape — the underlying reason is still an absent mechanism — but it is the check
+that finds one when the absence is hidden behind an input.
 
 ## Categories
 
