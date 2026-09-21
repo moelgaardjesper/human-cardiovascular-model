@@ -514,3 +514,38 @@ wide spreads, 005 by small effects. **A power check belongs in the screen:** can
 this study's spread and effect size distinguish the model from a null? It would
 have flagged this study before an hour of computation, and it would not have
 excluded it — it would have set the expectation correctly in advance.
+
+### PUTTING THIS IN THE CONTEXT OF THE PHASE — required by the reporting rule
+
+The power argument above is about **this comparison**, not about the model, and
+the first draft of this section let the two blur. `README.md` is explicit that
+over-stating failure is as much a distortion as the reverse, so the phase record
+belongs here beside it.
+
+| | direct predictions | primary |
+|---|---|---|
+| 002 (PMID 27702883) | — | **HIT** — registered −2.08 to −5.35 pp, measured −5.56 |
+| 004 (PMID 27164015) | **8/8 inside spread** (5 A, 3 B) | FAILED on direction |
+| 005 (PMID 9925894) | **8/8 inside spread** (6 A, 2 B) | null, uninformative |
+
+**Sixteen of sixteen within-group predictions across 004 and 005 landed inside
+the studies' own reported spread**, out of sample, against cohorts the model was
+never fitted to — anaesthetised comorbid 65-year-olds in one case and healthy
+men at two ages in the other. On this study the model patient at MAP 94.97 sits
+inside the young cohort's own between-subject spread of 84 ± 9.95, so it would
+not look out of place among those eleven men. **That is what tier A is supposed
+to mean, and it should not be buried under the argument about discriminating
+power.**
+
+**What has failed is narrower and specific:** MAP direction under genuine
+orthostatic and hypovolaemic stress (001 and 002), the between-group direction
+in 004, and the resting absolutes here. Three real failures, each diagnosed to a
+named mechanism rather than absorbed.
+
+**Both statements are true at once, and the phase is worth more for that.** The
+model performs reasonably well on the quantities it is asked directly, AND the
+screening and registration process has opened **fourteen backlog items** —
+53 through 66 — without a single line of model code changing. Twelve came from
+reading the code against real published protocols; two came from stress-testing
+the interface. That is the return on a freeze: the model could not be quietly
+adjusted, so every disagreement had to be written down instead.
