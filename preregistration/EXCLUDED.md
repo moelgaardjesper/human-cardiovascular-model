@@ -27,6 +27,7 @@ would be one whose limits nobody had tested.
 | 5 | Isometric handgrip, supine vs 10 deg head-down tilt, healthy volunteers | [PMID 29595918](https://pubmed.ncbi.nlm.nih.gov/29595918/) | No exercise pressor reflex; stroke volume derived from a peripheral waveform the model cannot reproduce | NO MECHANISM *(temporary)* |
 | 6 | Phenylephrine vs noradrenaline under propofol/remifentanil anaesthesia | [PMID 25760679](https://pubmed.ncbi.nlm.nih.gov/25760679/) | No opioid — at remifentanil Ce 8 the missing drug IS the anaesthetic state, and the titration degenerated | NO MECHANISM *(temporary)* |
 | 7 | Head-up tilt 10 deg during spinal anaesthesia in parturients | [PMID 29952519](https://pubmed.ncbi.nlm.nih.gov/29952519/) | Blood pressure defended with ephedrine; and the block level, which is the study's mechanism, is a model INPUT | CONTROLLED VARIABLE *(permanent)* |
+| 8 | Hyperoxic rebreathing chemoreflex test at five tilt positions | [PMID 25194198](https://pubmed.ncbi.nlm.nih.gov/25194198/) | Every reported value is respiratory; the model computes none of them | NO COMPARABLE OUTPUT *(temporary)* |
 
 ---
 
@@ -525,6 +526,83 @@ spot; fluency is not.**
 COMPUTE the thing the study varies, or is it TOLD?* It is not a fourth rejection
 shape — the underlying reason is still an absent mechanism — but it is the check
 that finds one when the absence is hidden behind an input.
+
+## 8 — Hyperoxic rebreathing chemoreflex test at five tilt positions
+
+**Screened 2026-09-21.** [PMID 25194198](https://pubmed.ncbi.nlm.nih.gov/25194198/).
+Subjects secured on a tilt table with ankle restraints and placed in five
+steady-state positions in random order: 90 deg head-up, 45 deg head-up, supine,
+45 deg head-down, 90 deg head-down. In each position a hyperoxic rebreathing
+test followed a 10 min baseline. Subjects hyperventilated voluntarily for 1 min
+to bring end-tidal CO2 to 20 Torr, then rebreathed until end-tidal CO2 reached
+50-55 Torr or they signalled their limit, then 2 min of recovery on room air.
+Baseline values are a 2 min mean taken from minutes 7-9, at least 1 min before
+the hyperventilation.
+
+**Only the protocol was supplied. No results were seen.**
+`tools/check_insample.py 25194198` -> NOT FOUND in code, docs or registrations.
+
+### Why the model cannot be asked this
+
+**THE DECIDING REASON IS THE SIMPLEST ONE: EVERYTHING REPORTED IS RESPIRATORY,
+AND THE MODEL COMPUTES NONE OF IT.** Confirmed by Jesper, who has the paper:
+there is no reported value the model produces. This is not a convention
+mismatch, where the same physical quantity is read at a different site or in a
+different respiratory phase and a mapping exists. **A ventilation or an
+end-tidal CO2 is not a pressure measured differently. It is a quantity the model
+does not have.** That is what separates NO COMPARABLE OUTPUT from CONVENTION.
+
+**SECOND AND INDEPENDENT: there is no chemoreflex.** The rebreathing test drives
+CO2 up and measures the ventilatory and cardiovascular response to it. The model
+has no CO2, no gas exchange, no oxygen transport and no chemoreceptor of any
+kind. Even if the haemodynamics had been reported, the intervention itself is
+unrepresentable.
+
+**THIRD, AND IT WAS NEVER REACHED: two of the five positions are outside the
+validated range** of -30 to +45 deg. At 90 deg head-up the hydrostatic penalty
+exceeds transmural venous pressure, leg venous return collapses and the model
+underestimates MAP — a documented failure mode, not merely an untested angle.
+90 deg head-down (the table is an inversion table) is further out still.
+
+### What the screen DID establish, and it is worth keeping
+
+**The two tilt limits are not symmetric, and only one of them is argued.** The
+head-up limit has a stated mechanism and a documented failure. The head-down
+limit of -30 deg is simply the steepest angle any test in the suite uses; its
+own rationale in `known_model_limitations.md` argues entirely from EXTREME
+UPRIGHT posture. So **45 deg head-down is an extrapolation beyond what has been
+tested, with no documented failure mode, and would be a registrable caveat** —
+while 45 deg head-up sits inside the range outright. That distinction was
+established for exclusion entry 4 and holds here.
+
+So had this study reported a pressure or a flow, **three of its five positions
+would have been usable**: supine, 45 deg head-up, and 45 deg head-down with a
+stated caveat.
+
+### A near miss worth recording, because the design is good
+
+Five graded tilt positions, held to steady state, randomised in order, with a
+clean 2 min baseline bin taken a full minute before any intervention. That is a
+better posture protocol than most studies screened.
+
+**And 45 deg is a large enough stimulus to discriminate between models**, which
+registration 005's 10 deg was not — there a model predicting exactly zero would
+have scored tier A on every quantity. A graded tilt series at 45 deg would test
+the SHAPE of the posture response across five points rather than a single
+contrast.
+
+**THE FILTER THIS GIVES, and it is cheap to apply early:** *does the study report
+a pressure or a flow, or only a gas?* One question, asked before anything else,
+would have closed this screen in a sentence.
+
+### Status
+
+**Temporary, but distant.** A chemoreflex with CO2 transport and gas exchange
+would make the rebreathing arm answerable and would give the model quantities
+this study reports. That is a new SUB-MODEL rather than a bounded mechanism —
+the same class as pregnancy or sepsis, which sit in Tier 5 of the backlog — so
+this is not a near-term target. Only the protocol was read, so the study stays
+clean if it is ever revisited.
 
 ## Categories
 

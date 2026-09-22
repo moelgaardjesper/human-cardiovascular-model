@@ -388,5 +388,32 @@ is worth recording as its own small lesson.
    being tested.** The standard is now "can the model be ASKED this question",
    and imperfections are registered rather than refused.
 
-The pattern across all three is the same: each version looked more rigorous than
-its replacement while protecting the model from being tested.
+4. **A fourth screening standard, proposed and withdrawn the same day,
+   2026-09-21.** A study was declined not because the model could not be asked
+   it, but because a failure would have been hard to ATTRIBUTE — the useful
+   measurement sat on an operating point already known to be wrong. A new
+   exclusion category was written for it. **Jesper reversed it within the hour,
+   and the reversal is the correct one.**
+
+   **The argument that settles it: declining a study because the model is
+   expected to fail is the flattering direction.** It is the same error as the
+   over-rejections above, wearing a more sophisticated argument.
+
+   **And it discards the most valuable thing the study offers.** This project
+   claims two ARCHITECTURAL limitations — pulse pressure amplification is
+   inverted, and the model collapses beyond 45 degrees of head-up tilt. Those are
+   currently supported by our own assertion plus one in-house measurement. **A
+   pre-registered prediction of our own failure, confirmed blind against a cohort
+   we have never seen, is far stronger evidence than either.** `article_notes.md`
+   says the paper should report "which of its failures were predicted in
+   advance". A known limitation is therefore an ASSET in a blind test, not a
+   reason to skip one.
+
+   The category was deleted. **Poor attributability is a caveat to register, not
+   a reason to decline.** It belongs in the registration, next to the predicted
+   failure it qualifies.
+
+The pattern across all FOUR is the same: each version looked more rigorous than
+its replacement while protecting the model from being tested. **Three of the four
+were mine, and the fourth was too. That is the failure mode to watch for in this
+role — not carelessness, but caution that flatters.**
