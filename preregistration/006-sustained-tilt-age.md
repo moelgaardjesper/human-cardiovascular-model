@@ -227,3 +227,144 @@ Mean of the male and female runs, with the sex bracket beside it.
 | Δ heart rate | −0.45 | −0.35 bpm |
 | Δ brachial MAP | +1.00 | +0.90 mmHg |
 | Δ cardiac output | −0.11 | −0.09 L/min |
+
+---
+
+## RESULTS — appended 2026-09-22, after registration was pushed at `1272e97`
+
+**Comparator as registered: mean ± s.e.m., n = 16 per group, so SD = s.e.m. × 4.**
+Mean pressure is reconstructed as (S+2D)/3 on both sides, with its standard error
+propagated from the systolic and diastolic errors.
+
+### ALL THREE PREDICTED FAILURES CONFIRMED
+
+| | model | study | |
+|---|---|---|---|
+| **age difference in ΔHR** | **+0.1** | **−11.4 bpm** (P < 0.05) | confirmed |
+| **ΔMAP on tilting** | **−31** | **+4.6 mmHg** | confirmed, and worse than predicted |
+| **brachial pulse pressure, supine** | **22.7 / 34.4** | **49.3 / 60.0 mmHg** | confirmed |
+
+**1. The reflex has no age dependence, and the study says it should.** Young
+subjects raised their heart rate by **15.0 ± 1.9** bpm on tilting; older subjects
+by **3.6 ± 1.1**, a difference the authors mark significant. The model gives
+**+23.4 and +23.5** — the same answer to both. At 30 min the measured gap is
+wider still, 13.6 bpm.
+
+**This is backlog item 51 confirmed out of sample.** Until now it rested on
+reading `BaroreflexController.__init__` and observing that it takes no age
+argument. It now rests on a pre-registered prediction that failed as predicted.
+
+**2. Mean pressure was worse than registered.** The registration predicted the
+model would run too LOW at 60°. It is the wrong DIRECTION: the subjects raised
+mean pressure — young +5.6, older +3.6 — and the model dropped it by 31.
+
+**3. The pulse pressure is roughly half**, as predicted, at both ages.
+
+### Full scoring — 10 quantities, 6 inside 2 SD, 4 misses
+
+| quantity | model | study | SD units | tier |
+|---|---|---|---|---|
+| supine MAP, older | 86.9 | 85.0 | 0.26 | **A** |
+| supine HR, older | 70.2 | 65.3 | 0.51 | **A** |
+| ΔHR 5 min, young | +23.4 | +15.0 | 1.11 | **B** |
+| supine HR, young | 71.7 | 61.8 | 1.17 | **B** |
+| supine PP, older | 34.4 | 60.0 | 1.72 | **B** |
+| supine MAP, young | 88.7 | 79.1 | 1.89 | **B** |
+| supine PP, young | 22.7 | 49.3 | 2.60 | miss |
+| ΔMAP, older | −30.4 | +3.6 | 2.89 | miss |
+| ΔHR 5 min, older | +23.5 | +3.6 | 4.52 | miss |
+| ΔMAP, young | −32.2 | +5.6 | 4.84 | miss |
+
+**Every miss was registered in advance.** That was the point of the registration.
+
+### A RESULT, not a footnote: THE AGE SLOPE OF PULSE PRESSURE IS RIGHT
+
+**The level is wrong and the slope is right, and those are separable claims.**
+
+| | model | study |
+|---|---|---|
+| brachial PP, young | 22.7 | 49.3 |
+| brachial PP, older | 34.4 | 60.0 |
+| **widening across 43 years** | **+11.7** | **+10.7 mmHg** |
+| **per year** | **0.272** | **0.249 mmHg/yr** |
+
+**Within 10 %, and it was not fitted to this.** `aging.py` derives its arterial
+compliance law from Franklin 1997's longitudinal pulse-pressure slope of
+**0.68 mmHg/year**, which across 43 years implies 29 mmHg. The model produces
+11.7. **The emergent widening is not the number that was put in** — it falls out
+of compliance, stroke volume and the circuit — and it lands on this cohort's
+measured value.
+
+It is also consistent with backlog item 48, which records that cross-sectional
+cohorts show LESS pulse-pressure widening than longitudinal ones because they
+exclude at measurement the people whose pressure rose. This study is
+cross-sectional and measures 0.249 mmHg/year against Franklin's longitudinal
+0.68.
+
+**One caveat, stated once.** The baseline pulse pressure is half, so the RELATIVE
+widening is overstated: 1.52× against a measured 1.22×. The absolute rate agrees;
+the proportional rate does not.
+
+**Why this is worth reporting rather than burying.** The model gets the pulse
+pressure badly wrong at every age and gets the age SLOPE of it nearly right. Those
+are different mechanisms — one is the central-to-peripheral transfer (backlog item
+67, opened from this study), the other is the age law on arterial compliance. The
+first is broken and the second is working, and a single tier on pulse pressure
+would have hidden both.
+
+### The age asymmetry in resting pressure replicates — a third time, and cleanly
+
+| supine brachial MAP | model | study | |
+|---|---|---|---|
+| older (68) | 86.9 | 85.0 | **0.26 SD** |
+| young (25) | 88.7 | 79.1 | **1.89 SD** |
+
+The model is essentially exact in the older group and nearly 2 SD high in the
+young. That is the same pattern as comparison 001 and registration 005.
+
+**This time the convention is matched from the start.** Registration 005 compared
+the model's AORTIC pressure against a finger measurement, and about 9 of its
+11 mmHg gap turned out to be the measuring site. Here the model's BRACHIAL output
+is read against an arm cuff, with the same (S+2D)/3 formula on both sides. **The
+young-versus-old asymmetry survives that correction.**
+
+### But the MAP direction failure is NOT confined to the young
+
+Backlog item 62 is written as a claim about young people: the model defends
+93 mmHg whatever the patient's age, so it fails where the cohort is furthest from
+55. **These 68-year-olds also raised their pressure on tilting, and the model also
+failed.**
+
+**One caveat that this study cannot settle.** At 60° the model is outside its
+validated range, and the leg-vein collapse beyond 45° affects both age groups
+equally. So this result cannot separate a wrong reflex setpoint from a
+posture-range failure. What it does establish is that the direction error is not
+a young-cohort phenomenon.
+
+### The drift failed too — the exploratory prediction
+
+| 5 → 30 min of tilt | model | study |
+|---|---|---|
+| Δ heart rate, young | −0.45 | **+5.1 bpm** |
+| Δ heart rate, older | −0.35 | **+2.9 bpm** |
+| Δ mean pressure, young | +1.00 | −0.47 mmHg |
+| Δ mean pressure, older | +0.90 | −3.13 mmHg |
+
+**The subjects' heart rate keeps climbing for 25 minutes. The model's is flat.**
+
+This was registered as exploratory because attribution is weak — the starting
+state is already wrong. That caveat stands, and it is why this is not counted as
+a fourth confirmed failure. But it is the second study in a row to show the model
+flat over a long exposure, after registration 005 at 10°, and the mechanisms that
+should produce the drift have been in the model since 2026-08-07 without a single
+postural test touching them.
+
+### What this registration is worth
+
+**Three architectural limitations, predicted in advance and confirmed blind
+against a cohort never seen.** Two of them — inverted amplification and collapse
+beyond 45° — previously rested on our own assertion plus one in-house
+measurement. The third, the age-blind baroreflex, rested on reading the code.
+
+**And one thing that works, found only because it was separated from a thing that
+does not:** the age slope of pulse pressure.
