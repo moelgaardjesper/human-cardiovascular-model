@@ -216,13 +216,49 @@ The mechanism works in both directions. On 2026-08-26 two xfails fired as XPASS 
 | 7 | Graded HUT 0→20→30°: HR↑ and CO↓ monotonically | [Sarafian 2017](https://doi.org/10.3389/fphys.2016.00656) — 23 adults, graded tilt 0→60° | HR +41%, BP +10%, TPR +16% at 60°; monotonic increase with angle | HR 68→70→71 bpm, CO 6.47→5.18→4.71 L/min, monotonic | ✓ |
 | 8 | Microgravity: CVP higher than upright Earth | [Buckey 1996](https://pubmed.ncbi.nlm.nih.gov/8853498/) | CVP supine 5–8 mmHg, drops to 2.5 mmHg in orbit; higher than upright standing | CVP µg 5.14 vs upright 45° 3.04 mmHg | ✓ |
 | 9 | Cerebral perfusion pressure (CPP) decreases with upright posture | [Pohl & Cullen 2005](https://pubmed.ncbi.nlm.nih.gov/15983529/) | Beach-chair position: MAP drops 30–35 mmHg at brain level under GA; CPP risk < 50 mmHg | CPP supine 87 mmHg → 68 mmHg at 45° upright | ✓ |
-| 10 | Buckberg index falls with tachycardia (coronary ischaemia risk) | [Buckberg 1972/1978](https://pubmed.ncbi.nlm.nih.gov/4667030/) | DPTI/SPTI > 0.8 at rest; falls as diastolic time shortens with HR↑ | Buckberg 1.12 at rest → 0.44 at HR=160 bpm | ✓ |
+| 10 | Buckberg index falls with tachycardia (coronary ischaemia risk) | [Buckberg 1972/1978](https://pubmed.ncbi.nlm.nih.gov/4667030/) | DPTI/SPTI > 0.8 at rest; falls as diastolic time shortens with HR↑ | Buckberg **1.48** at rest → **0.49** at HR=160 bpm (re-measured 2026-09-22; this table previously read 1.12 → 0.44). **Direction reproduced. The MAGNITUDE is not validated and is biased high — see the note below the table.** | direction only |
 | 11 | PPV > 13% identifies fluid-responsive patient under mechanical ventilation | [Michard & Teboul 2000](https://doi.org/10.1164/ajrccm.162.1.9905119) — n=40 septic shock patients | PPV > 13% predicts ≥15% CO rise with fluid challenge (sens. 94%, spec. 96%) | Normovolaemic **PPV 8.8% (< 13 ✓)**; 1000 mL bleed PPV 26.3% (> 13 ✓); resuscitation lowers PPV 26.3 → 15.1 and raises CO +113% ✓ | ✓ |
 | 12 | High spinal anaesthesia (≈T4): MAP↓, CO maintained, HR near-unchanged | [Malmqvist 1987](https://doi.org/10.1111/j.1399-6576.1987.tb02605.x) — n=30, average block T4–5 | MAP ↓≥30% at complete block; CO preserved; minor HR changes (baroreflex compensates) | MAP ↓>5%, CO maintained ±20%, MAP >45 mmHg | ✓ |
 | 13 | Vasopressin dose-response: MAP monotonically↑, CO maintained | [Patel 2002](https://doi.org/10.1097/00000542-200203000-00011) — n=13 septic shock | MAP rises with dose (0→2→4 U/hr); CO maintained; NE requirement ↓79% | MAP monotonically↑; CO maintained ±20% at 2 U/hr | ✓ |
 | 14 | NE vs phenylephrine on spinal baseline: NE preserves CO better | [Ngan Kee 2015](https://doi.org/10.1097/ALN.0000000000000601) — n=104, C-section spinal | NE CO 102.7% vs phenyl 93.8% (p=0.004); NE HR > phenyl HR (reflex bradycardia) | **NE CO 5.66 vs phenyl 5.41 ✓**; NE HR 64.7 vs phenyl 59.3 ✓ (reflex bradycardia on phenylephrine) | ✓ |
 | 15 | Epinephrine: CO monotonically↑ with dose; MAP_high > MAP_low (α dominance) | [Freyschuss 1986](https://doi.org/10.1042/cs0700199) — n=11 healthy, stepwise IV ADR | Concentration-dependent ↑SV and ↑CO; marked ↓vascular resistance at low dose | CO monotonically↑; MAP_high > MAP_low | ✓ |
 | 16 | PLR: CO ≥+10% identifies fluid-responsive patient (preload-dependent) | [Monnet, Marik & Teboul 2016](https://doi.org/10.1007/s00134-015-4134-1) — meta-analysis 21 studies, 991 patients | PLR-induced CO ≥+10% threshold: sens 0.85, spec 0.91, AUC 0.95 | Normovolemic: ΔCO +5.2% (<10%, non-responder) ✓; hypovolemic 1200 mL: ΔCO +12.6% (≥10%, responder) ✓ | ✓ |
+
+### A note on row 10 — the coronary metric is biased in the unsafe direction
+
+**Withdrawn here rather than quietly corrected, because this row carried a tick
+it had not earned.**
+
+The Buckberg index is the ratio of the diastolic to the systolic pressure-time
+integral. The model reproduces the DIRECTION the literature describes — it falls
+steeply with tachycardia — and that much stands. **Its magnitude does not, and
+the target never tested it.** "DPTI/SPTI > 0.8 at rest" is a FLOOR, so any value
+above 0.8 satisfies it; a tick against a floor says nothing about whether 1.48 is
+right.
+
+**Three independent defects all inflate this index, and all three are measured.**
+
+| | effect on the index |
+|---|---|
+| brachial diastolic pressure ~18 mmHg too high in a young adult | raises the diastolic integral |
+| systolic pressure ~8 mmHg too low | lowers the systolic integral |
+| systole fixed at 45 % of the cardiac cycle at every rate | overstates diastolic time as rate rises |
+
+The first two were measured blind in a pre-registered comparison against 16 young
+and 16 older volunteers ([PMID 9404222](https://pubmed.ncbi.nlm.nih.gov/9404222/),
+`preregistration/006-sustained-tilt-age.md`). The third has been recorded since
+2026-09-10 and is visible by construction in `heart.py`.
+
+**They push the same way, and that way is optimistic.** This output exists to warn
+about subendocardial ischaemia. A metric that reads too safe is wrong in the
+direction that matters. **Do not use the absolute Buckberg value clinically;** the
+fall with heart rate is the part the model supports.
+
+**Why it went unnoticed.** Pulse pressure and the coronary metric were treated as
+separate problems, so nobody asked what else depended on the pressures being
+wrong. The defect was found by asking that question of a registration result, not
+by any test failing — the same gap step 7 of the validation discipline exists to
+cover.
 
 ### How gaps actually close here — five worked examples
 

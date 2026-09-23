@@ -144,3 +144,66 @@ not flip.
 
 Whether any of this is a MISS depends on what the patients did. That has not been
 seen.
+
+---
+
+## 5. Results — appended 2026-09-23, after the registration was pushed at `afd72c0`
+
+Comparator as registered: median (IQR). Tier A is inside the IQR, tier B within
+one further IQR beyond the nearer quartile.
+
+### Scoring — the phenylephrine step
+
+| quantity | model | study | tier |
+|---|---|---|---|
+| **ΔSV** | **−4.5 to −2.2 %** | **+96 % (82 to 116)** | **F** |
+| ΔCO | −18.0 to −12.4 % | +65 % (56 to 99) | **F** |
+| ΔMAP | +16.4 to +27.8 % | +114 % (83 to 147) | B / C |
+| **ΔHR** | **−16.3 to −8.6 %** | **−10 % (−15 to −6)** | **A** |
+| SVV after the drug | 13.8 to 15.5 | 8.6 (6.8 to 11) | B / C |
+
+### The study, for the record
+
+| step | ΔMAP | ΔSV | ΔCO | ΔHR | SVV |
+|---|---|---|---|---|---|
+| steady state 1 | – | – | – | – | 11 |
+| head-up 1 | −28 | −27 | −27 | −4 | 17 |
+| head-down | +47 | +29 | +22 | −6 | 9.1 |
+| steady state 2 | – | – | – | – | 14 |
+| head-up 2 | −34 | −33 | −31 | +2 | 24 |
+| **phenylephrine** | **+114** | **+96** | **+65** | **−10** | **8.6** |
+
+---
+
+## 6. Analysis
+
+**The model said stroke volume would fall by 4 per cent. It nearly doubled.**
+
+That is the registered primary, and it failed on direction by a wide margin. The
+same drug in registration 004 gave model −4.2 against a measured +5. Here the
+measured value is +96.
+
+**This confirms backlog item 64 against real patients.** The registration
+predicted the failure and named the cause before the run: the legs are not in the
+model's mobilizable venous reservoir, so blood pooled by head-up tilt is out of
+reach of venoconstriction. These patients recruited that blood. The model cannot.
+
+**The second prediction also held, and it matters clinically.** The model never
+brought stroke volume variation below 12 per cent at any dose. The patients went
+from 24 to 8.6. **So the model would tell a clinician that phenylephrine does not
+fix preload-dependency, when in these patients it did.**
+
+**Heart rate landed in the interquartile range.** Model −8.6 to −16.3 against a
+measured −10. That is the reflex bradycardia, and it is the one thing here the
+model gets right.
+
+**Mean pressure has the right direction and about a quarter of the size.** The
+model reaches +28 per cent at the top of the dose bracket against a measured
++114. This is the phenylephrine pressor shortfall already carried as a strict
+xfail against Schäfers 1999, seen again in a different cohort.
+
+**One note on the angle.** The registered angle of 17.1 degrees came from the
+first head-up tilt. The second tilt gives −33 per cent, which maps to about 21
+degrees. The table did not move between the two, so the patients changed — their
+supine stroke volume variation drifted from 11 to 14 and their tilt response grew.
+The angle recovery is sound; the cohort was not in the same state twice.

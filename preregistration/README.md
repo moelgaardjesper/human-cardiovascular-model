@@ -353,6 +353,39 @@ preload state responds which way.
 **A precise failure is worth more than a dramatic one**, and precision requires
 saying what worked.
 
+## What a registration file contains — four parts, and keep it short
+
+**Registrations 004, 005 and 006 run to 335-370 lines each. That is too long**
+(Jesper, 2026-09-23). They were not retrofitted; the shape below applies from
+registration 007 onward.
+
+**1. The study.** What was done, to whom, measured how. Plain sentences.
+
+**2. The scenario.** The patient, the settings, the spent values, the registered
+caveats. A table where a table fits.
+
+**3. The result.** The numbers, with the tier for each. This is the part a reader
+came for.
+
+**4. Analysis.** Short. A few paragraphs at most.
+
+**EVERYTHING ELSE GOES IN `docs/validation_log.md`.** The method, the reasoning,
+the rejected alternatives, the failed attempts, the sensitivity checks. That file
+is the working record and it is not published. **A reader of the registration
+wants the prediction and the score, not the deliberation behind it.**
+
+Registration 007 is the worked example: 144 lines public, with the inversion
+method, the airway-pressure fit and a method error moved to the ledger.
+
+### Write it plainly
+
+**ASD-STE100 as a guide**, which is the standing rule for everything in this
+project. Short sentences. One idea each. Active voice. Keep the clinical terms —
+MAP, stroke volume, preload-dependency — and simplify the structure around them.
+
+**Say the simple version first and add detail after.** The first paragraph should
+stand on its own.
+
 ## Integrity rules
 
 - **Nothing is removed from this directory.** A registration that turns out
