@@ -1,3 +1,51 @@
+# THE v1.0.0 BLIND PHASE IS CLOSED — 2026-09-24
+
+**Fourteen studies screened. Six taken forward. Eight excluded. Five scored.**
+
+**What this phase was for.** We froze the model and then gave it studies chosen
+to find out how it would break. That is what it did.
+
+**What it found, and these are load-bearing.**
+
+**The baroreflex has no age dependence.** Registration 006 predicted a zero
+difference between 25-year-olds and 68-year-olds in the heart-rate response to
+tilt. The study measured 15 bpm against 3.6. Before this the gap rested on
+reading `BaroreflexController.__init__` and noticing it takes no age argument.
+
+**The legs cannot be recruited by venoconstriction.** Registration 007 predicted
+that phenylephrine would lower stroke volume in a patient made preload-dependent
+by head-up tilt. It nearly doubled it — measured +96 per cent against a predicted
+−4. The model's leg veins respond to gravity but not to drugs, because they sit
+outside the mobilizable venous reservoir. Backlog items 9 and 64 are one defect.
+
+**Match the quantity before comparing.** Registration 005 reported the model's
+resting mean pressure as 11 mmHg too high. It was measured at the finger and the
+model reports an aortic pressure. Most of the gap was the site. This is the fifth
+instance in the project and the first one found inside a pre-registered test,
+which makes it the best evidence for it.
+
+**Five more defects were found by reading code to build the scenarios**, not by
+any study result: the hydrostatic loop does not close, patient height does not
+scale the hydrostatic column, pulse pressure variation is destroyed by the
+output-decimation parameter, brachial diastolic pressure is about 19 mmHg high,
+and the tilt suite asserts only signs and wide bands — `dsv < 0` passes for any
+fall.
+
+**What it cost.** A blind study is single-use. These fourteen are spent and
+cannot test the model again. Six of the eight exclusions were screened on methods
+alone with no results seen, so those stay clean and become available as each
+blocking mechanism is built.
+
+**What the record is worth.** Every prediction was committed and pushed before
+its result was seen. Three of the failures were predicted in advance with the
+mechanism named. A model that was frozen, tested and found to fail in specific
+diagnosable ways is the point of the exercise, not a problem for it.
+
+**What happens next.** The faults above are fixed toward **v1.1.0**. The next
+blind phase runs against that version, on studies not used here.
+
+---
+
 # Pre-registration — the blind validation phase
 
 ## Why this directory exists

@@ -21,6 +21,9 @@ where you see whether that has happened.
 | E7 | Head-up tilt during spinal anaesthesia, parturients | [29952519](https://pubmed.ncbi.nlm.nih.gov/29952519/) | excluded — controlled variable; block level is an input *(permanent)* | 2026-09-19 |
 | E8 | Hyperoxic rebreathing chemoreflex at five tilt positions | [25194198](https://pubmed.ncbi.nlm.nih.gov/25194198/) | excluded — reports only respiratory values; no chemoreflex *(temporary)* | 2026-09-21 |
 
+**PHASE CLOSED 2026-09-24. Fourteen screened, six taken forward, five scored.**
+The next blind phase runs against v1.1.0. See `README.md` for what this one found.
+
 **Fourteen screened, six taken forward.** Detail for exclusions is in
 `EXCLUDED.md`; registrations have their own file.
 
