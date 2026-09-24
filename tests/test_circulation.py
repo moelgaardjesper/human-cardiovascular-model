@@ -2881,6 +2881,76 @@ def test_norepinephrine_rv_inotropy_is_a_boost_not_a_suppression():
 # 22. Output downsampling and high-resolution slices — backlog item 33
 # ===========================================================================
 
+def test_ppv_does_not_depend_on_output_every():
+    """PPV must be the same quantity whatever the output decimation.
+
+    THIS TEST EXISTS BECAUSE THE FEATURE HAD NO TEST FOR THE CASE IT IS FOR.
+    `output_every` stores one block MEAN per N steps, and it exists for long
+    runs. `test_output_every_1_is_bit_for_bit_the_default` below asserts the
+    IDENTITY case — the one setting the feature is not used at.
+
+    Measured 2026-09-24, before the fix (backlog item 69):
+
+        output_every      1      10     100
+        PPV            6.05    1.31    0.00
+
+    Two defects. PPV was reconstructed after the loop from the STORED aortic
+    pressure, which is a block mean, and `_compute_ppv` was handed the raw dt —
+    so it sized a cardiac cycle in RAW steps and asked find_peaks for peaks
+    farther apart than the whole array. It found fewer than three and returned
+    zeros. Separately, the non-mechanical branch returned an array of length
+    `n` (raw steps) where every other series is `n_out`.
+
+    PPV is now measured in the loop, beat by beat, at full rate. Block
+    averaging then applies to PPV itself, which is a respiratory-timescale
+    quantity and survives it.
+
+    THE GENERAL RULE THIS PINS: a derived quantity must be computed on the
+    timescale it lives on. Beat-to-beat quantities belong in the loop.
+    """
+    comps, cardiac = build_patient_params(REF_HEIGHT_CM, REF_WEIGHT_KG)
+
+    def ppv_at(oe):
+        p = SimParams(compartments=comps)
+        apply_cardiac(p, cardiac)
+        p.ventilation_mode = "mechanical"
+        p.peep_cmh2o, p.pip_cmh2o, p.resp_rate_bpm = 5.0, 20.0, 12.0
+        r = run_simulation(p, duration_s=60.0, dt=DT, output_every=oe)
+        t = np.asarray(r["t"])
+        assert len(np.asarray(r["ppv"])) == len(t), (
+            f"ppv length {len(np.asarray(r['ppv']))} != t length {len(t)} "
+            f"at output_every={oe}"
+        )
+        return float(np.mean(np.asarray(r["ppv"])[t >= t[-1] - 20.0]))
+
+    ref = ppv_at(1)
+    assert ref > 1.0, f"PPV implausibly small at output_every=1: {ref:.2f} %"
+
+    for oe in (10, 100):
+        got = ppv_at(oe)
+        err = abs(got - ref) / ref * 100.0
+        assert err < 5.0, (
+            f"PPV depends on output_every: {ref:.2f} % at 1 vs {got:.2f} % at "
+            f"{oe} ({err:.1f} % apart). It is measured per beat in the loop and "
+            f"must not change with output decimation."
+        )
+
+
+def test_ppv_length_matches_when_not_mechanically_ventilated():
+    """The non-mechanical branch must return `n_out`, not the raw step count.
+
+    Before the fix a spontaneous-breathing run at output_every=100 returned a
+    `ppv` of length 30000 against a `t` of 300. Anyone masking ppv by time got
+    a length mismatch or silently misaligned data.
+    """
+    comps, cardiac = build_patient_params(REF_HEIGHT_CM, REF_WEIGHT_KG)
+    p = SimParams(compartments=comps)
+    apply_cardiac(p, cardiac)
+    p.ventilation_mode = "spontaneous"
+    r = run_simulation(p, duration_s=30.0, dt=DT, output_every=100)
+    assert len(np.asarray(r["ppv"])) == len(np.asarray(r["t"]))
+
+
 def test_output_every_1_is_bit_for_bit_the_default():
     """Downsampling must not change a single number at output_every=1.
 

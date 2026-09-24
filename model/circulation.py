@@ -930,6 +930,11 @@ def _odes(t: float, V: np.ndarray, params: SimParams, baro: BaroreflexController
 # PPV helper
 # ---------------------------------------------------------------------------
 
+# Minimum samples per cardiac cycle for pulse pressure variation to be
+# recoverable from a stored pressure series. See the measurement in _compute_ppv.
+PPV_MIN_SAMPLES_PER_BEAT = 20
+
+
 def _compute_ppv(aortic_p: np.ndarray, dt: float, hr_bpm: float,
                  resp_rate_bpm: float) -> np.ndarray:
     """
@@ -953,6 +958,26 @@ def _compute_ppv(aortic_p: np.ndarray, dt: float, hr_bpm: float,
 
     if n < 2 * n_resp:
         return np.zeros(n)
+
+    # NOT RESOLVABLE BELOW ~20 SAMPLES PER BEAT — return NaN, never a number.
+    #
+    # `dt` here is the sample interval of the series actually passed in, which is
+    # dt * output_every when the caller has decimated. Each stored sample is then
+    # a BLOCK MEAN, which blunts the systolic peak by an amount that depends on
+    # where the block boundary falls against the beat. That is phase-dependent,
+    # so it manufactures beat-to-beat variation that the circulation does not
+    # have, and PPV reads HIGH.
+    #
+    # Measured 2026-09-24, same 90 s run, PPV against samples per beat:
+    #     757 -> 9.62   152 -> 9.63   76 -> 9.58   38 -> 9.88
+    #      25 -> 9.85    15 -> 10.40 (+8 %)   7.6 -> 12.48 (+30 %)
+    # The knee sits between 15 and 25, so the floor is 20.
+    #
+    # NaN rather than zeros: a zero looks like a measured absence of variation,
+    # which is a clinically meaningful and wrong statement. Returning a number
+    # known to be 30 % high would be worse still.
+    if n_card < PPV_MIN_SAMPLES_PER_BEAT:
+        return np.full(n, np.nan)
 
     # Detect systolic peaks: above median, separated by ≥ half cardiac cycle.
     peaks, _   = _fp(aortic_p, distance=n_card // 2,
@@ -1140,6 +1165,7 @@ def run_simulation(
     # plain np.load(..., mmap_mode="r").
     # Storage
     aortic_p    = np.zeros(n_out)
+    ppv_acc     = np.zeros(n_out)   # PPV, accumulated in-loop (item 69)
     cvp_ts      = np.zeros(n_out)
     ra_intra_ts = np.zeros(n_out)
     ao_intra_ts = np.zeros(n_out)
@@ -1186,6 +1212,18 @@ def run_simulation(
     _sbp_win         = _deque([120.0] * _bp_win_len, maxlen=_bp_win_len)
     _brachial_dbp_win = _deque([80.0]  * _bp_win_len, maxlen=_bp_win_len)
     _brachial_sbp_win = _deque([120.0] * _bp_win_len, maxlen=_bp_win_len)
+
+    # PPV IS BUILT IN THIS LOOP AT FULL RATE — backlog item 69.
+    # It used to be computed after the loop from the STORED aortic pressure,
+    # which is a block mean when output_every > 1. Block averaging blunts each
+    # systolic peak by an amount that depends on where the block boundary falls
+    # against the beat, so it manufactures beat-to-beat variation the
+    # circulation does not have. Measured: PPV read 30 % high at output_every
+    # 100 and 8 % high at 50, and (before a separate dt fix) 0.00 outright.
+    # A beat is therefore measured where beats exist — every step.
+    _beat_hi = _beat_lo = None          # running max/min of p_ao within a beat
+    _pp_hist = _deque()                 # (time, pulse pressure) per completed beat
+    _ppv_now = 0.0
 
     # CO / SV: LV volume decrease per step (avoids HR phase-mismatch bug).
     _prev_V_lv   = V[i["left_ventricle"]]
@@ -1327,6 +1365,13 @@ def run_simulation(
         _hr_monitor   = hr_eff
         _emax_monitor = params.lv_emax * (baro.emax_factor if baro is not None else 1.0)
 
+        # Per-beat pulse pressure, at full rate (item 69).
+        if _beat_hi is None:
+            _beat_hi = _beat_lo = p_ao
+        else:
+            if p_ao > _beat_hi: _beat_hi = p_ao
+            if p_ao < _beat_lo: _beat_lo = p_ao
+
         # DBP / SBP tracking (rolling min / max)
         _dbp_win.append(p_ao); _sbp_win.append(p_ao)
         p_dbp = min(_dbp_win)
@@ -1381,6 +1426,7 @@ def run_simulation(
         itp_pos_now = positional_itp_mmhg(tilt_now)
 
         aortic_p[_oi]    += p_ao
+        ppv_acc[_oi]     += _ppv_now
         cvp_ts[_oi]      += p_cvp_edi + itp_pos_now
         # INTRALUMINAL right atrial pressure — what a CVC transducer actually
         # traces, continuously, including the respiratory swing. `cvp` above
@@ -1528,7 +1574,22 @@ def run_simulation(
         if _arresting:
             _cardiac_phase = _ARREST_PHASE
         else:
+            _phase_prev = _cardiac_phase
             _cardiac_phase = (_cardiac_phase + hr_now / 60.0 * dt) % 1.0
+            if _cardiac_phase < _phase_prev and _beat_hi is not None:
+                # A beat just closed. Record its pulse pressure and drop
+                # anything older than one respiratory cycle.
+                _pp_hist.append((t, _beat_hi - _beat_lo))
+                _resp_period = 60.0 / max(1e-9, params.resp_rate_bpm)
+                while _pp_hist and _pp_hist[0][0] < t - _resp_period:
+                    _pp_hist.popleft()
+                if len(_pp_hist) >= 2:
+                    _pps = [v for _, v in _pp_hist]
+                    _pp_mean = sum(_pps) / len(_pps)
+                    _ppv_now = (100.0 * (max(_pps) - min(_pps)) / _pp_mean
+                                if _pp_mean > 0.0 else 0.0)
+                    _ppv_now = min(100.0, max(0.0, _ppv_now))
+                _beat_hi = _beat_lo = None
         _monitor_phase = (_monitor_phase + _hr_monitor / 60.0 * dt) % 1.0
 
         # Guard: volumes can't go negative; replace NaN/inf from overflow
@@ -1561,7 +1622,7 @@ def run_simulation(
     # Every series above was accumulated with += over its block; divide to get the
     # mean. With output_every=1 every block holds one sample and this is a no-op,
     # which is what makes that case bit-for-bit identical to the old behaviour.
-    for _arr in (aortic_p, cvp_ts, ra_intra_ts, la_p_ts, lv_p_ts, rv_p_ts,
+    for _arr in (aortic_p, ppv_acc, cvp_ts, ra_intra_ts, la_p_ts, lv_p_ts, rv_p_ts,
                  co_ts, hr_ts, sv_ts,
                  dbp_ts, sbp_ts, brachial_sbp_ts, brachial_dbp_ts, lvedp_ts,
                  cpp_ts, cop_ts, buckberg_ts, ankle_p_ts, brachial_p_ts):
@@ -1583,11 +1644,23 @@ def run_simulation(
 
     # PPV: only computed for mechanical ventilation (requires positive-pressure
     # ITP cycles to modulate venous return). Returns a time-series in percent.
-    ppv_ts = (
-        _compute_ppv(aortic_p, dt, params.hr_bpm, params.resp_rate_bpm)
-        if params.ventilation_mode == 'mechanical'
-        else np.zeros(n)
-    )
+    # PPV comes from the loop, not from the stored waveform — backlog item 69.
+    #
+    # It used to be reconstructed here by `_compute_ppv` from `aortic_p`, which
+    # is a BLOCK MEAN when output_every > 1. Two defects followed, both silent:
+    # the function sized a cardiac cycle in RAW steps and so asked find_peaks
+    # for peaks farther apart than the whole array, returning zeros; and the
+    # non-mechanical branch returned an array of length `n` where every other
+    # series is `n_out`.
+    #
+    # Now each beat's pulse pressure is measured at full rate as the beat
+    # happens, and PPV is accumulated and block-averaged like every other
+    # series. It no longer depends on output_every at all.
+    #
+    # `_compute_ppv` is kept: it is the reference implementation, it is what the
+    # unit test checks against, and it still works on a full-rate series.
+    ppv_ts = (ppv_acc if params.ventilation_mode == 'mechanical'
+              else np.zeros(n_out))
 
     # ---- finalise the disk copy ------------------------------------------------
     # Five columns are derived AFTER the loop by _smooth_edges: map is built from
