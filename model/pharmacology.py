@@ -17,6 +17,26 @@ Factor sign conventions (all multiplicative, 1.0 = no effect):
                           >1 = venodilation (pools blood → reduces preload/CO)
                         This matches the baroreflex `v0_vein_factor` arm and
                         is applied in circulation.py `_odes`.
+    venous_compliance_factor
+                        multiplies systemic venous COMPLIANCE, on the same
+                        compartments as venous_tone_factor:
+                          >1 = more compliant (same volume, LESS pressure)
+                          <1 = stiffer
+                        A SEPARATE DEGREE OF FREEDOM from venous_tone_factor, and
+                        not interchangeable with it: mean systemic filling
+                        pressure is stressed volume / compliance, so V0 and C move
+                        it the same way while differing in how filling pressure
+                        responds to a volume CHANGE. Added 2026-09-27 for
+                        identifiability (backlog item 70). NO DRUG SETS IT YET.
+    venous_resistance_factor
+                        multiplies the resistance of every SYSTEMIC VENOUS
+                        drainage path (resistance to venous return):
+                          >1 = more resistance (venoconstriction narrows vessels)
+                          <1 = less resistance (venodilation widens them)
+                        NOT inverted, unlike venous_tone_factor. Sourced from both
+                        directions: de Wit 2016 (propofol, Rvr -30 %) and Maas 2013
+                        (noradrenaline, Rvr x1.50). Added 2026-09-27, backlog item
+                        70. NO DRUG SETS IT YET.
     postcap_factor      >1 raises POSTCAPILLARY resistance — the venous drainage
                         out of each exchange bed. Raising it dams blood in the
                         venous compartment, lifting venous and hence capillary
@@ -127,8 +147,52 @@ def phenylephrine(dose_mcg_kg_min: float) -> dict:
     Pure vasoconstriction; reflex bradycardia expected (handled by baroreflex).
 
     Reference range: 0.1–2.0 mcg/kg/min clinical.
+
+    ARTERIAL ARM — CALIBRATED 2026-09-26 against Schaefers 1999 (PMID 10073742),
+    the placebo arm: twelve healthy supine men, age 27, reflexes intact. That is
+    the model's own condition, which is why it is the calibration source and the
+    anaesthetised cohorts are not (see below).
+      * CEILING: e_max 1.80 -> 2.10. At the old value the pressor response
+        saturated at dMAP +20 / dTPR +476 against a measured +28 (23.5-32.5) /
+        +950 (650-1270). A diagnostic settled that the limit was this curve and
+        not the resistance pathway: raising the ceiling raises pressure freely.
+        At 2.10 all FIVE Schaefers quantities sit in their quartile bands at
+        once — dMAP +25.1, dTPR +682, dCO -1.08, dHR -19.0, dSV +10.1.
+        THE WINDOW IS NARROW (about 2.05 to 2.15): above it heart rate falls
+        past the band, because the model's reflex bradycardia per mmHg is a
+        little steeper than measured. Recorded, not tuned away.
+      * POTENCY: ec50 0.50 is UNCHANGED, and it is now sourced. Schaefers report
+        a median DBP rise of +16.8 mmHg at 1 mcg/kg/min against +30 at the top
+        dose, a ratio of 0.56; the model gives 0.53.
+    DO NOT set potency from anaesthetised cohorts (Juhl-Olsen 2023, Hojlund 2024).
+    Their much larger pressure rise per dose is the MISSING SYMPATHOLYSIS, not
+    drug potency: with the baroreflex switched off the model's pressor response at
+    the old ceiling is +88 mmHg against +20 with it on. Fitting potency to them
+    would bake the missing opioid into this curve.
+
+    THE CEILING IS CONDITIONAL ON AN UNCITED CLIP — measured 2026-09-27, recorded
+    here rather than left to be rediscovered. The baroreflex's `svr_factor` floor
+    of 0.5 is BINDING at these doses (pre-clip 0.476 at 1 mcg/kg/min, 0.394 at 4),
+    so the reflex's vasodilator reserve runs out and stops buffering. Sweeping the
+    floor at this curve: 0.50 gives dMAP +25.1 / dTPR +682, and any floor at or
+    below 0.39 gives +18.0 / +413 — outside Schaefers' bands. **So about 7 of the
+    25 mmHg comes from the clip, and the floor has no source.** The fit is not
+    refuted — all five quantities still land together — but it rests on two
+    numbers and only one is sourced. **Do NOT move the floor to move this
+    response**; it is a reflex limit, not a drug parameter. See backlog item 70,
+    which is where the resting-tone question belongs.
+
+    VENOUS ARM — e_max 0.10 IS KEPT, and it is now constrained, though not by a
+    direct measurement. Raising it to 0.30 (what the anaesthetised cohorts'
+    filling pressures ask for) breaks Schaefers' flow response in awake men: dSV
+    +31 mL against +9, dHR -25 against -16. The two groups need different values
+    because the drug's venous effect depends on the patient's own sympathetic
+    venous tone — small when the veins are already constricted (awake), large
+    when that tone is withdrawn (anaesthesia). A fixed ceiling cannot express
+    that; it needs endogenous and exogenous agonism on a shared stage. Backlog
+    item 70.
     """
-    svr_factor = 1.0 + _hill(dose_mcg_kg_min, ec50=0.50, e_max=1.80, n=0.9)
+    svr_factor = 1.0 + _hill(dose_mcg_kg_min, ec50=0.50, e_max=2.10, n=0.9)
     return {
         "svr_factor": svr_factor,
         "hr_factor": 1.0,          # baroreflex will decrease HR
@@ -318,6 +382,9 @@ def combined_drug_factors(drugs: dict) -> dict:
         "lv_emax_factor": 1.0,
         "rv_emax_factor": 1.0,
         "venous_tone_factor": 1.0,
+        # No drug returns this yet, so it stays 1.0 and every run is unchanged.
+        "venous_compliance_factor": 1.0,
+        "venous_resistance_factor": 1.0,
         # Drugs without a sourced postcapillary ratio return 1.0 and so leave this
         # untouched: vasopressin, epinephrine, propofol and spinal block.
         "postcap_factor": 1.0,
@@ -338,5 +405,7 @@ NEUTRAL_FACTORS = {
     "lv_emax_factor": 1.0,
     "rv_emax_factor": 1.0,
     "venous_tone_factor": 1.0,
+    "venous_compliance_factor": 1.0,
+    "venous_resistance_factor": 1.0,
     "postcap_factor": 1.0,
 }

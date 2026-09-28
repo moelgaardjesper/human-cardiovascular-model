@@ -203,6 +203,7 @@ def scale_compartments(
     pap_mean_mmhg: float | None = None,
     sex: str = "male",
     age_years: float = REFERENCE_AGE_YEARS,
+    height_cm: float = REF_HEIGHT_CM,
 ) -> tuple[list[Compartment], dict]:
     """
     Return scaled compartment list and a dict of cardiac parameters.
@@ -211,16 +212,24 @@ def scale_compartments(
     ----------
     compartments    : default compartment list from default_compartments()
     bsa             : patient BSA (m²)
-    map_mmhg        : measured mean arterial pressure (mmHg)
+    map_mmhg        : measured mean arterial pressure (mmHg). **CONVENTION
+                      UNRESOLVED — see the note at `svr_measured` below.** It is
+                      compared against a CENTRAL AORTIC reference, and a
+                      clinician measures a brachial cuff. Backlog item 77.
     hr_bpm          : heart rate (bpm)
     cardiac_output_lpm : cardiac output (L/min) — tier 2
     abi             : ankle-brachial index — tier 2 (1.0 = normal)
-    cvp_mmhg        : central venous pressure — tier 3
+    cvp_mmhg        : central venous pressure (mmHg) — tier 3. Compared against
+                      a TRANSMURAL reference; a catheter reads intraluminal.
+                      Backlog item 77.
     pcwp_mmhg       : pulmonary capillary wedge pressure — tier 3
     pap_mean_mmhg   : mean pulmonary artery pressure — tier 3
     sex             : "male" (default, the reference set) or "female".
                       See SEX_CHAMBER_FACTORS — male is the identity, so a male
                       patient is unchanged by this parameter existing.
+    height_cm       : patient stature, used ONLY to scale the hydrostatic lever
+                      arm (backlog item 66). Defaults to REF_HEIGHT_CM, which is
+                      the identity, so an existing caller is unchanged.
     """
     if sex not in SEX_CHAMBER_FACTORS:
         raise ValueError(
@@ -232,6 +241,30 @@ def scale_compartments(
     age_factor = arterial_compliance_factor(age_years)
     age_chamber = chamber_age_factors(age_years)
     bv_scale = bsa / BSA_REF
+
+    # PATIENT HEIGHT SCALES THE HYDROSTATIC LEVER ARM — backlog item 66.
+    #
+    # Until 2026-09-25 `height_cm` reached the circulation through ONE route:
+    # bsa_mosteller(). Every compartment's `height_m` was a fixed constant from
+    # the compartment table and was never rescaled, so a 150 cm and a 200 cm
+    # patient of equal body surface area had IDENTICAL orthostatic physics — the
+    # same tilt response to the decimal. Orthostatic stress scales with the
+    # length of the column being supported, which is why stature is a known risk
+    # factor for presyncope, and the model could not express any of it.
+    #
+    # IT IS THE IDENTITY AT THE REFERENCE PATIENT, by construction: at 175 cm
+    # the factor is exactly 1.0 and every height_m is unchanged. That is the same
+    # mitigation item 32 used for sex, and it is what keeps the suite green while
+    # a mechanism goes in.
+    #
+    # A UNIFORM SCALE IS AN ASSUMPTION AND IS LABELLED AS ONE. Body proportions
+    # are not self-similar — leg length varies more with stature than trunk
+    # length does — so scaling the leg compartments and the thoracic ones by the
+    # same factor is an approximation, not a derivation. It is a much smaller
+    # assumption than the previous one, which was that stature does nothing at
+    # all. WANTED, recorded in reference_values.md: anthropometric segment
+    # lengths as a fraction of stature, to replace the uniform factor.
+    height_scale = height_cm / REF_HEIGHT_CM
     scaled = []
 
     for c in compartments:
@@ -254,6 +287,7 @@ def scale_compartments(
             compliance=c.compliance * bv_scale * age_c,
             unstressed_volume=c.unstressed_volume * bv_scale * sex_vol,
             init_volume=c.init_volume * bv_scale * sex_vol,
+            height_m=c.height_m * height_scale,
             # resistance deliberately unscaled here; tiers 1-3 below adjust it
         ))
 
@@ -280,6 +314,21 @@ def scale_compartments(
     # Tier 1: scale SVR from MAP if cardiac output not available
     if map_mmhg is not None:
         co_est = cardiac_output_lpm if cardiac_output_lpm is not None else _estimate_co(bsa)
+        # CONVENTION MISMATCH, MEASURED 2026-09-27 AND NOT SILENTLY CORRECTED.
+        # `map_mmhg` and `cvp_mmhg` arrive from a clinician: a BRACHIAL CUFF
+        # pressure and an INTRALUMINAL catheter pressure. They are divided by the
+        # reference below, which is CENTRAL AORTIC and TRANSMURAL. On the
+        # reference patient the model's own gaps are +6.47 mmHg (central minus
+        # brachial) and +2.05 mmHg (transmural minus intraluminal).
+        #
+        # The two errors are in OPPOSITE directions and partly cancel, which is
+        # why this survived: a low MAP understates svr_measured, a low CVP
+        # overstates it. Net, with both conventions mismatched, **svr_scale comes
+        # out about 4.8 % low**; with only the MAP mismatched, 7.2 % low.
+        #
+        # NOT FIXED HERE. A site correction would move every patient-scaled result
+        # in the suite and belongs with items 50 and 58, which already carry the
+        # reference operating point as a strict xfail. Backlog item 77 holds it.
         svr_measured = _svr(map_mmhg, cvp_mmhg or 5.0, co_est)
         # Imported, not re-typed — see the REFERENCE_* note in baroreflex.py.
         # These were two independent copies of one operating point until
@@ -357,6 +406,7 @@ def build_patient_params(
         pap_mean_mmhg=pap_mean_mmhg,
         sex=sex,
         age_years=age_years,
+        height_cm=height_cm,
     )
 
 

@@ -18,7 +18,12 @@ Inputs scale from minimal (MAP + BMI) to full intracardiac monitoring (CO, CVP, 
 # Install dependencies
 pip install -r requirements.txt
 
-# Fast regression suite — the ratchet. ~10 min. This is what CI runs.
+# Fast regression suite — the ratchet. **~100 min** (measured 2026-09-28:
+# 112 passed, 15 xfailed, 1 h 39 min 34 s; it was 1 h 19 min the day before,
+# and the item 70 pass 2 tests added the difference). This file said ~10 min and
+# pytest.ini said ~20 until then; the blind-phase fixtures added in step 2
+# of the v1.1 plan are long multi-arm runs and the figure never moved with
+# them. This is what CI runs.
 pytest
 
 # Slow-dynamics suite — multi-hour simulations, deselected by default.
@@ -81,6 +86,10 @@ tools/                 Reporting and audit tools. NONE of them is asserted by a 
   check_insample.py    Is a study already in the model? Gate for the blind phase
   emit_freeze.py       Emits the whole frozen artefact from one command
   verify_freeze.py     Checks an artefact against its manifest; refuses local paths
+  consistency_audit.py Every place the model states ONE quantity, side by side. Needs NO
+                       literature — asks only whether the model agrees with itself, so a
+                       disagreement is a defect whichever side is wrong. `--settle` adds
+                       the checks needing a run. 10 of 16 disagreed on 2026-09-27
   state_dump.py        Full model state with expected values beside every number
   parameter_audit.py   Provenance and constraint status of every parameter
   sensitivity_map.py, resistance_split.py, venous_return_curve.py, venous_state.py
@@ -239,6 +248,86 @@ number you skipped is a number you will later half-remember and get wrong.
 **Do not cite a paper whose numbers you have not read.** A source was once added to the
 validation log on the strength of its title; when finally retrieved it reported a value 9x
 different and did not support the calibration it was cited for.
+
+### Name the convention where the number is defined
+
+**Every pressure constant must say three things: which SITE, TRANSMURAL or INTRALUMINAL, and
+over what WINDOW.** An unstated convention is indistinguishable from a wrong value, so this
+is not documentation — it is what makes a comparison possible at all.
+
+Measured on the reference patient, 2026-09-27: central aortic MAP 95.41 against a brachial
+cuff 88.95 (**6.47 mmHg**); CVP transmural 4.39 against intraluminal 2.34 (**2.05 mmHg**,
+and larger under positive-pressure ventilation).
+
+**The cost of not doing it, three times on record:** a finger pressure compared against an
+integrated central one (about 9 of an 11 mmHg "error"); a transmural CVP fitted where a
+catheter reading belonged, which made a venous return curve slope come out POSITIVE; and
+`build_patient_params` comparing an entered CUFF pressure against a CENTRAL reference, which
+leaves `svr_scale` about 5 % low for every patient built from a measurement (item 77, found
+by writing these conventions down).
+
+### Evidence grades — every parameter carries one, and "unmeasured" is a grade, not a sin
+
+Jesper, 2026-09-27. **Many of this model's parameters will never have a literature value.
+Refusing to parameterise them would forbid exactly the quantities the model exists to
+supply** — organ-level flow and volume in a named state. So the rule is not "sourced or
+nothing". It is: **grade the evidence, record the grade, and never let a low grade pass as
+a high one.**
+
+| grade | evidence | how it may be used |
+|---|---|---|
+| **A** | a human measurement matching on quantity, site, cohort and respiratory phase | as a calibration target |
+| **B** | several INDEPENDENT sources AGREE | ground truth — agreement across methods rules out method artefact |
+| **C** | an indication of the true value (one cohort, or a mismatched one) | a best guess, labelled, and never asserted tightly in a test |
+| **D** | an indication of MAGNITUDE or ORDER only, often cross-species | assume the magnitude; prefer a RATIO to an absolute |
+| **E** | nothing in the literature | **pinned by the model, and reported as a PREDICTION** |
+| **F** | the literature CONTRADICTS it and it is kept anyway | **must be named in the code, the log AND the README** |
+
+**GRADE A IS NOT BEATEN BY COUNTING SOURCES.** One well-matched human measurement outranks
+three mismatched ones. This project has lost six days to a site mismatch and has twice
+retracted a claim built on an age-mismatched cohort. **Match quality first, then number of
+routes.**
+
+**GRADE B HAS ONE PRECONDITION: THE SOURCES MUST BE INDEPENDENT.** Several sources agreeing
+is ground truth only if they COULD have disagreed. Three papers descending from one original
+carry one paper's weight, and **their agreement is the more seductive error, because
+agreement reads as confirmation.** The live instance is in this repository: *"the arteries
+hold 13-15 % of blood volume"* is repeated everywhere, agrees with itself everywhere, and a
+PubMed scope found no human study behind it. **Check provenance before counting a source.**
+Independence means different labs, different methods, different cohorts — Maas 2009 and Maas
+2013 are the same lab and the same method, so they are one route with scatter, not two.
+
+**AND WHEN SOURCES DISAGREE, DO NOT AVERAGE THEM — FIND OUT WHY.** A disagreement is either
+scatter, in which case take the range and grade C; or it is systematic, in which case the two
+numbers describe DIFFERENT QUANTITIES and averaging manufactures one that describes nothing.
+A cuff MAP and an integrated central MAP differ by ~9 mmHg for a reason. **The reason is
+sometimes the most valuable thing in the comparison:** Franklin and McEniery disagree on
+arterial compliance by age, and that gap turned out to be what hypertension does on top of
+normal ageing (item 48).
+
+**GRADE E IS A REAL CLAIM AND CARRIES TWO OBLIGATIONS.** A parameter the model pins where
+the literature is silent is one of this project's intended contributions. It is only honest
+if:
+1. **The neighbourhood is validated.** Extrapolation is worth exactly as much as the
+   structure doing it, and this repository has found five structural errors that left MAP,
+   CO and CVP looking fine. A pinned number sitting inside an unvalidated structure is an
+   artefact with a confidence interval, not a discovery.
+2. **The parameter is IDENTIFIABLE.** Check that the endpoint pinning it actually moves when
+   it moves, and that no second free parameter pins it equally well. Two unmeasured
+   parameters that trade off pin their product, not themselves.
+
+**GRADE F IS THE DANGEROUS ONE AND THE PROJECT HAS AT LEAST ONE.** Phenylephrine's venous
+`e_max = 0.10` is kept because Schaefers' awake flow response demands it, while Bell 1991
+measures the splanchnic bed moving the OTHER WAY in conscious man. That is defensible, and
+it must never be silent: a grade-F parameter is a stated limitation, not an implementation
+detail.
+
+**WHAT THIS CHANGES IN PRACTICE.** Not the tuning rule — a grade A or B number is still
+never bent to fit an endpoint. What changes is that a grade D or E parameter is now
+LEGITIMATE where before it was either avoided or smuggled in uncited. **The grade must be
+written where the parameter is defined**, so the next reader sees it without consulting the
+log. `tools/parameter_audit.py` should report the distribution of grades; a manuscript
+should publish it.
 
 ### Slow dynamics — three rules
 

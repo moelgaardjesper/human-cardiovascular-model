@@ -44,7 +44,8 @@ from .heart import (
     atrial_phase_offset,
 )
 from .gravity import hydrostatic_delta_mmhg, GravityEnvironment, smooth_tilt_profile, positional_itp_mmhg
-from .baroreflex import BaroreflexController
+from .baroreflex import (BaroreflexController,
+                         VENOUS_RESTING_TONE as B_VENOUS_RESTING_TONE)
 from .pharmacology import combined_drug_factors, NEUTRAL_FACTORS
 from .respiration import (
     intrathoracic_pressure, respiratory_sinus_arrhythmia, valsalva_itp_mmhg,
@@ -106,6 +107,27 @@ def region_volumes(V: np.ndarray) -> dict[str, float]:
 # slug lands in a ~1.6 L stressed pool, so a ±15 % tone change moves CO ~±13 %.
 MOBILIZABLE_VENOUS_RESERVOIR = ("splanchnic_vein", "upper_body_vein")
 _VENOUS_TONE_IDX = frozenset(IDX[name] for name in MOBILIZABLE_VENOUS_RESERVOIR)
+
+# Which drainage paths `venous_resistance_factor` acts on — backlog item 70.
+#
+# THE WHOLE SYSTEMIC VENOUS PATH, and that is DELIBERATELY WIDER than
+# _VENOUS_TONE_IDX above. Resistance to venous return is measured as a
+# whole-path quantity: Maas and de Wit both obtain it from the slope of a venous
+# return curve built by inspiratory holds, which sees every vessel between the
+# filling-pressure point and the right atrium. Restricting the factor to the two
+# mobilizable compartments would make the model's Rvr respond to a fraction of
+# the bed the sources measured.
+#
+# THE ASYMMETRY WITH _VENOUS_TONE_IDX IS A KNOWN DEFECT, NOT A DESIGN. Venous
+# smooth muscle tone changes unstressed volume AND cross-sectional area together
+# — Maas 2013 says so explicitly — so one drug should act on one anatomy through
+# both arms. That the tone arm reaches only splanchnic and upper-body veins is
+# backlog items 9 and 64, and when that set widens these two should become one.
+# Recorded here so the inconsistency is visible rather than inherited.
+#
+# The PULMONARY vein also drains through R_drain and is deliberately excluded:
+# it is not part of systemic venous return.
+_VENOUS_DRAIN_IDX = frozenset(IDX[name] for name in VENOUS_RESERVOIR)
 
 
 # Compartments that lie inside the chest and are therefore surrounded by pleural
@@ -239,6 +261,40 @@ class SimParams:
         # Cardiopulmonary (filling-pressure) arm of the heart-rate reflex.
         # Its own switch so it can be validated alone and in combination.
         self.cardiopulmonary_hr_enabled = True
+
+        # DEMAND PACING, beats/min, or None for no pacemaker. A LOWER RATE LIMIT:
+        # the heart beats at max(native rate, paced rate), which is how AAI and
+        # DDD pacing behave — the pacemaker fires only when the native rhythm
+        # falls below its set rate.
+        #
+        # WHY IT EXISTS. Switching the baroreflex off is the only other way to
+        # hold heart rate still, and it also removes the reflex's VASCULAR arms.
+        # Pacing removes the rate response and leaves the vessels alone, which is
+        # what a paced patient has. Most patients are paced after cardiac surgery,
+        # and Juhl-Olsen 2023 (PMID 37186094) — the cleanest phenylephrine study
+        # in the ledger — paced 25 of 30 at 80-90 /min.
+        #
+        # None is the identity: no code path changes, so every existing run is
+        # bit-for-bit unchanged.
+        self.paced_hr_bpm = None
+
+        # Reflex OUTFLOW and end-organ RESPONSIVENESS — backlog item 70. See
+        # the note in baroreflex.py. All exactly 1.0 by default, which is the
+        # identity: every run is bit-for-bit what it was before these existed.
+        # Outflow scales act before the end-organ saturation (a drug that cuts
+        # nerve traffic); responsiveness acts after it (an end organ that
+        # answers less, as with age).
+        self.sympathetic_outflow_scale = 1.0
+        self.vagal_outflow_scale       = 1.0
+        self.reflex_responsiveness     = None   # dict, keys as DEFAULT_REFLEX_RESPONSIVENESS
+        # RESTING SYMPATHETIC VENOUS TONE — item 70 pass 2. The fraction of
+        # DENERVATED mobilizable venous unstressed volume that resting tone holds
+        # back. `sympathetic_outflow_scale` withdraws it, so a sympatholytic
+        # venodilates at rest, which nothing could do before. Calibrated against a
+        # three-source convergence on the fall in mean circulatory filling pressure
+        # when tone is removed (Hahn -13.8 %, de Wit -23.3 %, Appleton -26 %).
+        # See VENOUS_RESTING_TONE in baroreflex.py. 0.0 is the exact identity.
+        self.venous_resting_tone       = B_VENOUS_RESTING_TONE
 
         # Frank-Starling on/off
         self.frank_starling_enabled = True
@@ -621,9 +677,68 @@ def _odes(t: float, V: np.ndarray, params: SimParams, baro: BaroreflexController
     # multiplier on systemic venous unstressed volume (V0). See _VENOUS_TONE_IDX.
     #   < 1  venoconstriction → lower V0 → higher venous P → ↑ preload/CO
     #   > 1  venodilation     → higher V0 → venous pooling → ↓ preload/CO
-    vt = drugs.get("venous_tone_factor", 1.0)
+    # RESTING SYMPATHETIC VENOUS TONE — item 70 pass 2. A BACKGROUND sympathetic
+    # level, independent of the reflex's dynamic deviation, withdrawn by
+    # `sympathetic_outflow_scale` (the sympatholytic knob from pass 1). It works
+    # whether the reflex is on or off, so reflex-off still means only "no dynamic
+    # modulation" and every existing reflex-off test is untouched.
+    _venous_tone_rest = getattr(params, "venous_resting_tone", 0.0)
+    _tone_factor = 1.0 - _venous_tone_rest * getattr(params, "sympathetic_outflow_scale", 1.0)
+    vt = drugs.get("venous_tone_factor", 1.0) * _tone_factor
     if baro is not None:
         vt *= baro.v0_vein_factor
+    # Venous COMPLIANCE, a separate degree of freedom from unstressed volume.
+    # Backlog item 70. Applied to the same compartments as `vt`, so the two
+    # venous mechanisms act on the same anatomy and widen together if
+    # _VENOUS_TONE_IDX ever widens.
+    #   > 1  more compliant → the same volume generates LESS pressure
+    #   < 1  stiffer        → the same volume generates MORE pressure
+    #
+    # WHY IT EXISTS, AND IT IS NOT TO CLOSE A GAP. Mean systemic filling
+    # pressure is stressed volume divided by compliance, so a fall in filling
+    # pressure under anaesthesia can come from V0 RISING or from C RISING, and
+    # the two are indistinguishable from filling pressure alone. Measured on
+    # Hahn 2022's Table 1 (validation_log.md, 2026-09-27): a 13.8 % fall in
+    # stressed volume and a 16.0 % rise in compliance produce exactly the same
+    # observed fall. Until 2026-09-27 the model had ONLY the V0 knob, so it was
+    # forced to attribute every venous drug effect to unstressed volume — and it
+    # was credited or blamed for the whole of it on that basis three times
+    # (propofol against de Wit, phenylephrine against Bell, the spinal block).
+    #
+    # THIS IS AN IDENTIFIABILITY FIX. It lets de Wit 2016 — which reports MSFP,
+    # Rvr, Ra, CVP, CO and SVV at three propofol levels — discriminate the two
+    # mechanisms, instead of us choosing one because it is the only one
+    # expressible. NO DRUG SETS IT YET, deliberately: every PD function returns
+    # 1.0 until a source says otherwise.
+    vc = drugs.get("venous_compliance_factor", 1.0)
+    # Venous RESISTANCE — the third venous degree of freedom, backlog item 70.
+    #   > 1  more resistance (venoconstriction narrows the vessel)
+    #   < 1  less resistance (venodilation widens it)
+    # NOTE THE CONVENTION IS NOT INVERTED, unlike `venous_tone_factor`. Three
+    # venous factors now exist and they do not share one sign rule:
+    #   venous_tone_factor        < 1 = constriction  (it multiplies V0)
+    #   venous_compliance_factor  < 1 = stiffer
+    #   venous_resistance_factor  > 1 = constriction  (it multiplies resistance)
+    # The first is the odd one out and CLAUDE.md already warns about it.
+    #
+    # WHY IT EXISTS, AND IT IS MEASURED FROM BOTH DIRECTIONS IN HUMANS.
+    # de Wit 2016 (PMID 27199311): deepening propofol lowered mean systemic
+    # filling pressure 23 % while cardiac output held (-3.5 %, NS), because
+    # resistance to venous return fell 30 % alongside it. Maas 2013
+    # (PMID 23128382): noradrenaline raised Rvr x1.50 against Rsys x1.34. Both
+    # measured Rvr from a venous-return-curve slope built by inspiratory holds,
+    # which is the protocol tools/venous_return_curve.py reproduces.
+    #
+    # AND IT IS NEEDED BY AN IMPOSSIBILITY, not just by a shortfall. Measured
+    # 2026-09-27: to reproduce de Wit, cardiac output must fall only 0.15 times
+    # as fast as filling pressure. Unstressed volume alone gives 1.15 and
+    # compliance alone 0.78, so EVERY non-negative mixture of the two lands in
+    # [0.78, 1.15] and none can reach 0.15. A resistance arm is the only way out.
+    # Full record in docs/validation_log.md, 2026-09-27.
+    #
+    # NO DRUG SETS IT YET. The sources above give magnitudes; applying them is a
+    # separate change with its own validation run.
+    vr = drugs.get("venous_resistance_factor", 1.0)
 
     i = IDX
     P = np.zeros(len(comp))
@@ -638,14 +753,27 @@ def _odes(t: float, V: np.ndarray, params: SimParams, baro: BaroreflexController
                 i["pulmonary_art"], i["pulmonary_cap"], i["pulmonary_vein"],
                 i["coronary"]]:
         c = comp[idx]
-        v0 = c.unstressed_volume * vt if idx in _VENOUS_TONE_IDX else c.unstressed_volume
+        in_venous_tone_set = idx in _VENOUS_TONE_IDX
+        # RE-BASELINE FOR RESTING TONE — item 70 pass 2. The tabulated V0 was set
+        # for a circulation whose resting venous tone was zero, so it IS the
+        # resting value. With a resting tone the table must describe the
+        # DENERVATED vessel instead, which is larger by 1/(1 - tone); the reflex
+        # then holds it back down to the tabulated value at rest. At tone 0 this
+        # divides by 1.0 and the model is bit-for-bit unchanged.
+        #
+        # GANGLIONIC BLOCKADE is `sympathetic_outflow_scale = 0`, which removes the
+        # tone term from `vt` and leaves V0 at the denervated value. That is what
+        # Appleton 1986 measured and what the calibration is checked against.
+        v0 = ((c.unstressed_volume / (1.0 - _venous_tone_rest)) * vt
+              if in_venous_tone_set else c.unstressed_volume)
+        compliance = c.compliance * vc if in_venous_tone_set else c.compliance
         # Venous stress relaxation (slow_dynamics.py) adds a slowly-varying
         # offset to unstressed volume: sustained distension lets the wall creep,
         # accommodating volume at lower pressure. Zero at rest and when slow
         # dynamics are disabled.
         if slow is not None:
             v0 += slow.v0_relax_ml[idx]
-        P[idx] = _vascular_pressure(V[idx], v0, c.compliance, c.p_stiffen)
+        P[idx] = _vascular_pressure(V[idx], v0, compliance, c.p_stiffen)
 
     # Cardiac chambers (time-varying elastance)
     P[i["left_ventricle"]]  = _cardiac_pressure(V[i["left_ventricle"]],  comp[i["left_ventricle"]].unstressed_volume,  E_lv)
@@ -770,7 +898,9 @@ def _odes(t: float, V: np.ndarray, params: SimParams, baro: BaroreflexController
         that the exchange segment and the drainage path can be set independently
         (see the note on Compartment.drain_resistance).
         """
-        return comp[IDX[idx_name]].drain_resistance
+        idx = IDX[idx_name]
+        r = comp[idx].drain_resistance
+        return r * vr if idx in _VENOUS_DRAIN_IDX else r
 
     # -----------------------------------------------------------------------
     # Flows (mL/s) — Q > 0 means forward flow
@@ -1073,6 +1203,10 @@ def run_simulation(
         baro = BaroreflexController(
             dt=dt,
             cp_hr_enabled=bool(getattr(params, 'cardiopulmonary_hr_enabled', True)),
+            sympathetic_outflow_scale=params.sympathetic_outflow_scale,
+            vagal_outflow_scale=params.vagal_outflow_scale,
+            responsiveness=params.reflex_responsiveness,
+            venous_resting_tone=getattr(params, "venous_resting_tone", 0.0),
         )
 
     # Slow-timescale dynamics (minutes to hours). Inert unless explicitly
@@ -1359,6 +1493,11 @@ def run_simulation(
             hr_now = max(30.0, min(180.0, hr_now + baro.hr_delta))
         if params.ventilation_mode != 'none':
             hr_now = max(30.0, min(180.0, hr_now + rsa_now))
+        # Demand pacing: a floor on the rate, applied AFTER the reflex and RSA so
+        # it overrides both when it captures. The reflex keeps running — only its
+        # rate output is superseded — so its vascular arms still act.
+        if params.paced_hr_bpm is not None:
+            hr_now = max(hr_now, float(params.paced_hr_bpm))
         hr_eff = hr_now
 
         # Carry forward updated HR for next step's monitoring

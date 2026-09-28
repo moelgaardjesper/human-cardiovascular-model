@@ -143,10 +143,10 @@ Known model limitations (documented here for transparency)
 import numpy as np
 import pytest
 
-from model.circulation import SimParams, run_simulation
+from model.circulation import SimParams, run_simulation, _vascular_pressure
 from model.compartments import IDX, default_compartments
-from model.gravity import GravityEnvironment
-from model.patient import (build_patient_params, apply_cardiac,
+from model.gravity import GravityEnvironment, hydrostatic_delta_mmhg
+from model.patient import (build_patient_params, apply_cardiac, bsa_mosteller,
                            REF_HEIGHT_CM, REF_WEIGHT_KG)
 from model.heart import LV_EMAX, RV_EMAX
 from model.pharmacology import combined_drug_factors
@@ -1622,15 +1622,20 @@ def test_pulse_pressure_amplification_mceniery2005(central_pressures):
 # this error was caught on 2026-09-13.
 # ===========================================================================
 
-def _venous_return_curve(bleed_ml=0.0):
+def _venous_return_curve(bleed_ml=0.0, sympathetic_outflow_scale=1.0, baroreflex=True):
     """Fit CO against intraluminal RAP across four airway-pressure holds.
 
     Returns (slope in L/min/mmHg, Pmsf in mmHg).
+
+    `sympathetic_outflow_scale` below 1 is a sympatholytic; 0 is ganglionic
+    blockade. It is a separate knob from `baroreflex_enabled`, so the holds stay
+    reflex-intact as Maas measured them while the resting TONE is withdrawn.
     """
     cvp, co = [], []
     for airway in (5, 15, 25, 35):
         p = SimParams()
-        p.baroreflex_enabled = True          # Maas measured in intact patients
+        p.sympathetic_outflow_scale = sympathetic_outflow_scale
+        p.baroreflex_enabled = baroreflex    # Maas measured in intact patients
         p.ventilation_mode = 'mechanical'
         p.peep_cmh2o = airway
         p.pip_cmh2o = airway
@@ -1826,38 +1831,29 @@ def test_phenylephrine_flow_response_schafers1999(phenyl_dose_response):
         )
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    "KNOWN GAP — THE PRESSOR RESPONSE IS TOO SMALL AND IT SATURATES. Against "
-    "Schäfers 1999 (PMID 10073742, 12 healthy supine men) the model delivers "
-    "about two thirds of the measured mean-arterial-pressure rise and half the "
-    "total-peripheral-resistance rise: at 2/3/4 mcg/kg/min dMAP is +18.2/+20.5/"
-    "+22.0 against a measured +28 (quartiles 23.5-32.5), and dTPR is "
-    "+423/+460/+517 against +950 (650-1270). "
-    "IT SATURATES BELOW THE TARGET: after the 2026-09-14 arterial compliance "
-    "change, dMAP is +19.0/+20.6/+21.3 at 4/6/8 mcg/kg/min — the curve is at "
-    "its ceiling well short of the measured +28, and no higher dose reaches "
-    "it. "
-    "AGE MAKES THE GAP WORSE, NOT BETTER. Their subjects are 27 and the model's "
-    "reference patient is 55; stiffer arteries give a LARGER pressure rise for "
-    "the same vasoconstriction, so the model should overshoot a young cohort "
-    "and it undershoots. "
-    "THE FLOW RESPONSE FROM THE SAME SOURCE PASSES — cardiac output, heart rate "
-    "and stroke volume are all inside their quartiles (see the test above), so "
-    "this is specifically the pressure arm, not the drug being inert. "
-    "DO NOT CLOSE THIS BY RAISING THE PHENYLEPHRINE HILL MAXIMUM. A ceiling "
-    "this low may be the svr_factor pathway rather than the drug curve, and the "
-    "pre/post-capillary resistance split (backlog item 18) acts on the same "
-    "machinery. Find out which before touching either. "
-    "strict=True so it flips to a FAILURE the day the pressor arm is right. "
-    "Full record in docs/reference_values.md under Schäfers 1999."
-))
 def test_phenylephrine_pressor_response_schafers1999(phenyl_dose_response):
     """[PMID: 10073742 — Schäfers 1999] Phenylephrine in healthy supine men
     raises MAP by +28 mmHg (quartiles 23.5-32.5) and total peripheral
     resistance by +950 dyn.s/cm5 (650-1270) at the highest tolerated dose.
 
-    Asserted at the model's own plateau, so this is not a dose mismatch: no
-    dose the model will accept produces the measured pressor effect.
+    Asserted at the model's own plateau, so this is not a dose mismatch.
+
+    **CLOSED 2026-09-26. Was a strict xfail.** The pressor response saturated at
+    dMAP +20 / dTPR +476 because phenylephrine's arterial Hill ceiling was 1.80.
+    **A diagnostic settled the cause before anything was changed:** raising the
+    ceiling raised pressure freely (e_max 3.0 gave +40), so the limit was the
+    drug curve, not the `svr_factor` pathway or the pre/post-capillary split
+    that the old reason warned about. The ceiling is now 2.10, CALIBRATED to
+    this study, and at 2.10 all five Schäfers quantities sit in their bands
+    together — this test and `test_phenylephrine_flow_response_schafers1999`.
+
+    **THIS TEST IS NOW A CALIBRATION CHECK, NOT VALIDATION.** The number it
+    asserts was used to set the ceiling. Say so in any write-up.
+
+    **THE WINDOW IS NARROW.** Ceilings from about 2.05 to 2.15 satisfy all five.
+    Above it heart rate falls past its band (dHR -19.8 at 2.20), because the
+    model's reflex bradycardia per mmHg is steeper than Schäfers measured. A
+    future change to the reflex will show up here first.
     """
     base = phenyl_dose_response[0.0]
     best = max(
@@ -3575,6 +3571,14 @@ def test_age_widens_pulse_pressure_the_way_framingham_measured_it():
     PULSE around a fixed MEAN; a rising resistance would raise the mean. This
     asserts the model reproduces that SHAPE — PP up, MAP nearly unchanged —
     which is the whole reason compliance rather than resistance is scaled.
+
+    REFLEX OFF, AND CHECKED BOTH WAYS 2026-09-28. Franklin followed 2036 awake,
+    intact men, so the reflex-off choice does not match his cohort. It is
+    harmless, and the check is worth keeping: dPP is +8.75 with the reflex
+    either way, and dMAP is -0.90 with it ON against -2.49 with it off. **The
+    reflex-intact run is marginally CLOSER to Franklin's near-flat mean.** Left
+    off so the test isolates the compliance scaling, which is what it is for.
+    Do not re-litigate without re-measuring.
     """
     from model.patient import build_patient_params, apply_cardiac
 
@@ -3623,6 +3627,12 @@ def test_chamber_volumes_scale_with_age_toward_luu():
     transmission is NEGATIVE, so assigning it a volume factor moves it the wrong
     way. That is the same reason item 32 left the LA out of sex scaling, and it
     stays blocked on 25a.
+
+    REFLEX OFF, AND CHECKED BOTH WAYS 2026-09-28. Luu imaged intact humans, so
+    the reflex-off choice does not match the cohort. It is harmless: the
+    direction holds either way, LVEDV -6.1 mL reflex-off against -5.9 with it on,
+    RVEDV -11.1 against -11.7. Left off so heart-rate differences do not move
+    filling. Do not re-litigate without re-measuring.
     """
     from model.patient import build_patient_params, apply_cardiac
     from model.aging import chamber_age_factors
@@ -4176,3 +4186,1868 @@ def test_ventricular_pressures_form_a_valid_pv_loop():
         assert lo < joules < hi, (
             f"{name} stroke work {joules:.3f} J outside {lo}-{hi} J"
         )
+
+
+# ===========================================================================
+# 31. BLIND-PHASE LITERATURE TARGETS — the v1.0.0 freeze validation
+#
+# READ THIS BEFORE ADDING OR CHANGING ANYTHING IN THIS SECTION.
+#
+# **THESE STUDIES ARE SPENT. THEY ARE FITTED TARGETS, NOT VALIDATION.**
+# Each was used once as a blind out-of-sample test of the frozen `v1.0.0`
+# model. The predictions are public and timestamped in `preregistration/`,
+# and the results are appended to them. From 2026-09-24 they become
+# DEVELOPMENT targets. `tools/check_insample.py` will find them here and it
+# will be right to. **No paper may present any of them as out-of-sample.**
+# The next blind phase needs different studies.
+#
+# WHY THEY ALL LAND AT ONCE, rather than one at a time as each is fixed.
+# This project's most-repeated process failure is optimising the loosest
+# constraint — twice on record, most recently as *"the constraint list has to
+# be re-read, not remembered."* If every target is a live assertion you cannot
+# improve a subset without the rest reporting. And a fix that closes something
+# unexpectedly announces itself as an XPASS, the way item 28's venous work
+# closed items 22 and 23 by surprise.
+#
+# EVERY xfail REASON CARRIES THE MEASURED GAP AND THE DATE IT WAS MEASURED,
+# because the log has already caught one stale reason.
+#
+# ---------------------------------------------------------------------------
+# TARGETS THAT WERE CONSIDERED AND DELIBERATELY NOT WRITTEN.
+# Recorded here rather than left as a silence, because a missing test looks
+# identical to an overlooked one.
+#
+#   * PMID 9925894 — the 10 deg head-down tilt responses (dMAP, dHR, both age
+#     groups). **A model predicting exactly zero scores tier A on all four.**
+#     The measured effects are 0 to 2 units against between-subject SDs of 3.2.
+#     Writing them would ratchet in a target that cannot fail, which is the
+#     opposite of what the ratchet is for.
+#   * PMID 9925894 — the resting MAP and HR age gaps. Underpowered for the same
+#     reason: the resting MAP difference of +5 mmHg is 1.18 standard errors
+#     from zero, so the STUDY did not establish it either. PMID 9404222
+#     measures the same contrast at 2.7 SE with the convention matched
+#     (arm cuff against the model's brachial output), and is used instead.
+#   * PMID 31705432 — head-down tilt over-delivery. The target is +29 %
+#     (IQR 21 to 41) but the study does not publish its tilt ANGLE, and the
+#     model crosses the whole IQR between -5 and -15 degrees. A test would be
+#     measuring the assumed angle, not the venous bed.
+#   * PMID 27164015 — the between-group phenylephrine difference. The study's
+#     patients were preload-dependent from anaesthetic VENODILATION and
+#     registration 004 built its arm by HAEMORRHAGE, which is the diagnosis of
+#     that registration's failure. Reproducing the study needs the venodilated
+#     construction, which has never been run. **Run it first, then write the
+#     test with a measured gap** — backlog item 64 holds the protocol.
+# ===========================================================================
+
+# --- White 1997, PMID 9404222 -----------------------------------------------
+# 16 young (25 +/- 3) and 16 older (68 +/- 7) volunteers, 8 male and 8 female
+# in each group, 30 min of 60 deg head-up tilt, automated arm cuff on the left
+# arm. Mean +/- SEM with n = 16, so SD = SEM x 4.
+#
+# THE SITE IS MATCHED DELIBERATELY. These tests read `brachial_sbp` and
+# `brachial_dbp` and reconstruct mean pressure as (S + 2D)/3 — the same formula
+# on the same site as the cuff. Registration 005 compared the model's AORTIC
+# pressure against a finger measurement and about 9 of its 11 mmHg gap turned
+# out to be the site alone. Do not switch these to `sbp`/`dbp`.
+_W97_DHR_YOUNG   = (15.0, 7.6)    # +15.0 +/- 1.9 SEM -> SD 7.6
+_W97_DHR_OLDER   = (3.6,  4.4)    # +3.6  +/- 1.1 SEM -> SD 4.4
+_W97_DDBP_YOUNG  = (7.0,  6.4)    # +7.0  +/- 1.6 SEM -> SD 6.4   MALES
+_W97_DDBP_OLDER  = (-2.5, 6.0)    # -2.5  +/- 1.5 SEM -> SD 6.0   MALES
+_W97_DBP_YOUNG   = (62.7, 6.4)    # supine brachial diastolic
+_W97_DBP_OLDER   = (65.0, 8.8)
+_W97_PP_YOUNG    = 49.3           # supine brachial pulse pressure
+_W97_PP_OLDER    = 60.0
+_W97_PP_WIDENING = 10.7           # mmHg across 43 years = 0.249 mmHg/year
+
+
+def _white1997_tilt(age_years, sex, height_cm, weight_kg):
+    """One arm of White 1997: supine baseline, then 5 minutes at 60 degrees.
+
+    Timing follows the registration: settle to 120 s, read the supine window
+    90-120 s, ramp to 60 deg over 10 s from t=120, and read 400-430 s — which
+    is 4.5 to 5.0 minutes after the ramp completes. **Apply times and measure
+    windows are separate quantities**; using one variable for both produced the
+    stage-timing error in registration 001.
+
+    Weights are Devine ideal body weight, which this cohort supports directly:
+    every subject was within 20 % of ideal body weight. Height is not reported
+    and is assumed. **It is deliberately not bracketed** — registration 005
+    measured a 172-182 cm bracket and it moved the primary by 0.03 mmHg,
+    because patient height reaches this model only through body surface area
+    and never scales the hydrostatic column (backlog item 66).
+    """
+    p = cohort_params(height_cm, weight_kg, age_years=age_years, sex=sex)
+    p.tilt_start_deg  = 0.0
+    p.tilt_end_deg    = 60.0
+    p.tilt_onset_s    = 120.0
+    p.tilt_duration_s = 10.0
+    p.ventilation_mode = "spontaneous"
+    p.resp_rate_bpm    = 14.0
+    r = run_simulation(p, duration_s=440.0, dt=DT)
+    t = np.asarray(r["t"])
+
+    def w(key, t0, t1):
+        a = np.asarray(r[key])
+        return float(np.mean(a[(t >= t0) & (t < t1)]))
+
+    sup = {k: w(k, 90.0, 120.0) for k in ("hr", "brachial_sbp", "brachial_dbp")}
+    til = {k: w(k, 400.0, 430.0) for k in ("hr", "brachial_sbp", "brachial_dbp")}
+    for d in (sup, til):
+        d["map"] = (d["brachial_sbp"] + 2.0 * d["brachial_dbp"]) / 3.0
+        d["pp"]  = d["brachial_sbp"] - d["brachial_dbp"]
+    return sup, til
+
+
+@pytest.fixture(scope="module")
+def white1997_arms():
+    """All four arms: two ages x two sexes. Module-scoped — each is a 440 s run."""
+    body = {"male": (175.0, 70.5), "female": (162.0, 54.2)}
+    return {(age, sex): _white1997_tilt(age, sex, *body[sex])
+            for age in (25.0, 68.0) for sex in ("male", "female")}
+
+
+@pytest.mark.xfail(strict=True, reason=(
+    "KNOWN GAP — THE BAROREFLEX HAS NO AGE DEPENDENCE OF ANY KIND. "
+    "BaroreflexController.__init__ takes map_set, pp_set, cvp_set, dt, "
+    "history_len, cp_hr_enabled and cp_hr_ref_cvp — no age, no body size, no "
+    "sex — and patient.py never touches a gain. Age reaches exactly two places: "
+    "aging.arterial_compliance_factor and aging.chamber_age_factors. So an "
+    "age-invariant reflex produces an age-invariant reflex response. "
+    "MEASURED 2026-09-25 on this scenario: the model's age difference in the 5-minute tilt tachycardia is +0.15 bpm (age 25 +23.38, age 68 +23.53, mean of the male and female runs) against a measured -11.4 +/- 8.8 (1 SD). Registration 006 measured +0.1 bpm on the same scenario before any of these results were seen.  "
+    "PREDICTED IN ADVANCE AND CONFIRMED BLIND. preregistration/006 registered "
+    "a zero age difference before these results were seen, as direct "
+    "out-of-sample evidence for backlog item 51, which until then rested only "
+    "on reading the code. It failed exactly as registered. "
+    "ONE CONFOUND, NAMED: 60 degrees is outside the model's validated tilt "
+    "range of -30 to +45, where leg venous return collapses. That affects both "
+    "age arms equally, so it cannot manufacture an age difference — but it "
+    "does mean the ABSOLUTE tachycardia here is not clean. The age DIFFERENCE "
+    "is the assertion; the absolute is not asserted. "
+    "DO NOT CLOSE THIS BY SCALING THE LUMPED GAIN WITHOUT READING BACKLOG ITEM "
+    "70 FIRST. The older subjects reached their smaller response with MORE "
+    "noradrenaline, not less (267 +/- 15 against 183 +/- 23 pg/mL at rest, "
+    "P < 0.05), so the age law belongs on end-organ responsiveness and not on "
+    "sympathetic outflow. A single gain reproduces the haemodynamics either "
+    "way and encodes the wrong mechanism. "
+    "strict=True so it flips to a FAILURE the day the reflex ages. "
+    "Full tables in docs/reference_values.md under PMID 9404222."
+))
+def test_orthostatic_tachycardia_is_blunted_with_age_white1997(white1997_arms):
+    """[PMID 9404222 — White 1997] Orthostatic tachycardia falls with age.
+
+    At 5 minutes of 60 deg head-up tilt the young raised heart rate by
+    +15.0 +/- 1.9 bpm and the older by +3.6 +/- 1.1 (mean +/- SEM, n = 16 each),
+    a difference of -11.4 bpm which the authors mark P < 0.05. At 30 minutes
+    the gap is wider still, 13.6 bpm.
+
+    **The sexes are averaged here and that is sourced, not convenient.** The
+    paper states explicitly that no significant sex-related differences were
+    observed in the heart-rate response, at either age. The diastolic response
+    is different and is tested separately in males only — see the test below.
+    """
+    mean_dhr = {}
+    for age in (25.0, 68.0):
+        arms = [white1997_arms[(age, s)] for s in ("male", "female")]
+        mean_dhr[age] = sum(t["hr"] - s["hr"] for s, t in arms) / len(arms)
+
+    measured_diff = _W97_DHR_OLDER[0] - _W97_DHR_YOUNG[0]          # -11.4 bpm
+    sd_diff = float(np.hypot(_W97_DHR_YOUNG[1], _W97_DHR_OLDER[1]))  # 8.78
+    model_diff = mean_dhr[68.0] - mean_dhr[25.0]
+
+    assert abs(model_diff - measured_diff) <= sd_diff, (
+        f"age difference in orthostatic tachycardia {model_diff:+.2f} bpm "
+        f"(young {mean_dhr[25.0]:+.2f}, older {mean_dhr[68.0]:+.2f}) is outside "
+        f"one SD of the measured {measured_diff:+.1f} +/- {sd_diff:.1f} bpm — "
+        f"the reflex does not age"
+    )
+
+
+@pytest.mark.xfail(strict=True, reason=(
+    "KNOWN GAP — THE SAME AGE-BLIND REFLEX, MEASURED IN THE VASCULAR EFFECTOR "
+    "RATHER THAN THE CHRONOTROPIC ONE. Registration 006 scored heart rate "
+    "because heart rate is what it registered; the paper's full Table 1, "
+    "transcribed 2026-09-24, shows the diastolic response separates the age "
+    "groups just as sharply and in a way heart rate cannot explain. "
+    "MEASURED 2026-09-25, males: the model's age difference in the diastolic tilt response is +3.71 mmHg (age 25 -26.53, age 68 -22.82) against a measured -9.5 +/- 8.8. Wrong sign and wrong size. NOTE BOTH MODEL VALUES ARE LARGE AND NEGATIVE where the subjects' were +7.0 and -2.5 — the model's diastolic pressure collapses at 60 degrees in both age groups, so the LEVEL of each response is contaminated by the out-of-range tilt and only the DIFFERENCE is asserted.  "
+    "THIS IS WHY BACKLOG ITEM 51 IS TWO GAPS AND NOT ONE. An age law written "
+    "on heart-rate gain alone would close the test above, turn the suite "
+    "green, and leave this one failing — which is the point of writing both. "
+    "SYSTOLIC PRESSURE IS FLAT IN BOTH GROUPS AT ALL EIGHT TIME POINTS, so the "
+    "whole mean-pressure response is diastolic. That is why this test reads "
+    "the diastolic and not the mean. "
+    "MALES ONLY, AND THAT IS SOURCED. The paper states that no age-related "
+    "change in diastolic blood pressure in response to tilt was observed in "
+    "female subjects, and that the age-related rise in noradrenaline was "
+    "restricted to the older male subgroup. Table 1 combines the sexes, so its "
+    "age difference is carried by 8 men per group and DILUTED by 8 women in "
+    "whom the effect is absent. Testing the combined value would test a "
+    "half-strength signal. Backlog item 71 holds the sex-by-age interaction, "
+    "which the model cannot express at all today. "
+    "strict=True so it flips to a FAILURE the day the vascular arm ages. "
+    "Full tables in docs/reference_values.md under PMID 9404222."
+))
+def test_orthostatic_vasoconstriction_is_blunted_with_age_white1997(white1997_arms):
+    """[PMID 9404222 — White 1997] The diastolic response to tilt falls with age.
+
+    At 5 minutes of 60 deg head-up tilt the young MALES raised diastolic
+    pressure by +7.0 +/- 1.6 mmHg and the older LOWERED it by -2.5 +/- 1.5
+    (mean +/- SEM, n = 8 per sex per group), a difference the authors mark
+    P < 0.05.
+
+    The young clamp down on standing; the older group's diastolic pressure
+    falls first and recovers only by 10 minutes.
+    """
+    ddbp = {}
+    for age in (25.0, 68.0):
+        sup, til = white1997_arms[(age, "male")]
+        ddbp[age] = til["brachial_dbp"] - sup["brachial_dbp"]
+
+    measured_diff = _W97_DDBP_OLDER[0] - _W97_DDBP_YOUNG[0]          # -9.5 mmHg
+    sd_diff = float(np.hypot(_W97_DDBP_YOUNG[1], _W97_DDBP_OLDER[1]))  # 8.77
+    model_diff = ddbp[68.0] - ddbp[25.0]
+
+    assert abs(model_diff - measured_diff) <= sd_diff, (
+        f"age difference in the diastolic tilt response {model_diff:+.2f} mmHg "
+        f"(young {ddbp[25.0]:+.2f}, older {ddbp[68.0]:+.2f}) is outside one SD "
+        f"of the measured {measured_diff:+.1f} +/- {sd_diff:.1f} mmHg"
+    )
+
+
+@pytest.mark.xfail(strict=True, reason=(
+    "KNOWN GAP — BRACHIAL DIASTOLIC PRESSURE IS TOO HIGH AND ITS AGE "
+    "DIRECTION IS WRONG. Backlog item 67, opened from this study. "
+    "MEASURED 2026-09-25, supine, mean of the male and female runs: brachial DBP 81.08 at age 25 against 62.7 +/- 6.4, and 75.45 at age 68 against 65.0 +/- 8.8. The model FALLS 81.08 -> 75.45 across the age span where the measurement RISES 62.7 -> 65.0.  "
+    "IT IS TWO FAULTS AND THEY SPLIT BY AGE. Brachial DBP is MAP - PP/3, so "
+    "the error decomposes exactly: in the young, +9.5 mmHg comes from the mean "
+    "pressure being too high (item 62's territory) and +8.9 from the pulse "
+    "pressure being too narrow. In the older group the mean pressure is "
+    "essentially correct and the whole error is the narrow pulse pressure. "
+    "So items 62 and 67 are COUPLED in the young and INDEPENDENT in the old, "
+    "and neither closes this on its own. "
+    "THE DIASTOLIC CARRIES MOST OF IT. The systolic is about 8 mmHg LOW in the "
+    "young while the diastolic is 18 HIGH, so the narrow brachial pulse "
+    "pressure is mainly a diastolic fault. Anyone reaching for this will look "
+    "at systolic first and that is the wrong end. "
+    "PROBABLY NOT FULLY FIXABLE, and that is the honest framing. Pulse "
+    "pressure amplification runs at 0.88 against a measured 1.33 +/- 0.16 and "
+    "needs wave travel, transit time and reflection, none of which a "
+    "23-compartment lumped model has. Scope whether a central-to-brachial "
+    "transfer function belongs in the MODEL or in the REPORTING layer before "
+    "building anything. "
+    "DO NOT FIX THIS BY MOVING ARTERIAL COMPLIANCE. The central pulse pressure "
+    "was deliberately calibrated there on 2026-09-14 and is validated against "
+    "McEniery at three decades. Moving it breaks that and leaves the level "
+    "untouched. "
+    "strict=True. Full record in docs/reference_values.md under PMID 9404222."
+))
+def test_brachial_diastolic_pressure_by_age_white1997(white1997_arms):
+    """[PMID 9404222 — White 1997] Supine brachial diastolic pressure, by age.
+
+    Measured by arm cuff: 62.7 +/- 1.6 at age 25 and 65.0 +/- 2.2 at age 68
+    (mean +/- SEM, n = 16 each, so SD 6.4 and 8.8).
+
+    **Diastolic pressure RISES slightly with age.** Two assertions follow, and
+    they fail for different reasons: the level in each group, and the direction
+    across them.
+    """
+    dbp = {}
+    for age in (25.0, 68.0):
+        arms = [white1997_arms[(age, s)][0] for s in ("male", "female")]
+        dbp[age] = sum(a["brachial_dbp"] for a in arms) / len(arms)
+
+    for age, (mean, sd) in ((25.0, _W97_DBP_YOUNG), (68.0, _W97_DBP_OLDER)):
+        assert abs(dbp[age] - mean) <= sd, (
+            f"supine brachial DBP at age {age:.0f} is {dbp[age]:.2f} mmHg "
+            f"against a measured {mean} +/- {sd} (1 SD)"
+        )
+    assert dbp[68.0] > dbp[25.0], (
+        f"brachial diastolic pressure FALLS with age in the model "
+        f"({dbp[25.0]:.2f} at 25 -> {dbp[68.0]:.2f} at 68); measured it RISES, "
+        f"{_W97_DBP_YOUNG[0]} -> {_W97_DBP_OLDER[0]}"
+    )
+
+
+def test_age_slope_of_brachial_pulse_pressure_white1997(white1997_arms):
+    """[PMID 9404222 — White 1997] The age slope of pulse pressure is RIGHT.
+
+    **THIS TEST PASSES, AND IT IS A GUARD RATHER THAN A TARGET.** It is here to
+    protect a working emergent behaviour from the work that is about to move
+    every pressure in the model — backlog items 62, 65, 66 and 67 all act on
+    the same quantities.
+
+    Measured brachial pulse pressure widens 49.3 -> 60.0 mmHg between age 25
+    and 68, which is +10.7 mmHg over 43 years, or 0.249 mmHg/year. The model
+    produced +11.7, or 0.272 — within 10 %, **and nothing was fitted to it.**
+    `aging.py` derives its arterial compliance law from Franklin 1997's
+    LONGITUDINAL pulse-pressure slope of 0.68 mmHg/year, which over 43 years
+    would imply 29 mmHg. The emergent widening is not the number that was put
+    in: it falls out of compliance, stroke volume and the circuit, and it lands
+    on this cohort's measured value.
+
+    That is also consistent with backlog item 48 — cross-sectional cohorts show
+    LESS widening than longitudinal ones, because they exclude at measurement
+    the people whose pressure rose. This cohort is cross-sectional.
+
+    **THE BAND IS A REGRESSION TOLERANCE, NOT A LITERATURE SPREAD, and the
+    distinction is deliberate.** Pulse pressure is not tabulated with its own
+    error term, and propagating the systolic and diastolic errors gives an SD
+    on the age difference of about 18 mmHg — a band so wide that any model
+    passes and the guard would be worthless. The band below is set around the
+    measured 10.7 at a stated tolerance, and its purpose is to FAIL if a change
+    breaks the age law, not to certify agreement.
+
+    **The absolute pulse pressure is badly wrong at both ages and is asserted
+    in the failing test above.** The level and the slope are separable claims:
+    the level is the central-to-peripheral transfer (item 67) and the slope is
+    the age law on arterial compliance. One is broken and the other works, and
+    a single tier on pulse pressure would have hidden both.
+
+    ONE CAVEAT, STATED ONCE. Because the baseline is about half, the RELATIVE
+    widening is overstated — 1.52x against a measured 1.22x. The absolute rate
+    agrees; the proportional rate does not.
+    """
+    pp = {}
+    for age in (25.0, 68.0):
+        arms = [white1997_arms[(age, s)][0] for s in ("male", "female")]
+        pp[age] = sum(a["pp"] for a in arms) / len(arms)
+
+    widening = pp[68.0] - pp[25.0]
+    lo, hi = 0.6 * _W97_PP_WIDENING, 1.6 * _W97_PP_WIDENING
+    assert lo <= widening <= hi, (
+        f"brachial pulse pressure widens {widening:+.2f} mmHg between age 25 "
+        f"and 68 ({pp[25.0]:.2f} -> {pp[68.0]:.2f}), outside the "
+        f"{lo:.1f}-{hi:.1f} guard band around the measured "
+        f"{_W97_PP_WIDENING} mmHg ({_W97_PP_WIDENING/43.0:.3f} mmHg/year). "
+        f"The age law on arterial compliance has moved."
+    )
+
+
+# --- PMID 27702883 ----------------------------------------------------------
+# 15 healthy volunteers, 7 male and 8 female, age 22 (20-30), BMI 23.4.
+# Supine in an LBNP chamber; -30 mmHg applied within 0.3 s and held ten
+# minutes. MAP by finger arterial pressure, heart rate by ECG, cardiac output
+# by ULTRASOUND — a direct flow measurement, not a pulse-contour estimate the
+# model's peripheral waveform would corrupt. Reported as median (IQR).
+#
+# LBNP IS NOT A MODEL INPUT and is substituted by haemorrhage, as the rest of
+# the suite already does. The blind phase settled the exchange rate: matching
+# the measured dCO and dHR, **-30 mmHg behaves like 500 mL or a little less**,
+# and 1000 mL is about double the measured effect. Registration 002 recorded
+# that direction in advance and it held.
+_LBNP_SV_IQR  = (72.5, 84.4)   # supine stroke volume, median 80.4 mL
+_LBNP_DCO     = -1.00          # L/min at -30 mmHg, spontaneous breathing
+_LBNP_DHR     = +5.8           # bpm
+_LBNP_DMAP    = +2.90          # mmHg — the model has this BACKWARDS
+
+
+@pytest.fixture(scope="module")
+def lbnp_young_haemorrhage():
+    """Young supine adult, 500 mL bled over 5 min — the -30 mmHg LBNP equivalent.
+
+    Height is not reported; 173 cm assumed for a mixed 7:8 Northern European
+    cohort, giving 70.0 kg at the reported BMI of 23.4. **Nothing is solved
+    for** — no measured MAP, CO or CVP is entered — so the Tier 3 calibration
+    defect of backlog item 58 does not bite here.
+    """
+    out = {}
+    for sex in ("male", "female"):
+        p = cohort_params(173.0, 70.0, age_years=22.0, sex=sex)
+        p.ventilation_mode = "spontaneous"
+        p.resp_rate_bpm    = 14.0
+        p.hemorrhage_start_s    = 120.0
+        p.hemorrhage_rate_mlmin = 100.0
+        p.hemorrhage_duration_s = 300.0
+        r = run_simulation(p, duration_s=600.0, dt=DT)
+        t = np.asarray(r["t"])
+
+        def w(key, t0, t1):
+            a = np.asarray(r[key])
+            return float(np.mean(a[(t >= t0) & (t < t1)]))
+
+        out[sex] = (
+            {k: w(k, 90.0, 120.0)  for k in ("map", "hr", "co", "sv")},
+            {k: w(k, 540.0, 600.0) for k in ("map", "hr", "co", "sv")},
+        )
+    return out
+
+
+def test_resting_stroke_volume_in_young_adults_pmid27702883(lbnp_young_haemorrhage):
+    """[PMID 27702883] Supine stroke volume in healthy 22-year-olds.
+
+    **THIS TEST PASSES, AND IT IS A GUARD.** Median 80.4 mL, IQR 72.5-84.4, by
+    ULTRASOUND. It is the strongest absolute the blind phase produced — the
+    model landed inside the interquartile range in BOTH sexes, and it was the
+    only absolute that landed in that registration while MAP and heart rate
+    both missed.
+
+    That combination localises the model's defect: **cardiac mechanics are
+    right while the reflex operating point is not**, which is the argument
+    behind backlog item 62. The work queued behind that item moves pressure and
+    rate. This guard exists so that it does not quietly move stroke volume too.
+
+    Ultrasound matters and is not incidental. A pulse-contour stroke volume
+    would depend on the shape of a peripheral pressure wave, which this model
+    gets architecturally wrong (amplification 0.88 against 1.33 +/- 0.16).
+
+    **THE SEX-MEAN IS ASSERTED, AND THE REASON IS THE COHORT.** The study is 7
+    male and 8 female; the model runs one sex at a time. Measured 2026-09-25:
+    **male 82.39 mL, female 72.44 mL, mean 77.42.** The male arm and the mean
+    sit inside the interquartile range. The female arm falls **0.06 mL** below
+    the lower quartile of 72.5.
+
+    **That 0.06 mL is recorded rather than smoothed over, and the band is NOT
+    widened to absorb it.** Widening a literature band to make a model fit is
+    the move this project exists to refuse. The sex-mean is the honest
+    comparator for a near-balanced cohort, it is what the White 1997 tests
+    above use for the same reason, and it does not depend on which arm happens
+    to sit closer.
+    """
+    lo, hi = _LBNP_SV_IQR
+    sv = [rest["sv"] for rest, _ in lbnp_young_haemorrhage.values()]
+    mean_sv = sum(sv) / len(sv)
+    assert lo <= mean_sv <= hi, (
+        f"resting stroke volume, mean of the two sex arms, is {mean_sv:.2f} mL "
+        f"— outside the measured IQR {lo}-{hi} (median 80.4). Individual arms: "
+        f"{', '.join(f'{v:.2f}' for v in sv)}"
+    )
+
+
+def test_central_hypovolaemia_flow_and_rate_response_pmid27702883(lbnp_young_haemorrhage):
+    """[PMID 27702883] Cardiac output and heart rate under -30 mmHg LBNP.
+
+    **THIS TEST PASSES, AND IT IS A GUARD** on the LBNP-to-haemorrhage exchange
+    rate that the blind phase established. Measured: dCO -1.00 L/min and
+    dHR +5.8 bpm. The model at 500 mL gives about -0.9 to -1.0 and +6.5 to
+    +6.8 — close enough that 500 mL is the working equivalent of -30 mmHg, and
+    1000 mL is roughly double the measured effect.
+
+    **It is a guard and not a validation.** The exchange rate was CHOSEN by
+    matching these two numbers, so agreement here is not evidence. What it
+    protects is the substitution itself: if a later change moves the model's
+    haemorrhage response, every LBNP comparison in the suite silently shifts
+    with it and nothing else would say so.
+
+    **MAP is excluded deliberately and fails in its own test below.** Reporting
+    all three together would let two passes hide a direction failure.
+
+    A REGISTERED CAVEAT THAT WAS WRONG, recorded because it was stated in
+    advance: registration 002 predicted the model's absolute cardiac output
+    would be LOW here, on the strength of comparison 001 where the model gave
+    4.33 against a measured 6.9 at the same age. It runs HIGH instead, 5.83
+    against 4.6. The two young cohorts genuinely differ and the model sits
+    between them, which is why neither is used as an absolute target.
+    """
+    for sex, (rest, bled) in lbnp_young_haemorrhage.items():
+        dco = bled["co"] - rest["co"]
+        dhr = bled["hr"] - rest["hr"]
+        assert abs(dco - _LBNP_DCO) <= 0.5, (
+            f"{sex} dCO {dco:+.2f} L/min against a measured {_LBNP_DCO:+.2f} — "
+            f"the 500 mL LBNP equivalence has moved"
+        )
+        assert abs(dhr - _LBNP_DHR) <= 4.0, (
+            f"{sex} dHR {dhr:+.1f} bpm against a measured {_LBNP_DHR:+.1f} — "
+            f"the 500 mL LBNP equivalence has moved"
+        )
+
+
+@pytest.mark.xfail(strict=True, reason=(
+    "KNOWN GAP — THE MODEL LOWERS MEAN PRESSURE WHERE YOUNG PEOPLE RAISE IT. "
+    "Backlog item 62, and it is the only item on that list with THREE "
+    "independent out-of-sample cohorts behind it. "
+    "MEASURED 2026-09-25 after a 500 mL bleed in a 22-year-old: dMAP -4.28 (male) and -4.48 (female) against a measured +2.90.  "
+    "THE SAME DIRECTION FAILURE IN THREE COHORTS: comparison 001 "
+    "(PMID 38684421, 30->60 deg head-up) subjects +2.5 against the model -7.8; "
+    "this study (-30 mmHg LBNP) subjects +2.9 against the model -3.7 to -9.1; "
+    "and PMID 9404222 (60 deg tilt) subjects +5.6 young and +3.6 older against "
+    "the model -32. It was REGISTERED IN ADVANCE here — 'if the hypovolaemic "
+    "MAP fall is over-predicted, that is the first place to look' — and it "
+    "happened. "
+    "THE MECHANISM IS VISIBLE IN THE BASELINE. MAP_SETPOINT = 93.0 in "
+    "baroreflex.py is a constant and aging.py never touches it, so a "
+    "22-year-old model defends 93 mmHg while these subjects sit at 75.8. The "
+    "model is not merely mis-calibrated at rest — it is DEFENDING THE WRONG "
+    "NUMBER, which is exactly what makes a pressure start high and then fall "
+    "where a real young person's holds or rises. "
+    "A CONSTANT SITE OFFSET CANCELS IN A DIFFERENCE, which is why this test "
+    "asserts the CHANGE and not the level. Finger pressure against the model's "
+    "integrated central MAP is worth about +9 mmHg on the absolute and nothing "
+    "here. "
+    "STROKE VOLUME IS TIER A IN BOTH SEXES in the same run (see the guard "
+    "above), so this is the reflex operating point and not cardiac mechanics. "
+    "IT LANDS WITH BACKLOG ITEM 58, not before it. MAP_SETPOINT is half of the "
+    "reference operating point that item 50 found typed twice, and patient.py "
+    "imports it for svr_scale, so changing it moves every patient-scaled "
+    "result in the suite. "
+    "strict=True. Full record in docs/reference_values.md under PMID 27702883."
+))
+def test_mean_pressure_rises_under_central_hypovolaemia_pmid27702883(lbnp_young_haemorrhage):
+    """[PMID 27702883] Young adults RAISE mean pressure under -30 mmHg LBNP.
+
+    Measured +2.90 mmHg. The model lowers it. Asserted as a change, so the
+    finger-versus-central convention cancels.
+    """
+    for sex, (rest, bled) in lbnp_young_haemorrhage.items():
+        dmap = bled["map"] - rest["map"]
+        assert dmap > 0, (
+            f"{sex} mean pressure FELL {dmap:+.2f} mmHg under central "
+            f"hypovolaemia; the subjects' ROSE {_LBNP_DMAP:+.2f}"
+        )
+
+
+# --- PMID 31705432 ----------------------------------------------------------
+# 20 anaesthetised patients, 17 of them women, age 67 +/- 8, 167 +/- 8 cm,
+# 74 +/- 11 kg, hypertension in 12. Radial arterial catheter feeding a LiDCO
+# monitor. Propofol and remifentanil; ventilated at 8 mL/kg of ideal body
+# weight with PEEP 6. Head-up tilt, phenylephrine titrated until stroke volume
+# variation fell below 12 %. Reported as per-cent change, median (IQR).
+#
+# THE TILT ANGLE IS NOT PUBLISHED. It was RECOVERED at 17.1 degrees by
+# inverting the reported stroke-volume fall through the model, across the
+# senior author's own bracket of 10 to 40 degrees. The method was fixed before
+# the data arrived and the answer held across both unreported parameters
+# (propofol 2.0-3.0 mg/kg, PIP 12-21). **Those stroke-volume values are
+# therefore SPENT and are not scored anywhere.** The phenylephrine response is
+# not spent — it is the registered prediction.
+_PE_TILT_DEG   = 17.1
+_PE_DHR_IQR    = (-15.0, -6.0)   # per cent, median -10
+_PE_SVV_TARGET = 12.0            # the study titrated until SVV fell below this
+
+
+def _stroke_volume_variation(result, t0, t1):
+    """Beat-to-beat stroke-volume variation over a window, in per cent.
+
+    Computed from the `sv` series rather than read from the model's `ppv`
+    output, which is what registration 007 did and for a reason worth keeping:
+    at the time, `ppv` was silently destroyed by output decimation (backlog
+    item 69, fixed 2026-09-24 in `1d5348a`). The `sv` route was verified
+    unchanged across output_every 1, 10 and 100 while `ppv` read 6.05, 1.31 and
+    0.00. The defect is fixed, but this is still the quantity the study
+    reports — LiDCO computes SVV from stroke volumes — so it stays.
+    """
+    t  = np.asarray(result["t"])
+    sv = np.asarray(result["sv"])
+    s  = sv[(t >= t0) & (t < t1)]
+    s  = s[s > 0]
+    assert len(s) >= 2, "not enough stroke-volume samples to compute SVV"
+    return float(100.0 * (s.max() - s.min()) / s.mean())
+
+
+@pytest.fixture(scope="module")
+def phenylephrine_during_tilt():
+    """Anaesthetised patient at 17.1 deg head-up, with and without phenylephrine.
+
+    **BOTH ARMS ARE BUILT IDENTICALLY and differ only in the phenylephrine
+    term.** That is not tidiness — it is the fix for a method error that
+    invalidated the first sweep. `SimParams.drug_start_s` gates the WHOLE drug
+    dictionary, so using it to start phenylephrine part-way through a run also
+    switched the PROPOFOL off until that moment: the model was an awake patient
+    who was then anaesthetised and given a vasopressor at the same instant.
+
+    **A zero-dose control arm exposed it.** The supine baseline read 80.7 mmHg
+    undosed and 87.8 in every dosed arm, and a drug that has not started cannot
+    move a baseline. Without that control all six runs would have shared one
+    wrong baseline and looked self-consistent. Keep the control arm.
+
+    The sex is MATCHED, not bracketed — the cohort is 85 % female.
+    """
+    out = {}
+    for dose in (0.0, 0.25, 0.5, 1.0, 2.0, 4.0):
+        p = cohort_params(167.0, 74.0, age_years=67.0, sex="female")
+        p.tilt_start_deg  = _PE_TILT_DEG
+        p.tilt_end_deg    = _PE_TILT_DEG
+        p.tilt_onset_s    = 0.0
+        p.ventilation_mode = "mechanical"
+        p.peep_cmh2o = 6.0
+        p.pip_cmh2o  = 21.0
+        p.resp_rate_bpm = 14.0
+        drugs = {"propofol": 2.5}
+        if dose > 0.0:
+            drugs["phenylephrine"] = dose
+        p.drug_factors = combined_drug_factors(drugs)
+        r = run_simulation(p, duration_s=180.0, dt=DT)
+        t = np.asarray(r["t"])
+        m = {k: float(np.mean(np.asarray(r[k])[(t >= 150.0) & (t < 180.0)]))
+             for k in ("map", "hr", "sv", "co")}
+        m["svv"] = _stroke_volume_variation(r, 150.0, 180.0)
+        out[dose] = m
+    return out
+
+
+# --- Hojlund 2024, PMID 38907106 -------------------------------------------
+# THE SAME GROUP, THE SAME PARADIGM, THE SAME DRUG AS PMID 31705432 — re-measured with
+# LITHIUM DILUTION, a flow method that does not depend on vascular tone.
+#
+# WHY IT REPLACES THE 2020 TARGET (decided with Jesper, 2026-09-26). The 2020 study
+# reported dSV +96 % with an UNCALIBRATED pulse-power monitor. Under an alpha1 agonist
+# such devices read part of the pressure rise as extra flow — every human study found
+# comparing one against a tone-independent reference shows the same over-reading
+# (Lorsomradee 2007, Ji 2014, Monnet 2012; abstracts). This study measured +40 %.
+# Pressure agrees across the two (+114 % against +95 %); flow does not. That is a
+# device artefact of about 2.4-fold, not a different physiology.
+#
+# THIS IS NOT MOVING THE GOALPOSTS TOWARD THE MODEL. The model gives about -1 %
+# against either number. The replacement swaps a measurement known to be inflated
+# for a better one of the same manoeuvre, from the same laboratory.
+#
+# SPENT FOR BLIND USE: its results were read on 2026-09-26. Full entry in the ledger.
+_H24_TILT_DEG  = 25.0              # STATED in the paper, unlike the 2020 study
+_H24_DSV_CI95  = (21.6, 58.4)      # per cent; see the test docstring for the arithmetic
+
+
+@pytest.fixture(scope="module")
+def phenylephrine_during_tilt_hojlund2024():
+    """Hojlund 2024 at 25 deg head-up, anaesthetised, with and without phenylephrine.
+
+    **Cohort:** n=20, 55 % female, 171 +/- 8 cm, 82 +/- 17 kg, age 59. The sexes are
+    near-balanced, so the SEX-MEAN is used — the same rule as the White 1997 and
+    PMID 27702883 tests — with both sexes built at the cohort's mean body size.
+
+    **Anaesthesia:** propofol 1.5-2 mg/kg induction plus maintenance; the model's
+    bolus-equivalent is set at 2.0. Remifentanil 0.5-0.8 mcg/kg/min has NO model
+    counterpart (backlog item 63), and that absence is the leading suspect for why
+    the model's tilt state is wrong — see the xfail reason below.
+
+    **Airway pressure is COMPUTED, not fitted.** Tidal volume 8 mL/kg of ideal body
+    weight; IBW at 171 cm averaged across the sexes is about 64.7 kg, so 518 mL.
+    Respiratory compliance is not reported here, so Rebet 2016's measured
+    47 mL/cmH2O (Table 2, a comparable anaesthetised surgical cohort) is used:
+    driving pressure 11.0, PIP 17.0 over PEEP 6. The 2020 fixture set its PIP from
+    the supine SVV instead, which spent that value; this one spends nothing.
+
+    **Both arms are built identically** and differ only in the phenylephrine term —
+    see the `drug_start_s` note on the 2020 fixture for why that matters.
+    """
+    out = {}
+    for sex in ("male", "female"):
+        per = {}
+        for dose in (0.0, 0.25, 0.5, 1.0, 2.0, 4.0):
+            p = cohort_params(171.0, 82.0, age_years=59.0, sex=sex)
+            p.tilt_start_deg  = _H24_TILT_DEG
+            p.tilt_end_deg    = _H24_TILT_DEG
+            p.tilt_onset_s    = 0.0
+            p.ventilation_mode = "mechanical"
+            p.peep_cmh2o = 6.0
+            p.pip_cmh2o  = 17.0
+            p.resp_rate_bpm = 14.0
+            drugs = {"propofol": 2.0}
+            if dose > 0.0:
+                drugs["phenylephrine"] = dose
+            p.drug_factors = combined_drug_factors(drugs)
+            r = run_simulation(p, duration_s=180.0, dt=DT)
+            t = np.asarray(r["t"])
+            m = {k: float(np.mean(np.asarray(r[k])[(t >= 150.0) & (t < 180.0)]))
+                 for k in ("map", "hr", "sv", "co")}
+            m["svv"] = _stroke_volume_variation(r, 150.0, 180.0)
+            per[dose] = m
+        out[sex] = per
+    return out
+
+
+@pytest.mark.xfail(strict=True, reason=(
+    "KNOWN GAP — PHENYLEPHRINE LOWERS STROKE VOLUME WHERE IT RAISES IT IN "
+    "PRELOAD-DEPENDENT PATIENTS. Backlog item 64, rediagnosed 2026-09-26. "
+    "MEASURED 2026-09-26, AFTER phenylephrine's arterial ceiling was recalibrated "
+    "to Schaefers (1.80 -> 2.10), at 25 deg head-up, propofol 2.0, PEEP 6 / PIP 17, "
+    "sex-mean at 171 cm / 82 kg / age 59: the best stroke-volume change across "
+    "0.25 to 4 mcg/kg/min is -2.1 per cent (male +0.1 at 4.0, female -4.3), against "
+    "a measured +40 per cent, 95 per cent CI of the mean +21.6 to +58.4. It was "
+    "-1.2 before the recalibration: more afterload, same venous arm. "
+    "THE MODEL'S TILT STATE IS WRONG BEFORE THE DRUG IS GIVEN: MAP 73 against 43, "
+    "HR 94 against 63, SVI 19 against 35 mL/m2, SVV 11.6 against 19 — so the model's "
+    "patient is NOT preload-dependent by the study's own criterion (SVV above 12). "
+    "That is the signature of an intact sympathetic reflex holding pressure up by "
+    "constriction and tachycardia, which remifentanil 0.5-0.8 mcg/kg/min abolishes "
+    "in these patients (heart rate 62 -> 63 on a 33 per cent pressure fall). "
+    "WHAT IS ALREADY KNOWN ABOUT THE CAUSE, 2026-09-26. The legs are NOT the fix: "
+    "squeezing 10 per cent of leg V0 gives only +14 per cent even with no afterload. "
+    "PHENYLEPHRINE'S VENOUS ARM CANNOT SIMPLY BE RAISED. A venous ceiling of about "
+    "0.3 is what the anaesthetised cohorts ask for (Juhl-Olsen filling pressures; a "
+    "canine-anchored estimate of 0.29-0.39) — but 0.3 breaks Schaefers' flow "
+    "response in AWAKE men (dSV +31 mL against +9, dHR -25 against -16). The drug's "
+    "venous effect depends on the patient's own sympathetic venous tone: small when "
+    "the veins are already constricted, large when anaesthesia withdraws that tone. "
+    "And de Wit 2016 (human, read in full) shows propofol parks several hundred mL "
+    "in the unstressed pool, by sympatholysis — the model parks about a fifth of "
+    "that (test_propofol_lowers_stressed_volume_and_venous_resistance_dewit2016). "
+    "SO THIS CLOSES WITH STRUCTURE, NOT A NUMBER: an opioid (item 63), and "
+    "sympathetic OUTFLOW as its own stage (item 70), so that anaesthesia withdraws "
+    "venous tone and phenylephrine acts on what is withdrawn. Not the leg rebuild. "
+    "THE HEART-RATE RESPONSE ALREADY MATCHES: -16 to -17 per cent at 2 to 4 "
+    "mcg/kg/min against a measured -16 per cent. It must still match afterwards. "
+    "strict=True. Full record in docs/validation_log.md, 2026-09-26."
+))
+def test_phenylephrine_raises_stroke_volume_hojlund2024(phenylephrine_during_tilt_hojlund2024):
+    """[PMID 38907106 — Hojlund 2024] Phenylephrine raises stroke volume by 40 per
+    cent in patients made preload-dependent by 25 deg head-up tilt under general
+    anaesthesia. Lithium dilution, so the flow change is not a tone artefact.
+
+    Measured: SVI 35 +/- 7 -> 49 +/- 11 mL/m2 (+40 %), CI 2.2 -> 2.6 (+18 %), MAP
+    43 -> 84, HR 63 -> 53, SVV 19 -> 6. All P < 0.001, n = 20.
+
+    **THE BAND IS THE 95 PER CENT CONFIDENCE INTERVAL OF THE MEAN CHANGE, and it is
+    computed conservatively.** The paper reports the change (+40 %) but not its own
+    spread. Treating the two states as independent — which OVERSTATES the
+    uncertainty, because the design is paired — the ratio of the means is
+    49/35 = 1.40 with relative standard error sqrt((7/sqrt20/35)^2 +
+    (11/sqrt20/49)^2) = 0.0672, so 1.40 +/- 1.96 x 0.094 = **+21.6 to +58.4 per
+    cent**. It excludes both the 2020 device reading (+96 %) and Rebet's
+    non-significant +5 %, and it is a confidence interval of a MEAN, which is what
+    a single representative model patient predicts.
+
+    Asserted at the model's best dose. The study titrated from 15-20 mcg/min to an
+    SVV target and does not report the final dose, and the model's dose axis has
+    no pharmacokinetic mapping to it, so this is not a dose mismatch.
+    """
+    doses = [d for d in (0.25, 0.5, 1.0, 2.0, 4.0)]
+    dsv = []
+    for d in doses:
+        per_sex = [pct(arm[d]["sv"], arm[0.0]["sv"])
+                   for arm in phenylephrine_during_tilt_hojlund2024.values()]
+        dsv.append(sum(per_sex) / len(per_sex))
+    best = max(dsv)
+    lo, hi = _H24_DSV_CI95
+    assert lo <= best <= hi, (
+        f"best sex-mean dSV across the dose bracket is {best:+.1f} %, outside the "
+        f"95 % CI of the measured mean change {lo} to {hi} (point estimate +40). "
+        f"By dose: {', '.join(f'{d}: {v:+.1f}' for d, v in zip(doses, dsv))}"
+    )
+
+
+@pytest.mark.xfail(strict=True, reason=(
+    "KNOWN GAP — THE SAME DEFECT, SEEN AT THE BEDSIDE ENDPOINT. The study "
+    "titrated phenylephrine until stroke-volume variation fell below 12 %, and "
+    "the patients went from 24 to 8.6 (IQR 6.8 to 11). Hojlund 2024 found the same "
+    "fall, 19 -> 6, with a tone-independent flow reference. "
+    "MEASURED 2026-09-26, after the arterial recalibration: the LOWEST SVV across "
+    "the whole dose bracket is 14.6 per cent, against 14.75 undrugged. The drug "
+    "barely moves it and never approaches the 12 per cent target. "
+    "WHAT IT COSTS CLINICALLY, STATED PLAINLY: the model would tell a clinician "
+    "that phenylephrine does not fix preload-dependency, when in these patients "
+    "it did — wrong in the direction that withholds a treatment which worked. "
+    "SAME CAUSE AS test_phenylephrine_raises_stroke_volume_hojlund2024, and NOT "
+    "the legs — that diagnosis was measured and withdrawn on 2026-09-26. It is a "
+    "separate assertion because it is a separate claim: stroke volume against "
+    "whether the preload-dependent STATE is abolished. strict=True. Full record "
+    "in docs/validation_log.md, 2026-09-26."))
+def test_phenylephrine_abolishes_preload_dependency_pmid31705432(phenylephrine_during_tilt):
+    """[PMID 31705432] Phenylephrine brought stroke-volume variation from 24 to
+    8.6 % (IQR 6.8 to 11) — below the study's own 12 % target.
+
+    Asserted at the model's best dose across the bracket.
+    """
+    doses = [d for d in phenylephrine_during_tilt if d > 0.0]
+    best = min(phenylephrine_during_tilt[d]["svv"] for d in doses)
+    assert best < _PE_SVV_TARGET, (
+        f"lowest stroke-volume variation across the dose bracket is "
+        f"{best:.1f} %, never below the study's {_PE_SVV_TARGET} % target "
+        f"(patients reached 8.6, IQR 6.8-11)"
+    )
+
+
+def test_phenylephrine_reflex_bradycardia_during_tilt_pmid31705432(phenylephrine_during_tilt):
+    """[PMID 31705432] Phenylephrine slows the heart by 10 % (IQR -15 to -6).
+
+    **THIS TEST PASSES, AND IT IS A GUARD.** It was the one quantity of that
+    registration that landed in the interquartile range, in a study where the
+    stroke-volume and cardiac-output predictions both failed on direction.
+
+    **It is here because of what happens next.** Closing backlog items 9 and 64
+    puts the leg veins into the mobilizable reservoir, which changes preload,
+    which the baroreflex answers. The reflex bradycardia to an alpha1 agonist
+    is currently right, and it must still be right afterwards. Without this
+    guard a leg rebuild could trade a fixed stroke volume for a broken reflex
+    and the suite would report an improvement.
+
+    Asserted at the dose whose heart-rate response is closest to the measured
+    median, because the study titrated to an endpoint rather than to a dose,
+    and the model's dose axis has no pharmacokinetic mapping to a bolus in
+    micrograms per kilogram.
+    """
+    base = phenylephrine_during_tilt[0.0]
+    doses = [d for d in phenylephrine_during_tilt if d > 0.0]
+    dhr = [pct(phenylephrine_during_tilt[d]["hr"], base["hr"]) for d in doses]
+    lo, hi = _PE_DHR_IQR
+    assert any(lo <= v <= hi for v in dhr), (
+        f"no dose produces a heart-rate change inside the measured IQR "
+        f"{lo} to {hi} % (median -10); model gives "
+        f"{', '.join(f'{v:+.1f}' for v in dhr)}"
+    )
+
+
+# --- PMID 41721238 ----------------------------------------------------------
+# ICU responders, age 69.3 +/- 14.2, BMI 22.5 +/- 2.5, ventilated with
+# spontaneous breathing activity, noradrenaline in 66.6 % at < 0.1 mcg/kg/min,
+# PEEP 5, PIP median 14, tidal volume 8.9 +/- 1.8 mL/kg.
+#
+# THIS STUDY WAS EXCLUDED FROM THE BLIND PHASE, and the reason is this test.
+# It passed the feasibility screen and then the PATIENT COULD NOT BE BUILT.
+# Only the baseline was ever read, so it stays clean for a future blind phase —
+# and the target here needs no result data at all.
+_TIER3_MAP = 79.2
+_TIER3_CVP = 6.4
+_TIER3_CI  = 3.1
+
+
+@pytest.mark.xfail(strict=True, reason=(
+    "KNOWN GAP — TIER 3 CALIBRATION DOES NOT CONVERGE ON THE VALUES IT IS "
+    "GIVEN. Backlog item 58, and it outranks most of the list. "
+    "MEASURED 2026-09-25, 170 cm / 65 kg / age 69 at the cohort's BMI of 22.5, ventilated at PEEP 5 and PIP 14: asked for MAP 79.2, CVP 6.4 and cardiac index 3.1, the model settles at 87.34, 3.49 and 2.96. Mean pressure overshoots by 8.1 mmHg and filling pressure undershoots by 2.9; only the cardiac index lands. EXCLUDED.md entry 3 recorded 94.07 / 2.52 / 2.77 on slightly different anthropometrics — so the SIZE of the miss depends on the patient and the FACT of it does not.  "
+    "WHY THIS MATTERS MORE THAN A CALIBRATION MISS. Tier 3 exists so the model "
+    "can be pointed at a real patient. If entering three measured numbers "
+    "produces a patient at none of them, then EVERY clinical use of the model "
+    "starts from the wrong operating point, and so does every validation "
+    "against a cohort whose haemodynamics differ from the reference patient's. "
+    "IT ALREADY COST AN OUT-OF-SAMPLE STUDY that had otherwise passed "
+    "screening — preregistration/EXCLUDED.md entry 3. The direction compounds "
+    "it: the model's patient sits at a much lower filling pressure, so further "
+    "up the steep part of its Starling curve, and would therefore be MORE "
+    "fluid-responsive than the cohort — biasing exactly the comparison that "
+    "study exists to make. "
+    "WHAT IS WRONG. Calibration maps inputs forward onto a small number of "
+    "scale factors and accepts whatever operating point emerges. It is not "
+    "solving the inverse problem it is presented with. Item 50 is the same "
+    "defect seen from inside, where the REFERENCE patient rescales itself by "
+    "-14 % against its own operating point. "
+    "TWO CONSTRAINTS MAKE THE FIX PHYSIOLOGY AND NOT A CURVE FIT: every "
+    "adjusted parameter must stay inside a SOURCED physiological range, and "
+    "the solution is under-determined, so prefer the smallest departure from "
+    "the age- and size-scaled reference and RECORD which parameters moved. "
+    "A fit achieved with an impossible blood volume is worse than an honest "
+    "miss. "
+    "THIS NEEDS NO LITERATURE. The target is the input. "
+    "strict=True. Full record in docs/reference_values.md under PMID 41721238."
+))
+def test_tier3_calibration_converges_on_entered_haemodynamics_pmid41721238():
+    """[PMID 41721238] Enter a measured MAP, CVP and cardiac index; the model
+    must settle at them.
+
+    The cohort's baseline is MAP 79.2 +/- 14.7, CVP 6.4 +/- 4.6 and cardiac
+    index 3.1 +/- 1.5. Asked for exactly that, the model settles somewhere
+    else.
+
+    **THE TOLERANCE IS 10 PER CENT OF EACH REQUESTED VALUE, and it is a
+    CONVERGENCE criterion rather than a literature spread.** Borrowing the
+    cohort's between-patient SD would be the wrong quantity: how widely ICU
+    patients vary says nothing about whether a solver reached the number it was
+    given. Ten per cent is stated, loose, and chosen for the purpose.
+
+    **This test needs no result data at all.** The target IS the input, which
+    is why it can exist for a study that was excluded from the blind phase
+    before any outcome was read.
+    """
+    bsa = bsa_mosteller(170.0, 65.0)
+    comps, cardiac = build_patient_params(
+        170.0, 65.0,
+        map_mmhg=_TIER3_MAP,
+        cvp_mmhg=_TIER3_CVP,
+        cardiac_output_lpm=_TIER3_CI * bsa,
+        hr_bpm=80.0,
+        age_years=69.0,
+    )
+    p = SimParams(compartments=comps)
+    apply_cardiac(p, cardiac)
+    p.hr_bpm = 80.0
+    p.ventilation_mode = "mechanical"
+    p.peep_cmh2o = 5.0
+    p.pip_cmh2o  = 14.0
+    r = run_simulation(p, duration_s=120.0, dt=DT)
+    t = np.asarray(r["t"])
+
+    def w(key):
+        a = np.asarray(r[key])
+        return float(np.mean(a[(t >= 90.0) & (t < 120.0)]))
+
+    settled = {"MAP": (w("map"), _TIER3_MAP),
+               "CVP": (w("cvp"), _TIER3_CVP),
+               "CI":  (w("co") / bsa, _TIER3_CI)}
+    failures = [f"{name} settled at {got:.2f} against {want:.2f} asked "
+                f"({100.0 * (got - want) / want:+.1f} %)"
+                for name, (got, want) in settled.items()
+                if abs(got - want) > 0.10 * want]
+    assert not failures, (
+        "Tier 3 calibration did not converge — " + "; ".join(failures)
+    )
+
+
+# --- PMID 25760679 ----------------------------------------------------------
+# 29 against 28 patients, age 57 and 58, BMI 27.7 and 25.5. Target-controlled
+# infusion: remifentanil Ce 8 ng/mL (Minto) and propofol Ce 2.5 mcg/mL
+# (Schnider). Ventilated 8 mL/kg, PEEP 5. Vasopressor titrated to 80-100 % of
+# the awake MAP.
+#
+# EXCLUDED FROM THE BLIND PHASE, and the exclusion is this test. The scenario
+# could not be built: both drugs bisected to the floor of the dose range and
+# still overshot the target, because the model's anaesthetised patient does not
+# need a vasopressor at all. Only methods and cohort were read, so the study
+# stays clean.
+
+
+@pytest.mark.xfail(strict=True, reason=(
+    "KNOWN GAP — THERE IS NO OPIOID IN THE MODEL, AND THE ANAESTHETIC "
+    "BASELINE IS WRONG IN DIRECTION RATHER THAN DEPTH. Backlog item 63. "
+    "MEASURED 2026-09-25, age 57, ventilated: heart rate RISES from 76.73 awake to 81.66 on propofol 2.0 mg/kg and 82.26 at 2.5, while mean pressure falls 91.37 -> 86.09 -> 85.42. AND THE SHAPE IS WRONG, NOT ONLY THE SIGN. Højlund 2020 (PMID 31705432) measured 20 patients on remifentanil 0.5-0.8 mcg/kg/min: a 28 per cent FALL in mean pressure produced NO tachycardia (dHR -4 per cent, P 0.276) while a rise in mean pressure still produced bradycardia (-10 per cent, P 0.015). The sympathetic limb is abolished and the vagal limb is intact. A single gain per effector cannot express that, because weakening it blunts BOTH limbs — see backlog item 70.  "
+    "pharmacology.py has propofol and spinal block and NO OPIOID OF ANY KIND. "
+    "Under propofol alone the model's baroreflex answers vasodilation with "
+    "tachycardia. Patients at remifentanil Ce 8 ng/mL are BRADYCARDIC, and at "
+    "that effect-site concentration the opioid dominates the haemodynamic "
+    "picture — it is not a refinement on the anaesthetic state, it is most of "
+    "it. "
+    "THE FAILURE WAS CONCRETE, NOT THEORETICAL. A matched-MAP titration "
+    "degenerated: the model's anaesthetised patient reached 90 % of its awake "
+    "pressure on propofol alone and needed no vasopressor, and in the male arm "
+    "the anaesthetised MAP sat ABOVE the target before any drug. The study's "
+    "central manoeuvre could not be staged. "
+    "DO NOT PROXY IT WITH MORE PROPOFOL. Raising the dose reaches a plausible "
+    "pressure while keeping the wrong heart-rate direction — a baseline that "
+    "looks quantitatively repaired and stays qualitatively wrong, which is "
+    "worse than an honest gap. That option was considered and rejected when "
+    "the exclusion was logged. "
+    "WHY IT MATTERS BEYOND ONE STUDY: this model is aimed at intraoperative "
+    "use and essentially every general anaesthetic includes an opioid. Without "
+    "one the model cannot represent the baseline state of its own target "
+    "population. "
+    "WHAT IT NEEDS: sympatholysis and vagally-mediated bradycardia routed "
+    "through the existing effectors, plus BLUNTING OF THE BAROREFLEX RESPONSE "
+    "ITSELF — which the current effector set cannot express and which needs "
+    "backlog item 70 (outflow and end-organ response are lumped into one "
+    "gain). Remifentanil is among the best-characterised drugs in anaesthesia; "
+    "scope the literature before writing a coefficient. "
+    "DIRECTION ONLY. No magnitude is asserted, because the study's heart-rate "
+    "values were never read. "
+    "strict=True. Full record in docs/reference_values.md under PMID 25760679."
+))
+def test_general_anaesthesia_does_not_cause_tachycardia_pmid25760679():
+    """[PMID 25760679] Patients anaesthetised with propofol and remifentanil at
+    Ce 8 ng/mL are BRADYCARDIC. The model's heart rate rises instead.
+
+    Direction only. The study's own haemodynamic results were never seen — only
+    its methods and cohort — so this asserts the sign that the protocol
+    implies, not a magnitude from a table.
+    """
+    def anaesthetised_hr(propofol_mg_kg):
+        p = cohort_params(175.0, 80.0, age_years=57.0)
+        p.ventilation_mode = "mechanical"
+        p.peep_cmh2o = 5.0
+        p.pip_cmh2o  = 18.0
+        p.resp_rate_bpm = 14.0
+        if propofol_mg_kg > 0.0:
+            p.drug_factors = combined_drug_factors({"propofol": propofol_mg_kg})
+        r = run_simulation(p, duration_s=120.0, dt=DT)
+        t = np.asarray(r["t"])
+        a = np.asarray(r["hr"])
+        return float(np.mean(a[(t >= 90.0) & (t < 120.0)]))
+
+    awake = anaesthetised_hr(0.0)
+    asleep = anaesthetised_hr(2.0)
+    assert asleep < awake, (
+        f"heart rate ROSE on induction, {awake:.1f} -> {asleep:.1f} bpm. "
+        f"Patients under propofol and remifentanil Ce 8 are bradycardic. The "
+        f"model has no opioid, so the baroreflex answers propofol's "
+        f"vasodilation with tachycardia and nothing opposes it."
+    )
+
+
+# ===========================================================================
+# 32. The hydrostatic loop closes — backlog items 65 and 66
+#
+# These two tests PASS. They are guards on a fix landed 2026-09-25, and they
+# are written so the defect cannot come back silently.
+# ===========================================================================
+
+@pytest.mark.xfail(strict=True, reason=(
+    "KNOWN DEFECT — THE HYDROSTATIC LOOP DOES NOT CLOSE, AND IT CANNOT BE "
+    "CLOSED WITHOUT SPLITTING COMPARTMENTS. Backlog items 65 and 72. "
+    "MEASURED 2026-09-25, all three ways, because the obvious fix was tried and "
+    "made things worse. Adding the missing term to every flow DOES close the "
+    "loop — arrest drift at 45 degrees falls from 2.200 mL to 0.094 and every "
+    "exchange segment balances to within 0.02 mmHg — but it BREAKS head-down "
+    "tilt: Likhvantsev -15 deg goes from dCO +0.246 to -0.126 against a measured "
+    "+0.33, Monnet PLR from a responder to +4.0 per cent, and registration "
+    "007's head-down stroke volume from +37.8 per cent (inside the measured IQR "
+    "of 21 to 41) to +17.7 (below it), with the angle dependence INVERTED so "
+    "that steeper head-down returns LESS blood. "
+    "CONSERVATION CAN BE CLOSED CHEAPLY, AND IT DOES NOT HELP HEAD-DOWN TILT. "
+    "Measured 2026-09-26: splitting the IVC so each tributary joins at its own "
+    "level drives arrest drift to 0.006 mL at 24 compartments and 0.000 at 25. "
+    "Splitting the leg arteries as well (27) adds nothing. Junction heights "
+    "WITHOUT a split fail — 8.2 to 8.6 mmHg residuals on every leg segment — "
+    "because a lumped compartment has one pressure at one height. "
+    "BUT EVERY VARIANT THAT OBEYS CONSERVATION BREAKS HEAD-DOWN TILT: the best "
+    "gives Likhvantsev dCO +0.050 against a measured +0.33, where the "
+    "violating original gives +0.246. So the IVC junctions were NOT the cause "
+    "of the head-down failure, and the head-down calibration is compensating "
+    "for the violation itself. The real cause is not yet identified. "
+    "A PARTIAL FIX IS WORSE THAN EITHER EXTREME, and this is the number that "
+    "settled it: terms on the exchange segments but not the IVC junctions gives "
+    "an arrest drift of 3.291 mL — worse than the 2.200 of doing nothing. "
+    "DO NOT CLOSE THIS BY SPLITTING THE IVC ALONE — that passes this test and "
+    "breaks Likhvantsev and Monnet. It closes when the head-down response is "
+    "right for the right reason. Backlog items 65 and 72, correction of "
+    "2026-09-26. "
+    "WHAT THE FAILURE MEANS TODAY: the model's head-down tilt calibration is "
+    "compensating for an energy-conservation violation. Remove the violation "
+    "and head-down tilt stops working. That is worth knowing before anyone "
+    "trusts a Trendelenburg result. "
+    "strict=True so it flips to a FAILURE the day the splits land. "
+    "Full record in docs/validation_log.md, 2026-09-25."
+))
+def test_gravity_does_no_net_work_on_the_arrested_circulation():
+    """Stop the heart, tilt the body, and the blood must stop moving.
+
+    **THIS IS A CONSERVATION TEST, NOT A CALIBRATION ONE.** Around any closed
+    circuit the hydrostatic height terms must telescope to zero, because gravity
+    does no net work on a closed loop. At zero flow every segment must therefore
+    satisfy `P_up - P_down = hdp(down) - hdp(up)`.
+
+    **Nothing here depends on a parameter value.** It would hold for any choice
+    of resistance, compliance or compartment height, so it cannot be satisfied
+    by retuning and it cannot be weakened to make a calibration fit.
+
+    **WHAT IT MEASURES TODAY.** Ten flow segments omit their height term. With
+    the heart STOPPED at 45 degrees head-up, `lower_body_art -> thigh_vein`
+    sits at a steady **+17.2 mmHg** driving pressure that nothing opposes, and
+    volume drifts **2.20 mL** over the last 20 s of arrest against 0.19 supine.
+    **Blood circulates for ever, with no heart.**
+
+    The renal bed is the control and it behaves: both its ends sit at -0.10 m,
+    so its gap is zero and its residual is -0.001 mmHg.
+    """
+    TILT = 45.0
+    p = SimParams()
+    p.baroreflex_enabled    = False   # keep V0 fixed, so P is a clean function of V
+    p.ventilation_mode      = 'none'
+    p.slow_dynamics_enabled = False   # no v0_relax offset
+    p.tilt_start_deg  = 0.0
+    p.tilt_end_deg    = TILT
+    p.tilt_onset_s    = 20.0
+    p.tilt_duration_s = 5.0
+    p.arrest_start_s    = 40.0
+    p.arrest_duration_s = 200.0
+    r = run_simulation(p, duration_s=240.0, dt=DT)
+
+    comp = p.compartments
+    V = np.asarray(r["volumes"])
+    t = np.asarray(r["t"])
+
+    def P(name, row):
+        c = comp[IDX[name]]
+        return _vascular_pressure(row[IDX[name]], c.unstressed_volume,
+                                  c.compliance, c.p_stiffen)
+
+    def hdp(name):
+        return hydrostatic_delta_mmhg(comp[IDX[name]].height_m, TILT,
+                                      GravityEnvironment.EARTH)
+
+    last = V[-1]
+    residuals = []
+    for up, down in (("upper_body_art",  "upper_body_vein"),
+                     ("renal_art",       "renal_vein"),
+                     ("splanchnic_art",  "splanchnic_vein"),
+                     ("lower_body_art",  "thigh_vein"),
+                     ("lower_body_art",  "calf_vein"),
+                     ("lower_body_art",  "foot_vein")):
+        got  = P(up, last) - P(down, last)
+        need = hdp(down) - hdp(up)          # the zero-flow condition
+        residuals.append(f"{up}->{down} {got - need:+.2f}")
+        assert abs(got - need) < 0.5, (
+            f"{up} -> {down}: driving pressure {got:+.3f} mmHg at arrest, but a "
+            f"closed hydrostatic loop requires {need:+.3f}. Residual "
+            f"{got - need:+.3f} mmHg is a circulation driven by gravity with the "
+            f"heart stopped. All residuals: {'; '.join(residuals)}"
+        )
+
+    late = V[t >= 215.0]
+    drift = float(np.abs(late[-1] - late[0]).max())
+    assert drift < 0.5, (
+        f"volumes still moving {drift:.3f} mL over the last 20 s of arrest at "
+        f"{TILT:.0f} degrees — the arrested circulation has not stopped"
+    )
+
+
+def test_patient_height_scales_the_hydrostatic_column():
+    """Stature must change the orthostatic response, and must not change supine.
+
+    **Backlog item 66.** Until 2026-09-25 `height_cm` reached the circulation
+    through exactly one route — `bsa_mosteller()` — and every compartment's
+    `height_m` was a fixed constant. **A 150 cm and a 200 cm patient of equal
+    body surface area had identical orthostatic physics, to the decimal.**
+
+    Orthostatic stress scales with the length of the column being supported,
+    which is why stature is a known risk factor for presyncope.
+
+    **THE TWO PATIENTS BELOW HAVE THE SAME BSA TO FOUR DECIMALS** (1.8708), so
+    nothing here is a body-size effect: 150 cm / 84 kg against 200 cm / 63 kg.
+
+    **Direction only, and deliberately so.** The scaling is uniform across
+    compartments, which is an approximation — body proportions are not
+    self-similar, and leg length varies more with stature than trunk length
+    does. No magnitude is asserted until an anthropometric source for segment
+    lengths is in hand (WANTED in reference_values.md).
+    """
+    def tilt_response(height_cm, weight_kg, tilt_deg):
+        comps, cardiac = build_patient_params(height_cm, weight_kg, hr_bpm=70.0)
+        p = SimParams(compartments=comps)
+        apply_cardiac(p, cardiac)
+        p.hr_bpm = 70.0
+        p.tilt_start_deg = 0.0
+        p.tilt_end_deg   = tilt_deg
+        p.tilt_onset_s   = 5.0
+        r = run_simulation(p, duration_s=LIT_DURATION, dt=DT)
+        return {k: last_half(r[k]) for k in ("map", "co", "cvp", "sv")}
+
+    SHORT, TALL = (150.0, 84.0), (200.0, 63.0)
+    assert abs(bsa_mosteller(*SHORT) - bsa_mosteller(*TALL)) < 1e-9, (
+        "the two test patients no longer have equal body surface area, so this "
+        "test would be measuring body size rather than stature"
+    )
+
+    # 1. Supine must be identical — every hydrostatic term is zero at tilt 0.
+    s_sup, t_sup = tilt_response(*SHORT, 0.0), tilt_response(*TALL, 0.0)
+    for k in s_sup:
+        assert abs(s_sup[k] - t_sup[k]) < 1e-9, (
+            f"supine {k} differs between a 150 cm and a 200 cm patient of equal "
+            f"BSA ({s_sup[k]:.6f} vs {t_sup[k]:.6f}); stature must reach the "
+            f"model only through the hydrostatic term, which is zero when flat"
+        )
+
+    # 2. Tilted, the taller patient must be more orthostatically challenged.
+    s_up, t_up = tilt_response(*SHORT, 45.0), tilt_response(*TALL, 45.0)
+    assert t_up["map"] < s_up["map"], (
+        f"at 45 degrees head-up the 200 cm patient's MAP is {t_up['map']:.3f} "
+        f"and the 150 cm patient's is {s_up['map']:.3f} — a longer hydrostatic "
+        f"column must pool more, not less"
+    )
+    assert t_up["sv"] < s_up["sv"], (
+        f"stroke volume at 45 degrees: 200 cm {t_up['sv']:.3f} vs 150 cm "
+        f"{s_up['sv']:.3f}"
+    )
+    assert t_up["cvp"] < s_up["cvp"], (
+        f"filling pressure at 45 degrees: 200 cm {t_up['cvp']:.3f} vs 150 cm "
+        f"{s_up['cvp']:.3f}"
+    )
+
+
+# ===========================================================================
+# 33. Propofol's venous mechanism — de Wit 2016, PMID 27199311
+#
+# SPENT FOR BLIND USE (read in full 2026-09-26). A development target.
+# ===========================================================================
+
+_DEWIT_PLATEAUS = (5.0, 15.0, 25.0, 35.0)       # cmH2O, the paper's hold protocol
+_DEWIT_MAP_CI95  = (-28.0, -11.0)               # per cent, MAP step between the levels
+_DEWIT_MSFP_CI95 = (-33.4, -13.2)               # per cent
+_DEWIT_RVR_CI95  = (-45.3, -14.2)               # per cent
+
+
+def _propofol_venous_return_curve(dose_mg_kg):
+    """MSFP and Rvr by de Wit's own method, plus steady-state MAP and CO.
+
+    Four sustained inspiratory holds at 5/15/25/35 cmH2O; CVP read as a catheter
+    reads it (the model's transmural `cvp` plus intrathoracic pressure — reading
+    `cvp` alone gives a POSITIVE slope, see `tools/venous_return_curve.py`);
+    linear fit; MSFP is the zero-flow intercept, Rvr the inverse slope.
+
+    **Reflexes OFF throughout**, as a stand-in for the remifentanil these patients
+    were also receiving — under remifentanil the sympathetic limb is abolished
+    (Hojlund 2020 and 2024: no tachycardia on a 28-33 % pressure fall). This is a
+    stand-in with a known flaw: it also removes the vagal limb.
+    """
+    import model.respiration as resp
+
+    def params():
+        p = SimParams()
+        p.baroreflex_enabled = False
+        if dose_mg_kg:
+            p.drug_factors = combined_drug_factors({"propofol": dose_mg_kg})
+        p.ventilation_mode = "mechanical"
+        return p
+
+    pts = []
+    for pl in _DEWIT_PLATEAUS:
+        p = params()
+        p.peep_cmh2o = p.pip_cmh2o = pl
+        p.resp_rate_bpm = 12.0
+        r = run_simulation(p, duration_s=45.0, dt=DT)
+        h = int(len(r["t"]) * 0.75)
+        itp = resp.intrathoracic_pressure(0.0, "mechanical", 12.0, pl, pl, p.ie_ratio)
+        pts.append((float(np.mean(r["cvp"][h:])) + itp, float(np.mean(r["co"][h:]))))
+    cvp = np.array([x[0] for x in pts]); co = np.array([x[1] for x in pts])
+    slope, icpt = np.polyfit(cvp, co, 1)
+
+    p = params()
+    p.peep_cmh2o, p.pip_cmh2o, p.resp_rate_bpm = 5.0, 17.0, 13.0
+    r = run_simulation(p, duration_s=45.0, dt=DT)
+    return {"msfp": float(-icpt / slope), "rvr": float(1.0 / abs(slope)),
+            "map": last_half(r["map"]), "co": last_half(r["co"])}
+
+
+@pytest.mark.xfail(strict=True, raises=AssertionError, reason=(
+    "KNOWN GAP — THE MODEL'S PROPOFOL IS RIGHT FOR THE WRONG REASON. It was fitted "
+    "to Claeys 1988's pressure and output, and it reproduces both — but it lowers "
+    "pressure almost entirely by ARTERIAL dilation. De Wit 2016 measured the "
+    "mechanism in humans with inspiratory-hold venous return curves: propofol moves "
+    "blood out of the STRESSED volume and lowers VENOUS resistance, and that is what "
+    "holds cardiac output while pressure falls. "
+    "MEASURED 2026-09-26, reflexes off, same hold protocol, stepping 1.0 -> 6.0 "
+    "mg/kg: MAP -17.6 per cent (de Wit -19.5, matched), CO -3.3 (de Wit -3.5 NS, "
+    "matched), MSFP -4.4 per cent against a measured -23.3, and Rvr -2.8 per cent "
+    "against -29.7. The mechanistic quantities are missed by a factor of five to ten. "
+    "WHY IT MATTERS DOWNSTREAM: a real anaesthetised patient parks several hundred mL "
+    "in the unstressed pool, and that parked volume is what phenylephrine recruits. "
+    "The model parks very little, which is part of why phenylephrine cannot raise "
+    "stroke volume (backlog item 64, Hojlund 2024 test). "
+    "THE MECHANISM IS PROBABLY SYMPATHOLYSIS, NOT A DIRECT VENOUS ACTION — the "
+    "authors cite Robinson 1997 (human forearm, similar to stellate block) and Hoka "
+    "1998 (rats, abolished by ganglion block). In this model that belongs on "
+    "sympathetic OUTFLOW, which does not yet exist as a stage: backlog item 70. "
+    "AND THE MODEL HAS NO DRUG EFFECT ON VENOUS RESISTANCE AT ALL, which is the "
+    "second half of how humans hold output. "
+    "DO NOT CLOSE THIS BY RAISING propofol's venous e_max ALONE — MAP would then fall "
+    "too far, and the arterial arm fitted to Claeys absorbs the venous share. Both "
+    "arms and a venous-resistance term have to be refitted together, to Claeys AND "
+    "de Wit. strict=True. Full record in docs/validation_log.md, 2026-09-26."
+))
+def test_propofol_lowers_stressed_volume_and_venous_resistance_dewit2016():
+    """[PMID 27199311 — de Wit 2016] Deepening propofol anaesthesia lowers mean
+    systemic filling pressure 23 % and resistance to venous return 30 %, with
+    cardiac output unchanged.
+
+    n=17 after oesophageal resection, propofol TCI plus remifentanil, Cb raised
+    3.0 -> 6.5 mcg/mL: MAP 82 -> 66, MSFP 27.9 (5.4) -> 21.4 (4.2), Rvr 3.7 (1.4) ->
+    2.6 (0.7), CO 5.7 -> 5.5 (NS).
+
+    **DOSE-AXIS-FREE.** The model's bolus-equivalent mg/kg and de Wit's blood
+    concentration cannot be mapped onto each other. So the test chooses a dose STEP
+    whose MAP fall matches de Wit's, and asserts the mechanism across that step.
+    **The MAP match is a PRECONDITION and fails with `pytest.fail`, not an
+    assertion**, so a change that breaks the dose match surfaces as a real failure
+    rather than hiding inside this expected one.
+
+    **The bands are 95 % confidence intervals of the mean ratio**, computed from the
+    reported means and SDs treating the two levels as independent — which
+    overstates the uncertainty for a paired design, so they are conservative.
+
+    **Why MSFP survives the study's device choice.** Cardiac output was by
+    Modelflow pulse contour, which is tone-sensitive. But MSFP is the ZERO-FLOW
+    intercept of the fitted venous return line, and a proportional error in cardiac
+    output does not move a zero crossing. Rvr, the slope, is less protected.
+    """
+    lo, hi = _propofol_venous_return_curve(1.0), _propofol_venous_return_curve(6.0)
+    d = {k: 100.0 * (hi[k] - lo[k]) / lo[k] for k in lo}
+
+    mlo, mhi = _DEWIT_MAP_CI95
+    if not (mlo <= d["map"] <= mhi):
+        pytest.fail(
+            f"PRECONDITION: the 1.0 -> 6.0 mg/kg step lowers MAP {d['map']:+.1f} %, "
+            f"outside de Wit's {mlo} to {mhi} %. The dose pair no longer matches the "
+            f"study's pressure step and must be re-chosen before the mechanism can be "
+            f"compared."
+        )
+    for key, (a, b), label in (("msfp", _DEWIT_MSFP_CI95, "mean systemic filling pressure"),
+                               ("rvr",  _DEWIT_RVR_CI95,  "resistance to venous return")):
+        assert a <= d[key] <= b, (
+            f"{label} changes {d[key]:+.1f} % across a propofol step that lowers MAP "
+            f"{d['map']:+.1f} %; de Wit measured a fall inside {a} to {b} %. "
+            f"All changes: {', '.join(f'{k} {v:+.1f}' for k, v in d.items())}"
+        )
+
+
+# ===========================================================================
+# 34. Demand pacing — the input that lets a paced cohort be reproduced
+# ===========================================================================
+
+def test_demand_pacing_holds_rate_and_leaves_the_vascular_reflex_working():
+    """`paced_hr_bpm` is a LOWER RATE LIMIT, and it must supersede only the rate.
+
+    **Why it exists.** Switching the baroreflex off was the only way to hold heart
+    rate still, and that also removes the reflex's vascular arms. A paced patient
+    keeps those. Juhl-Olsen 2023 (PMID 37186094) — the cleanest phenylephrine
+    study in the ledger — paced 25 of 30 patients at 80-90 /min, so without this
+    input it cannot be reproduced honestly.
+
+    **Four properties, all calibration-independent:**
+    1. Above the native rate it CAPTURES exactly and holds.
+    2. Below the native rate it does nothing — demand pacing, as AAI and DDD
+       pacing behave.
+    3. The vascular reflex still defends pressure under pacing. Measured
+       2026-09-26 at 45 deg head-up: MAP falls 11.0 unpaced, 12.7 paced at 90, and
+       37.2 with the reflex off. Paced must stay far nearer the first than the last.
+    4. Unset (None) is the identity — asserted bit-for-bit against a saved run
+       when the input was added, and covered by the suite's existing
+       default-run tests since no code path changes.
+    """
+    def run(paced=None, baro=True, tilt=0.0):
+        p = SimParams()
+        p.paced_hr_bpm = paced
+        p.baroreflex_enabled = baro
+        p.tilt_start_deg, p.tilt_end_deg, p.tilt_onset_s = 0.0, tilt, 5.0
+        r = run_simulation(p, duration_s=LIT_DURATION, dt=DT)
+        h = len(r["hr"]) // 2
+        return np.asarray(r["hr"][h:]), last_half(r["map"])
+
+    native_hr, _ = run()
+    paced_hr, _ = run(paced=85.0)
+    assert np.allclose(paced_hr, 85.0), (
+        f"paced at 85 above a native {native_hr.mean():.1f}, heart rate ran "
+        f"{paced_hr.min():.3f}-{paced_hr.max():.3f} — it must capture exactly"
+    )
+
+    low_hr, _ = run(paced=50.0)
+    assert np.allclose(low_hr, native_hr), (
+        "paced at 50, below the native rate, changed heart rate — demand pacing "
+        "must not capture when the native rhythm is faster"
+    )
+
+    drop = {}
+    for label, kw in (("unpaced", {}), ("paced", {"paced": 90.0}), ("off", {"baro": False})):
+        _, m0 = run(tilt=0.0, **kw)
+        _, m1 = run(tilt=45.0, **kw)
+        drop[label] = m1 - m0
+    assert abs(drop["paced"] - drop["unpaced"]) < 0.25 * abs(drop["off"] - drop["unpaced"]), (
+        f"45 deg head-up MAP fall: unpaced {drop['unpaced']:+.2f}, paced "
+        f"{drop['paced']:+.2f}, reflex off {drop['off']:+.2f}. Pacing must remove "
+        f"the rate response only; the vascular reflex has to keep defending pressure"
+    )
+
+
+# ===========================================================================
+# 35. Reflex OUTFLOW and end-organ RESPONSIVENESS — backlog item 70, pass 1
+#
+# Pass 1 changes no number: every default is exactly 1.0, and the reflex-active
+# identity (45 deg tilt with phenylephrine, and a 1000 mL bleed, 20 output
+# arrays) was checked bit-for-bit when it landed. What this section guards is
+# the other half: that each new setting is LIVE and CORRECTLY SIGNED. A
+# documented mechanism that silently does nothing is the most common defect in
+# this repository — see the dead `venous_tone_factor` in CLAUDE.md.
+# ===========================================================================
+
+def _reflex_run(tilt=0.0, drugs=None, **params):
+    p = SimParams()
+    p.tilt_start_deg, p.tilt_end_deg, p.tilt_onset_s = 0.0, tilt, 5.0
+    if drugs:
+        p.drug_factors = combined_drug_factors(drugs)
+    for k, v in params.items():
+        setattr(p, k, v)
+    r = run_simulation(p, duration_s=LIT_DURATION, dt=DT)
+    return {"map": last_half(r["map"]), "hr": last_half(r["hr"])}
+
+
+def test_reflex_outflow_and_responsiveness_are_live_and_signed():
+    """Each item-70 setting must act, and in the physiological direction.
+
+    1. SYMPATHETIC outflow removed: head-up tilt is defended worse (MAP falls
+       further) and produces less tachycardia.
+    2. VAGAL outflow removed: phenylephrine's reflex bradycardia shrinks.
+    3. ARTERIOLAR responsiveness removed: tilt is defended worse.
+    4. VAGAL sinus-node responsiveness removed: the bradycardia shrinks, as with
+       outflow removed — the two are nearly interchangeable in pass 1 by design.
+    5. An unknown responsiveness key is refused, so a typo cannot silently fall
+       back to the default.
+    """
+    base_up = _reflex_run(tilt=45.0)
+    base_flat = _reflex_run()
+    no_symp_up = _reflex_run(tilt=45.0, sympathetic_outflow_scale=0.0)
+    no_symp_flat = _reflex_run(sympathetic_outflow_scale=0.0)
+    assert (no_symp_up["map"] - no_symp_flat["map"]) < (base_up["map"] - base_flat["map"]) - 2.0, (
+        "removing sympathetic outflow did not worsen the defence of pressure on tilt"
+    )
+    assert (no_symp_up["hr"] - no_symp_flat["hr"]) < (base_up["hr"] - base_flat["hr"]) - 1.0, (
+        "removing sympathetic outflow did not reduce the tachycardia of tilt"
+    )
+
+    pe = {"phenylephrine": 1.0}
+    brady = _reflex_run(drugs=pe)["hr"] - base_flat["hr"]
+    no_vag_flat = _reflex_run(vagal_outflow_scale=0.0)
+    brady_no_vag = _reflex_run(drugs=pe, vagal_outflow_scale=0.0)["hr"] - no_vag_flat["hr"]
+    assert brady < 0 and brady_no_vag > brady + 1.0, (
+        f"removing vagal outflow did not shrink phenylephrine's bradycardia "
+        f"({brady:+.1f} -> {brady_no_vag:+.1f} bpm)"
+    )
+
+    r_svr0 = {"svr": 0.0}
+    svr0_up = _reflex_run(tilt=45.0, reflex_responsiveness=r_svr0)
+    svr0_flat = _reflex_run(reflex_responsiveness=r_svr0)
+    assert (svr0_up["map"] - svr0_flat["map"]) < (base_up["map"] - base_flat["map"]) - 2.0, (
+        "removing arteriolar responsiveness did not worsen the defence of pressure on tilt"
+    )
+
+    r_vag0 = {"hr_vagal": 0.0}
+    vag0_flat = _reflex_run(reflex_responsiveness=r_vag0)
+    brady_r0 = _reflex_run(drugs=pe, reflex_responsiveness=r_vag0)["hr"] - vag0_flat["hr"]
+    assert brady_r0 > brady + 1.0, (
+        f"removing vagal sinus-node responsiveness did not shrink the bradycardia "
+        f"({brady:+.1f} -> {brady_r0:+.1f} bpm)"
+    )
+
+    from model.baroreflex import BaroreflexController
+    with pytest.raises(ValueError):
+        BaroreflexController(responsiveness={"svr_typo": 0.5})
+
+
+# ===========================================================================
+# 36. INTERNAL CONSISTENCY — one quantity, stated once
+#
+# `tools/consistency_audit.py` collects every place the model states one
+# physiological quantity and prints the routes side by side. On 2026-09-27 it
+# found 16 such quantities and **10 disagreed**. The audit needs no literature:
+# it asks only whether the model agrees with itself, so a disagreement is a
+# defect by construction, whichever side is wrong.
+#
+# BUT THE AUDIT IS A REPORTING TOOL, AND CLAUDE.md STEP 7 SAYS THOSE ROT.
+# Nothing fails when it goes stale. These three tests take the checks that are
+# cheap and calibration-independent and make them assertions, so the ratchet
+# reaches them. They are deliberately NOT a port of the whole audit — the rest
+# needs judgement about which of two routes is right, which a test cannot carry.
+# ===========================================================================
+
+
+def test_the_reference_operating_point_is_stated_once_and_consistently():
+    """The reference operating point must not drift apart between its copies.
+
+    Backlog item 50 asked for exactly this: *"Add a guard asserting the two
+    agree, so they cannot drift apart. Same argument as item 16's settling
+    guard: a rule that depends on memory gets forgotten."*
+
+    Item 50 removed `patient.py`'s hard-coded copy — it now imports. But
+    `baroreflex.py` still writes 93.0 TWICE, as `MAP_SETPOINT` and as
+    `REFERENCE_MAP_MMHG`, so they agree by coincidence of two literals rather
+    than by construction. That is what the first assertion guards.
+
+    THE CVP CONSTANTS ARE DELIBERATELY DIFFERENT AND THIS TEST DOES NOT DEMAND
+    THEY AGREE. Item 39 records why: driving the cardiopulmonary heart-rate arm
+    from `CVP_SETPOINT` produced a 6.0 bpm standing bradycardia (66.2 -> 60.2)
+    purely from the mismatch against where the model actually rests. So the gap
+    is a decision, not a defect. What this test does is PIN the decision, so
+    that editing either constant fails here and sends the reader to item 39
+    instead of silently changing a reflex reference.
+    """
+    from model.baroreflex import (MAP_SETPOINT, CVP_SETPOINT,
+                                  CP_HR_REFERENCE_CVP_MMHG,
+                                  REFERENCE_MAP_MMHG, REFERENCE_CVP_MMHG)
+
+    assert MAP_SETPOINT == REFERENCE_MAP_MMHG, (
+        f"THE SAME QUANTITY IS WRITTEN TWICE AND THE TWO NOW DISAGREE: "
+        f"MAP_SETPOINT={MAP_SETPOINT}, REFERENCE_MAP_MMHG={REFERENCE_MAP_MMHG}. "
+        f"Both are the reference patient's resting mean arterial pressure. Make one "
+        f"of them import the other rather than editing both. Backlog item 50."
+    )
+
+    # The recorded, deliberate relationships. Changing a constant must fail here.
+    assert CVP_SETPOINT == 3.0 and CP_HR_REFERENCE_CVP_MMHG == 4.7, (
+        f"A FILLING-PRESSURE REFERENCE CHANGED: CVP_SETPOINT={CVP_SETPOINT} "
+        f"(was 3.0, uncited, used by the SVR arm), CP_HR_REFERENCE_CVP_MMHG="
+        f"{CP_HR_REFERENCE_CVP_MMHG} (was 4.7, the cardiopulmonary arm's reference, "
+        f"chosen to sit at the model's own settled filling pressure). THEY ARE "
+        f"DELIBERATELY DIFFERENT — read backlog item 39 before changing either, and "
+        f"note that driving the HR arm from CVP_SETPOINT cost 6.0 bpm of spurious "
+        f"resting bradycardia. If the change is intended, update this assertion AND "
+        f"item 39 together."
+    )
+    assert CP_HR_REFERENCE_CVP_MMHG > CVP_SETPOINT, (
+        "The cardiopulmonary reference has fallen to or below the SVR setpoint. "
+        "The whole reason for a separate reference was that the SVR setpoint sits "
+        "BELOW where the model rests. Backlog item 39."
+    )
+    # REFERENCE_CVP_MMHG is the patient-scaling reference, a third quantity again.
+    # It is NOT asserted equal to either of the above — item 50's xfail covers the
+    # fact that it does not match where the model settles either.
+    assert REFERENCE_CVP_MMHG == 5.0, (
+        f"REFERENCE_CVP_MMHG changed to {REFERENCE_CVP_MMHG}. It is the "
+        f"patient-scaling reference and moving it rescales EVERY patient's SVR. "
+        f"See test_reference_operating_point_is_self_consistent, which is a strict "
+        f"xfail because this value does not match the model's settled state."
+    )
+
+
+def test_the_venous_compartment_tuples_agree_across_modules():
+    """The same set of venous compartments is written out in two modules.
+
+    `circulation.VENOUS_RESERVOIR` and `slow_dynamics.STRESS_RELAX_COMPARTMENTS`
+    are two identical literal 8-tuples in two files, with nothing tying them
+    together. That is the backlog item 50 shape — one quantity, two copies, no
+    link — and it is currently benign only because nobody has edited one of them.
+
+    Found by `tools/consistency_audit.py`, 2026-09-27. Cheap to assert, and it
+    would catch an edit to one tuple and not the other on the day it happened.
+    """
+    from model.circulation import VENOUS_RESERVOIR, MOBILIZABLE_VENOUS_RESERVOIR
+    from model.slow_dynamics import STRESS_RELAX_COMPARTMENTS
+
+    vr, sr = set(VENOUS_RESERVOIR), set(STRESS_RELAX_COMPARTMENTS)
+    assert vr == sr, (
+        f"THE TWO COPIES OF THE VENOUS COMPARTMENT SET HAVE DIVERGED. "
+        f"Only in circulation.VENOUS_RESERVOIR: {sorted(vr - sr)}. "
+        f"Only in slow_dynamics.STRESS_RELAX_COMPARTMENTS: {sorted(sr - vr)}. "
+        f"If the divergence is intended, say so in both files and relax this test "
+        f"deliberately — stress relaxation applying to a different set from the "
+        f"venous reservoir is a physiological claim and needs stating as one."
+    )
+    assert set(MOBILIZABLE_VENOUS_RESERVOIR) <= vr, (
+        f"MOBILIZABLE_VENOUS_RESERVOIR is not a subset of the venous reservoir: "
+        f"{sorted(set(MOBILIZABLE_VENOUS_RESERVOIR) - vr)} is mobilizable but is not "
+        f"a venous reservoir compartment. A bed cannot be recruitable without being "
+        f"a reservoir."
+    )
+    # Every named compartment must actually exist, which a literal tuple does not
+    # guarantee — a typo would silently drop a compartment from the mechanism.
+    for name in vr | set(MOBILIZABLE_VENOUS_RESERVOIR):
+        assert name in IDX, f"{name!r} is named in a venous tuple but is not a compartment"
+
+
+@pytest.mark.xfail(strict=True, raises=AssertionError, reason=(
+    "KNOWN GAP — TWO OF THE SIX EXCHANGE BEDS HAVE BLOOD FLOW BUT NO STARLING "
+    "FILTRATION. Backlog item 74, opened 2026-09-27 from "
+    "tools/consistency_audit.py. MEASURED 2026-09-27 BY CONSTRUCTION: _odes "
+    "carries six artery-to-vein exchange segments (upper body, renal, splanchnic, "
+    "thigh, calf, foot) and slow_dynamics.CAPILLARY_BEDS has four entries. "
+    "calf_vein and foot_vein appear nowhere, so the entire lower limb's "
+    "filtration is carried by thigh_vein at a weight of 0.20. The weights DO sum "
+    "to 1.00, so nothing is double-counted — the two beds are simply absent. "
+    "WHY IT IS NOT COSMETIC: transcapillary refill is what recovers volume after "
+    "haemorrhage, and the legs are where a tilted or bleeding patient's blood "
+    "actually is. Leg capillary pressure is also the HIGHEST in the model when "
+    "upright, because the hydrostatic column adds to it — so the omitted beds are "
+    "the ones where filtration should be LARGEST. "
+    "CONSEQUENCE UNMEASURED: whether adding them moves the 2 h or 24 h refill "
+    "figures has never been tested, and the thigh's 0.20 weight was assigned when "
+    "the leg was one compartment. "
+    "DO IT WITH THE LEG WORK (items 9, 53, 54, 64, 65, 72) so the tilt and refill "
+    "suites are re-validated once. "
+    "strict=True so it flips to a FAILURE the day the beds are added."
+))
+def test_every_exchange_bed_has_a_capillary_filtration_bed():
+    """Every bed the ODE pushes blood through must also filter.
+
+    An artery-to-vein exchange segment IS a capillary bed — that is what the
+    segment represents. If the fast ODE moves blood through six of them and the
+    slow Starling machinery only knows four, then two capillary beds carry flow
+    and pressure but exchange no fluid.
+
+    The exchange beds are derived rather than hard-coded: they are the venous
+    reservoir compartments minus the two pure conduits (SVC and IVC), which
+    receive venous inflow rather than arterial. Deriving them means this test
+    cannot go stale against a compartment change the way a literal list would.
+    """
+    from model.circulation import VENOUS_RESERVOIR
+    from model.slow_dynamics import CAPILLARY_BEDS
+
+    conduits = {"svc", "ivc"}
+    exchange_beds = set(VENOUS_RESERVOIR) - conduits
+    filtering = {venous for _, venous, _ in CAPILLARY_BEDS}
+
+    missing = sorted(exchange_beds - filtering)
+    assert not missing, (
+        f"{len(missing)} exchange bed(s) carry blood flow but no Starling "
+        f"filtration: {missing}. Either add them to slow_dynamics.CAPILLARY_BEDS "
+        f"with sourced surface-area weights, or state in that module why the "
+        f"remaining bed is a deliberate lumped stand-in for them. Backlog item 74."
+    )
+    # A weight that does not sum to 1.0 would silently rescale total filtration.
+    total_w = sum(w for _, _, w in CAPILLARY_BEDS)
+    assert abs(total_w - 1.0) < 1e-9, (
+        f"CAPILLARY_BEDS weights sum to {total_w}, not 1.0, so total capillary "
+        f"filtration has been rescaled. KF_TOTAL is a whole-body figure from "
+        f"Guyton and the weights only DISTRIBUTE it."
+    )
+
+
+# ===========================================================================
+# 37. VENOUS COMPLIANCE as a separate degree of freedom — backlog item 70
+#
+# Added 2026-09-27. Mean systemic filling pressure is stressed volume divided by
+# compliance, so a fall in filling pressure under anaesthesia can come from
+# unstressed volume RISING or from compliance RISING. On Hahn 2022's Table 1 a
+# 13.8 % fall in stressed volume and a 16.0 % rise in compliance produce exactly
+# the same observed fall. Until this factor existed the model had only the V0
+# knob, so it was forced to attribute every venous drug effect to unstressed
+# volume — and was credited or blamed for the whole of it on that basis three
+# times (propofol against de Wit, phenylephrine against Bell, the spinal block).
+#
+# NO DRUG SETS IT YET, deliberately. It exists so that de Wit 2016 — MSFP, Rvr,
+# Ra, CVP, CO and SVV at three propofol levels — can DISCRIMINATE the two
+# mechanisms, rather than us choosing the only one the model could express.
+#
+# THIS SECTION EXISTS BECAUSE OF THE DEAD `venous_tone_factor`. That pathway was
+# assembled and never applied, so venoconstriction silently did nothing for
+# months. A new venous factor with no test is the same bug waiting to happen.
+# ===========================================================================
+
+
+def _vc_run(vc, **kw):
+    p = SimParams()
+    p.baroreflex_enabled = False      # isolate the mechanism from the reflex
+    p.ventilation_mode = "none"
+    f = dict(combined_drug_factors({}))
+    if vc is not None:
+        f["venous_compliance_factor"] = vc
+    p.drug_factors = f
+    for k, v in kw.items():
+        setattr(p, k, v)
+    r = run_simulation(p, duration_s=45.0, dt=DT)
+    return {k: last_half(r[k]) for k in ("map", "co", "cvp", "sv")}
+
+
+def test_venous_compliance_factor_is_live_and_correctly_signed():
+    """The compliance knob must act, in the direction the Starling identity requires.
+
+    P = stressed volume / compliance. So for a given contained volume:
+      * factor > 1 (MORE compliant) holds that volume at a LOWER pressure, which
+        lowers filling pressure, preload, stroke volume and cardiac output;
+      * factor < 1 (stiffer) does the reverse.
+
+    The sign matters more than the size here, and it is the opposite of
+    `venous_tone_factor`'s convention — that one is < 1 for venoCONSTRICTION.
+    Two venous factors with inverted conventions is exactly the trap CLAUDE.md
+    warns about for `venous_tone_factor`, so both directions are asserted.
+
+    Reflexes are OFF so the mechanism is measured rather than the reflex's
+    response to it. Calibration-independent: only orderings are asserted.
+    """
+    base = _vc_run(1.0)
+    soft = _vc_run(1.30)
+    stiff = _vc_run(0.85)
+
+    assert soft["cvp"] < base["cvp"] - 0.15, (
+        f"raising venous compliance did not lower filling pressure "
+        f"({base['cvp']:.2f} -> {soft['cvp']:.2f} mmHg). The factor is not reaching "
+        f"the pressure calculation — see the dead venous_tone_factor in CLAUDE.md."
+    )
+    assert soft["co"] < base["co"] - 0.10 and soft["map"] < base["map"] - 1.0, (
+        f"raising venous compliance did not lower output ({base['co']:.2f} -> "
+        f"{soft['co']:.2f} L/min) or pressure ({base['map']:.1f} -> {soft['map']:.1f})"
+    )
+    assert stiff["cvp"] > base["cvp"] + 0.15, (
+        f"lowering venous compliance did not raise filling pressure "
+        f"({base['cvp']:.2f} -> {stiff['cvp']:.2f} mmHg). THE SIGN MAY BE INVERTED."
+    )
+    assert stiff["co"] > base["co"] + 0.10, "stiffer veins did not raise cardiac output"
+    # Monotonic across the range, so the mechanism is not saturating or oscillating.
+    mids = [_vc_run(v)["cvp"] for v in (0.85, 1.0, 1.16, 1.30)]
+    assert mids == sorted(mids, reverse=True), (
+        f"filling pressure is not monotonic in venous compliance: {mids}"
+    )
+
+
+def test_venous_compliance_factor_defaults_to_the_identity():
+    """Omitting the factor must be the same as setting it to 1.0, exactly.
+
+    The factor was added to `NEUTRAL_FACTORS` and to `combined_drug_factors`'s
+    merge dict, so any caller that never mentions it must get an unchanged model.
+    Bit-for-bit identity on the reflex-active case was verified when the factor
+    landed (45 deg tilt with phenylephrine and mechanical ventilation, plus a
+    bleed, 56 arrays). This asserts the cheap half of that permanently.
+    """
+    from model.pharmacology import NEUTRAL_FACTORS, combined_drug_factors
+    assert NEUTRAL_FACTORS["venous_compliance_factor"] == 1.0
+    # No drug may set it until a source says otherwise — see the section note.
+    for drug, dose in (("norepinephrine", 0.1), ("phenylephrine", 1.0),
+                       ("propofol", 2.0), ("spinal", 1.0), ("vasopressin", 2.0),
+                       ("epinephrine", 0.05)):
+        f = combined_drug_factors({drug: dose})
+        assert f["venous_compliance_factor"] == 1.0, (
+            f"{drug} now returns a venous_compliance_factor of "
+            f"{f['venous_compliance_factor']}. If that is intended it needs a SOURCE "
+            f"and a validation-log entry, and this assertion should name it."
+        )
+    omitted = _vc_run(None)
+    explicit = _vc_run(1.0)
+    assert omitted == explicit, (
+        f"omitting the factor is not the identity: {omitted} vs {explicit}"
+    )
+
+
+def test_venous_resistance_factor_is_live_and_correctly_signed():
+    """The venous resistance knob must act, and RAISE output when it falls.
+
+    Resistance to venous return sits between the filling-pressure point and the
+    right atrium, so CO = (Pmsf - CVP) / Rvr. Lowering it must raise venous
+    return and therefore cardiac output, WITHOUT moving mean systemic filling
+    pressure — filling pressure is a capacitance property and resistance is not.
+
+    **THAT INDEPENDENCE IS THE POINT, AND IT IS ASSERTED.** It is what makes this
+    factor identifiable alongside `venous_tone_factor` and
+    `venous_compliance_factor`, both of which move filling pressure. Measured
+    2026-09-27: cutting venous resistance 45 % moved Pmsf by 0.04 mmHg (20.81 ->
+    20.77) while raising cardiac output 18 %. If a future change couples them,
+    this test fails and the discrimination in docs/validation_log.md is void.
+
+    NOTE THE CONVENTION IS NOT INVERTED. > 1 is constriction here, because it
+    multiplies a resistance. `venous_tone_factor` is the odd one out at < 1 for
+    constriction, because it multiplies unstressed volume.
+    """
+    def run(vr):
+        p = SimParams()
+        p.baroreflex_enabled = False
+        p.ventilation_mode = "none"
+        f = dict(combined_drug_factors({}))
+        f["venous_resistance_factor"] = vr
+        p.drug_factors = f
+        r = run_simulation(p, duration_s=45.0, dt=DT)
+        return {k: last_half(r[k]) for k in ("map", "co", "cvp")}
+
+    base, dilated, constricted = run(1.0), run(0.60), run(1.60)
+
+    assert dilated["co"] > base["co"] + 0.10, (
+        f"lowering venous resistance did not raise cardiac output "
+        f"({base['co']:.2f} -> {dilated['co']:.2f} L/min). The factor is not reaching "
+        f"R_drain — see the dead venous_tone_factor in CLAUDE.md."
+    )
+    assert constricted["co"] < base["co"] - 0.10, (
+        f"raising venous resistance did not lower cardiac output "
+        f"({base['co']:.2f} -> {constricted['co']:.2f}). THE SIGN MAY BE INVERTED."
+    )
+    # Filling pressure rises slightly as flow rises (the atrium is better fed),
+    # but the effect must stay small relative to the flow change: this factor is
+    # a resistance, not a capacitance.
+    assert abs(dilated["cvp"] - base["cvp"]) < 1.5, (
+        f"venous resistance moved filling pressure by "
+        f"{dilated['cvp'] - base['cvp']:+.2f} mmHg, which is too much for a pure "
+        f"resistance change and breaks its independence from the two capacitance "
+        f"factors. See the de Wit discrimination, validation_log.md 2026-09-27."
+    )
+
+
+def test_venous_resistance_factor_defaults_to_the_identity():
+    """Omitting the factor must be the same as 1.0, and no drug may set it yet.
+
+    Bit-for-bit identity was verified when the factor landed: 56 output arrays,
+    45 deg tilt with phenylephrine and mechanical ventilation, plus a bleed.
+    """
+    from model.pharmacology import NEUTRAL_FACTORS, combined_drug_factors
+    assert NEUTRAL_FACTORS["venous_resistance_factor"] == 1.0
+    for drug, dose in (("norepinephrine", 0.1), ("phenylephrine", 1.0),
+                       ("propofol", 2.0), ("spinal", 1.0), ("vasopressin", 2.0),
+                       ("epinephrine", 0.05)):
+        f = combined_drug_factors({drug: dose})
+        assert f["venous_resistance_factor"] == 1.0, (
+            f"{drug} now returns a venous_resistance_factor of "
+            f"{f['venous_resistance_factor']}. de Wit 2016 gives -30 % for propofol "
+            f"and Maas 2013 x1.50 for noradrenaline, so a value here is SOURCEABLE — "
+            f"but it needs a validation-log entry and this assertion should name it."
+        )
+
+
+# ===========================================================================
+# 38. RESTING SYMPATHETIC VENOUS TONE — backlog item 70, pass 2
+#
+# Before this, the reflex worked purely in deviation form: at rest every outflow
+# was zero and the venous effector sat ON its clip, 100 % of the time. **Resting
+# venous tone was zero, so a sympatholytic had nothing to withdraw** — which is
+# why an opioid could not lower resting pressure through the reflex (item 63) and
+# why anaesthetic venodilation had to be smuggled in as a direct drug effect.
+#
+# The tone is applied in `_odes`, NOT inside the reflex. Putting it inside was
+# tried and rejected: it made `baroreflex_enabled = False` mean "denervated" and
+# would have silently moved every reflex-off test in the suite.
+# ===========================================================================
+
+
+def _tone_rest(tone, ks=1.0):
+    p = SimParams()
+    p.venous_resting_tone = tone
+    p.sympathetic_outflow_scale = ks
+    r = run_simulation(p, duration_s=45.0, dt=DT)
+    return {k: last_half(r[k]) for k in ("map", "co", "cvp", "sv")}
+
+
+def test_resting_venous_tone_is_neutral_while_outflow_is_intact():
+    """Adding resting tone must not move the patient while the nerves are intact.
+
+    The re-baselining (V0 divided by 1 - tone) and the tone term (1 - tone) cancel
+    EXACTLY at `sympathetic_outflow_scale = 1`, in every scenario rather than only
+    at rest. So the whole calibrated model is unchanged and only a SYMPATHOLYTIC
+    sees a difference — the same constraint items 32, 34, 66 and pass 1 used.
+
+    Verified more broadly when this landed: 56 output arrays across a 45 deg tilt
+    with phenylephrine and a 2000 mL/min bleed, 11 bit-for-bit and 45 differing by
+    under 1e-9 from the floating-point round-trip. This asserts the cheap half.
+    """
+    base = _tone_rest(0.0)
+    for tone in (0.10, 0.24, 0.40):
+        toned = _tone_rest(tone)
+        for k in ("map", "co", "cvp", "sv"):
+            assert abs(toned[k] - base[k]) < 1e-4, (
+                f"resting tone {tone} moved {k} from {base[k]:.6f} to {toned[k]:.6f} "
+                f"with outflow intact. The V0 re-baselining in _odes is not cancelling "
+                f"the tone term — check the 1/(1 - tone) factor."
+            )
+
+
+@pytest.mark.parametrize("ks,expect_fall", [(1.0, False), (0.0, True)])
+def test_withdrawing_venous_tone_venodilates(ks, expect_fall):
+    """Sympatholysis must venodilate: less preload, less output.
+
+    `sympathetic_outflow_scale = 0` is ganglionic blockade. It removes the tone
+    term, leaving unstressed volume at its denervated value, so blood moves into
+    the unstressed pool and preload falls. **Nothing in the model could do this
+    before pass 2** — that is the defect the pass exists to fix.
+
+    Calibration-independent: only the direction and the ordering are asserted.
+    """
+    base = _tone_rest(0.24, ks=1.0)
+    arm = _tone_rest(0.24, ks=ks)
+    if not expect_fall:
+        assert arm == base
+        return
+    assert arm["cvp"] < base["cvp"] - 0.20, (
+        f"withdrawing sympathetic outflow did not lower filling pressure "
+        f"({base['cvp']:.2f} -> {arm['cvp']:.2f} mmHg). Resting venous tone is not "
+        f"reaching the unstressed volume — the pass 2 defect, or a regression of it."
+    )
+    assert arm["sv"] < base["sv"] - 1.0 and arm["co"] < base["co"] - 0.10, (
+        f"withdrawing outflow did not lower stroke volume ({base['sv']:.1f} -> "
+        f"{arm['sv']:.1f} mL) or cardiac output ({base['co']:.2f} -> {arm['co']:.2f})"
+    )
+
+
+def test_ganglionic_blockade_lowers_filling_pressure_appleton1986():
+    """[PMID 3717360 — Appleton 1986] Removing sympathetic tone lowers Pmsf ~26 %.
+
+    **THIS IS A CALIBRATION CHECK, NOT VALIDATION.** `VENOUS_RESTING_TONE = 0.24`
+    was chosen to reproduce this number, so the test asserts that the calibration
+    held, not that the model predicted anything. `check_insample.py` should find
+    this PMID here and be right to.
+
+    THE TARGET, and why Appleton rather than the two human studies. Three sources
+    give the fall in filling pressure when sympathetic tone is withdrawn:
+
+        Hahn 2022   (human, Pmsa)     awake -> anaesthetised       -13.8 %
+        de Wit 2016 (human, holds)    light -> deep propofol       -23.3 %
+        Appleton 86 (dog, asystole)   intact -> GANGLIONIC BLOCK   -26 %
+
+    They order as they must: partial withdrawal below complete blockade. **Only
+    Appleton removes ALL tone, so only Appleton calibrates a constant that MEANS
+    all tone.** Hahn's and de Wit's figures belong to partial
+    `sympathetic_outflow_scale` values and are held back as targets for the
+    anaesthetic and opioid work (items 63 and 73).
+
+    A dog, so a RATIO is used — which is what survives the species jump. Appleton
+    says himself that his absolute volumes do not: dogs carry a far larger splenic
+    reservoir. His control columns are also UNPAIRED (n = 12 intact against n = 5
+    blocked, different days), so the band below is deliberately wide.
+
+    Pmsf by inspiratory holds, not by arrest: with one-way aortic and pulmonic
+    valves the model's arrest plateau reads the VENOUS equilibrium rather than the
+    filling pressure, which cost a false flag on 2026-09-27.
+
+    BOTH ARMS ARE MEASURED REFLEX-FREE, AND THAT IS NOT A CONVENIENCE. Appleton
+    reads MCFP at 5-7 s of asystole *"because measurements taken after 7 s may
+    begin to be influenced by cardiovascular reflexes"*, so the reflex is excluded
+    from his control arm AND his blocked arm. The only thing differing between his
+    two columns is the background TONE. Measured with the reflex ON the model gives
+    -35.0 % instead of -26.1 %, because the blocked arm then also loses its reflex
+    RESPONSE during the hold -- which Appleton's protocol deliberately excludes.
+    **That is a different quantity, not a different answer.**
+    """
+    _, pmsf_intact = _venous_return_curve(baroreflex=False)
+    _, pmsf_blocked = _venous_return_curve(baroreflex=False,
+                                           sympathetic_outflow_scale=0.0)
+    fall_pct = 100.0 * (pmsf_blocked - pmsf_intact) / pmsf_intact
+
+    assert -32.0 < fall_pct < -20.0, (
+        f"withdrawing all sympathetic tone moved filling pressure {fall_pct:+.1f} % "
+        f"({pmsf_intact:.2f} -> {pmsf_blocked:.2f} mmHg), outside the band around "
+        f"Appleton's -26 %. VENOUS_RESTING_TONE is 0.24 and is calibrated to this; "
+        f"if the venous compartments, their unstressed volumes or the mobilizable "
+        f"set have changed, the constant needs re-deriving — do NOT widen this band."
+    )

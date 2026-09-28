@@ -58,9 +58,27 @@ from collections import deque
 # zero, which would make sustained hypertension impossible. **Do not add an
 # integrator to close the gap.**
 # ---------------------------------------------------------------------------
-MAP_SETPOINT = 93.0   # mmHg — McEniery 2005 males 50-59 measure 95 +/- 7
-PP_SETPOINT  = 40.0   # mmHg
-CVP_SETPOINT =  3.0   # mmHg
+# THE CONVENTION OF EVERY PRESSURE BELOW, stated because it was not, and
+# because an unstated convention is indistinguishable from a wrong value. Both
+# gaps measured on the reference patient, 2026-09-27:
+#
+#   MAP and PP are CENTRAL AORTIC, integrated over the cycle. The reflex is fed
+#   `p_ao`, the aorta compartment. Central 95.41 against a brachial cuff
+#   (S + 2D)/3 of 88.95 — a difference of **6.47 mmHg**. A cuff reading is NOT
+#   comparable with these numbers.
+#
+#   CVP is TRANSMURAL, and it is a rolling MINIMUM (end-diastolic trough), not a
+#   cycle mean. The reflex is fed `p_cvp_edi`. Transmural 4.39 against
+#   intraluminal 2.34 — a difference of **2.05 mmHg**, and larger under positive-
+#   pressure ventilation. A catheter reads intraluminal means.
+#
+# Two of this project's longest detours were exactly this: a finger pressure
+# compared against an integrated central one (registration 005, ~9 of an 11 mmHg
+# "error"), and a transmural CVP fitted where a catheter reading belonged, which
+# made a venous return curve slope come out POSITIVE.
+MAP_SETPOINT = 93.0   # mmHg, CENTRAL AORTIC — McEniery 2005 males 50-59 measure 95 +/- 7
+PP_SETPOINT  = 40.0   # mmHg, CENTRAL AORTIC
+CVP_SETPOINT =  3.0   # mmHg, TRANSMURAL, end-diastolic trough
 
 # The reference patient's OPERATING POINT, used by `patient.py` to compute the
 # SVR a patient's measured numbers should be scaled against. This is NOT the
@@ -78,8 +96,13 @@ CVP_SETPOINT =  3.0   # mmHg
 # the known MAP overshoot on a requested-MAP input WORSE before it makes it
 # better. Carried as a strict xfail
 # (`test_reference_operating_point_is_self_consistent`) rather than adjusted.
-REFERENCE_MAP_MMHG = 93.0
-REFERENCE_CVP_MMHG =  5.0
+# SAME CONVENTIONS AS THE SETPOINTS ABOVE: central aortic, and transmural.
+# **THAT MATTERS HERE MORE THAN IT DOES THERE**, because `patient.py` compares a
+# CLINICIAN'S MEASUREMENTS against these — and a clinician measures a brachial
+# cuff pressure and an intraluminal catheter pressure. See the convention note
+# at `svr_measured` in patient.py, and backlog item 77.
+REFERENCE_MAP_MMHG = 93.0   # CENTRAL AORTIC
+REFERENCE_CVP_MMHG =  5.0   # TRANSMURAL
 REFERENCE_CO_LPM   =  5.0
 
 # Autonomic time constants (s) — Borst & Karemaker 1983, Olufsen 2005/2006.
@@ -204,6 +227,102 @@ CP_HR_RESERVE_BPM       = 40.0   # saturating reserve each way
 CP_HR_REFERENCE_CVP_MMHG = 4.7
 
 
+# ---------------------------------------------------------------------------
+# OUTFLOW AND RESPONSIVENESS — backlog item 70, pass 1 (2026-09-26).
+#
+# The reflex used to have ONE number between a pressure error and each effect,
+# so it could not tell "less nerve traffic" from "a weaker end organ". Three
+# measured cases need that difference:
+#   * AGE (White 1997): older subjects reach a SMALLER response with MORE
+#     noradrenaline — the end organ has aged, not the outflow.
+#   * THE OPIOID (Hojlund 2020 and 2024): remifentanil abolishes the
+#     sympathetic limb while the vagal limb still slows the heart — an OUTFLOW
+#     effect, limb by limb.
+#   * PHENYLEPHRINE: its venous effect is small in awake men and large under
+#     anaesthesia, because the drug and the nerves share one receptor.
+#
+# THE STRUCTURE. OUTFLOW is the filtered nerve drive, BEFORE any saturation.
+# Each END ORGAN saturates it (the tanh) and applies its own RESPONSIVENESS.
+# So a drug that cuts outflow acts before the saturation, and ageing acts after
+# it — which is the difference the three cases above need.
+#
+# PASS 1 CHANGES NO NUMBER. Every scale and responsiveness defaults to exactly
+# 1.0, multiplying by 1.0 is exact in floating point, and the expression order
+# is unchanged — so every run is bit-for-bit what it was. On its own, pass 1
+# makes "less outflow" and "less responsiveness" nearly interchangeable; they
+# only separate once there is a resting tone (pass 2) and a receptor stage
+# shared with drugs (pass 3). That is expected, not a failure.
+# ---------------------------------------------------------------------------
+DEFAULT_REFLEX_RESPONSIVENESS = {
+    "svr":            1.0,   # arteriolar resistance
+    "venous":         1.0,   # venous unstressed volume
+    "emax":           1.0,   # ventricular contractility
+    "hr_sympathetic": 1.0,   # sinus node, sympathetic limb (incl. cardiopulmonary arm)
+    "hr_vagal":       1.0,   # sinus node, vagal limb
+}
+
+
+# ---------------------------------------------------------------------------
+# RESTING SYMPATHETIC VENOUS TONE — backlog item 70, pass 2 (2026-09-28).
+#
+# THE DEFECT IT FIXES. The reflex works in DEVIATION form, so at rest every
+# outflow is exactly zero and every effector sits at 1.0. Measured 2026-09-27,
+# the venous arm does not merely sit at 1.0 — it rests ON its clip, 100 % of the
+# time, because the model settles above its own setpoint. **So resting venous
+# tone was ZERO, and a sympatholytic had nothing to withdraw.** That is why an
+# opioid could not lower resting pressure through the reflex (item 63), and why
+# anaesthetic venodilation had to be smuggled in as a direct drug effect.
+#
+# THE MAGNITUDE IS SOURCED, AND FROM THREE DIRECTIONS THAT ORDER CORRECTLY:
+#   Hahn 2022  (human, Pmsa)    awake -> anaesthetised        -13.8 %
+#   de Wit 2016 (human, holds)  light -> deep propofol        -23.3 %
+#   Appleton 1986 (dog, asystole) intact -> ganglionic block  -26 %
+# on mean circulatory filling pressure. Partial withdrawal by anaesthesia sits
+# below complete blockade, as it must. Three independent methods and species
+# converging on a RATIO — grade B, and a ratio survives the species jump that
+# Appleton's absolute volumes do not (he says so himself: dogs have a far larger
+# splenic reservoir).
+#
+# **RESTING SYMPATHETIC VENOUS TONE IS WORTH ROUGHLY A QUARTER OF MEAN
+# CIRCULATORY FILLING PRESSURE.** This constant is calibrated to reproduce that.
+#
+# HOW IT WORKS, AND IT IS APPLIED IN `circulation._odes`, NOT HERE. The tone is
+# a BACKGROUND sympathetic level, not a reflex deviation, so it must not live
+# inside the reflex:
+#     v0 = [V0_table / (1 - TONE)] * (1 - TONE * ks) * drug * v0_vein_factor
+# where ks is `sympathetic_outflow_scale`. The first bracket is the DENERVATED
+# vessel; the second is the tone holding it back.
+#
+# **PUTTING IT INSIDE THE REFLEX WAS TRIED FIRST AND REJECTED**, because it made
+# `baroreflex_enabled = False` mean "denervated" and would have silently moved
+# every reflex-off test in the suite. Reflex-off now means only "no dynamic
+# modulation"; withdrawing TONE is `sympathetic_outflow_scale`, which is the
+# sympatholytic knob pass 1 built and which works with the reflex on or off.
+#
+# CALIBRATED 2026-09-28 against APPLETON's complete blockade, which is the only
+# one of the three that removes ALL tone. Hahn's -13.8 % and de Wit's -23.3 % are
+# PARTIAL withdrawals and belong to `sympathetic_outflow_scale` values below 1,
+# not to this constant — averaging the three would conflate complete with partial.
+#
+#   tone   Pmsf intact   Pmsf blocked   fall
+#   0.20      20.81         16.44      -21.0 %
+#   0.24      20.81         15.4       -26.1 %   <- adopted, Appleton -26 %
+#   0.25      20.81         15.11      -27.4 %
+#
+# IT CHANGES NOTHING WHILE OUTFLOW IS INTACT, BY CONSTRUCTION. The re-baselining
+# 1/(1 - TONE) and the tone term (1 - TONE) cancel exactly at ks = 1, in every
+# scenario, not only at rest. Verified 2026-09-28 on 56 output arrays across a
+# 45 deg tilt with phenylephrine and a bleed: 11 bit-for-bit, 45 differing by
+# less than 1e-9 from floating-point round-trip, none above. Resting MAP, CO and
+# CVP are identical to the decimal at every tone value.
+#
+# GRADE B, and it is a RATIO — which is what survives the dog-to-human jump.
+# Appleton's absolute volumes do not, and he says so himself: dogs carry a far
+# larger splenic reservoir. CAVEAT: his control columns are UNPAIRED, n = 12
+# reflex-intact against n = 5 blocked, on different days.
+VENOUS_RESTING_TONE = 0.24
+
+
 # Split between the two efferent limbs. Both see the same error, so they set
 # the DYNAMICS, not the steady-state curve: the vagal limb is fast enough to
 # track the respiratory cycle, the sympathetic limb is not.
@@ -229,6 +348,10 @@ class BaroreflexController:
         history_len: int = 2500,
         cp_hr_enabled: bool = True,
         cp_hr_ref_cvp: float = CP_HR_REFERENCE_CVP_MMHG,
+        sympathetic_outflow_scale: float = 1.0,
+        vagal_outflow_scale: float = 1.0,
+        responsiveness: dict | None = None,
+        venous_resting_tone: float = VENOUS_RESTING_TONE,
     ):
         self.map_set  = map_set
         self.pp_set   = pp_set
@@ -284,6 +407,28 @@ class BaroreflexController:
         self.cp_hr_ref_cvp  = float(cp_hr_ref_cvp)
         self._gain_hr_cp    = CP_HR_RESERVE_BPM
         self._scale_hr_cp   = CP_HR_RESERVE_BPM / CP_HR_GAIN_BPM_PER_MMHG
+        # Item 70. Outflow scales act BEFORE the end-organ saturation;
+        # responsiveness acts AFTER it. All exactly 1.0 by default.
+        self.sympathetic_outflow_scale = float(sympathetic_outflow_scale)
+        self.vagal_outflow_scale       = float(vagal_outflow_scale)
+        self.venous_resting_tone       = float(venous_resting_tone)
+        if not 0.0 <= self.venous_resting_tone < 1.0:
+            raise ValueError("venous_resting_tone must be in [0, 1); it is the FRACTION "
+                             "of denervated mobilizable V0 held back by resting tone")
+        r = dict(DEFAULT_REFLEX_RESPONSIVENESS)
+        if responsiveness:
+            unknown = set(responsiveness) - set(r)
+            if unknown:
+                raise ValueError(f"unknown reflex responsiveness keys {sorted(unknown)}; "
+                                 f"valid: {sorted(r)}")
+            r.update({k: float(v) for k, v in responsiveness.items()})
+        self._r_svr, self._r_venous, self._r_emax = r["svr"], r["venous"], r["emax"]
+        self._r_hr_symp, self._r_hr_vagal = r["hr_sympathetic"], r["hr_vagal"]
+        # Outflows, exposed for inspection. Units: the filtered pressure error
+        # (mmHg-equivalent) that drives each limb. Zero at the setpoint.
+        self.vagal_outflow                = 0.0   # + = more vagal
+        self.cardiac_sympathetic_outflow  = 0.0   # + = more sympathetic
+        self.vascular_sympathetic_outflow = 0.0   # + = more sympathetic
         # SVR gain 0.65. It had been reduced to 0.45 on the pre-rebuild model,
         # where the compressed venous compliance left the baroreflex-SVR loop
         # underdamped — a strong gain produced ~90 mmHg pulse-pressure oscillation
@@ -339,20 +484,35 @@ class BaroreflexController:
         # withdraws when it falls; the sympathetic limb does the reverse, more
         # slowly. Both read the same error, so they sum to one sourced curve.
         fv = self._frac_hr_vagal
+        ks, kv = self.sympathetic_outflow_scale, self.vagal_outflow_scale
+
+        # OUTFLOW stage (item 70) — the filtered drive per limb, before any
+        # saturation. The heart-rate sympathetic signal keeps its historical sign
+        # (+ when pressure is HIGH, i.e. LESS sympathetic drive).
+        vag      = kv * self._para_map
+        sym_hr   = ks * self._symp_hr_map
+        sym_cp   = ks * self._symp_hr_cvp
+        # SVR: slow sympathetic sustains vasoconstriction when MAP is chronically low
+        svr_err  = -(self._symp_slow_map + self._symp_fast_cvp * 0.3)
+        sym_vasc = ks * svr_err
+        self.vagal_outflow                = vag
+        self.cardiac_sympathetic_outflow  = -sym_hr
+        self.vascular_sympathetic_outflow = sym_vasc
+
+        # END-ORGAN stage — each organ saturates its drive, then applies its
+        # own responsiveness.
         self.hr_delta = -self._gain_hr * (
-            fv * _sigmoid(self._para_map,    scale=self._scale_hr)
-            + (1.0 - fv) * _sigmoid(self._symp_hr_map, scale=self._scale_hr)
+            fv * (self._r_hr_vagal * _sigmoid(vag, scale=self._scale_hr))
+            + (1.0 - fv) * (self._r_hr_symp * _sigmoid(sym_hr, scale=self._scale_hr))
         )
         # Cardiopulmonary arm: falling filling pressure speeds the heart.
         if self.cp_hr_enabled:
-            self.hr_delta += -self._gain_hr_cp * _sigmoid(
-                self._symp_hr_cvp, scale=self._scale_hr_cp)
+            self.hr_delta += -self._gain_hr_cp * (self._r_hr_symp * _sigmoid(
+                sym_cp, scale=self._scale_hr_cp))
 
-        # SVR: slow sympathetic sustains vasoconstriction when MAP is chronically low
-        svr_err = -(self._symp_slow_map + self._symp_fast_cvp * 0.3)
-        self.svr_factor     = 1.0 + self._gain_svr       * _sigmoid(svr_err, scale=15.0)
-        self.emax_factor    = 1.0 + self._gain_emax      * _sigmoid(svr_err, scale=15.0)
-        self.v0_vein_factor = 1.0 - self._gain_v0_vein   * _sigmoid(svr_err, scale=20.0)
+        self.svr_factor     = 1.0 + self._gain_svr     * (self._r_svr    * _sigmoid(sym_vasc, scale=15.0))
+        self.emax_factor    = 1.0 + self._gain_emax    * (self._r_emax   * _sigmoid(sym_vasc, scale=15.0))
+        self.v0_vein_factor = 1.0 - self._gain_v0_vein * (self._r_venous * _sigmoid(sym_vasc, scale=20.0))
 
         # Clamp to physiological limits.
         # SVR range tightened 0.3–3.0 → 0.5–1.8: prevents extreme vasoconstriction/
