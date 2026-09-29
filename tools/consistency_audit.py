@@ -422,17 +422,34 @@ def dynamic_checks():
           "compartments table"),
          ("measured arrest plateau, reflexes off, apnoeic", pmsf_measured,
           "run_simulation with arrest_start_s")],
-        expected_different="RESOLVED 2026-09-27: THEY ARE NOT THE SAME QUANTITY. With one-way "
-                           "aortic and pulmonic valves the arterial side cannot drain back at "
-                           "arrest, so `ra_intraluminal` settles at the VENOUS equilibrium, not "
-                           "at the mean circulatory filling pressure. The gap is a convention, "
-                           "not a defect.",
-        note="The identity Pmsf = stressed volume / compliance still holds where it applies; this\n"
-             "pair simply does not test it. **USE A VENOUS RETURN CURVE, NOT AN ARREST**, to\n"
-             "compare against a literature Pmsf: four inspiratory holds with a fit to zero flow,\n"
-             "as tools/venous_return_curve.py does and as Maas and de Wit both did. Measured that\n"
-             "way the model gives 20.81 mmHg, not 7.78. This was the SECOND false flag this tool\n"
-             "produced, and both were mine — see the brain-height check.")
+        expected_different="PARTLY A REPORTING DEFECT — REMEASURED 2026-09-29, and the "
+                           "2026-09-27 explanation below was WRONG. 58 % of this gap is that the "
+                           "reported CVP is not the pressure the ODE uses. See the note.",
+        note="THE 2026-09-27 RESOLUTION IS REFUTED. It said one-way valves trap the arterial side,\n"
+             "so the plateau reads a VENOUS equilibrium. Measured per compartment at the plateau,\n"
+             "the arterial side sits at 9.63 and the venous at 9.64 — a range of 0.44 mmHg across\n"
+             "the whole systemic bed. NOTHING is trapped. Arterial excess volume is 26.2 mL, worth\n"
+             "0.247 mmHg, which is exactly what Pang 2001 reports for real arterial trapping\n"
+             "(Yamamoto 0.2-0.3, Appleton 0.43). The model is RIGHT about trapping; the earlier\n"
+             "explanation inflated a 0.25 mmHg effect into a 3.2 mmHg one.\n"
+             "\n"
+             "WHAT THE GAP ACTUALLY IS (10.980 -> 7.772 = 3.208 mmHg):\n"
+             "  1.866 mmHg (58 %) REPORTING DEFECT. During arrest `_odes` pins the cardiac phase,\n"
+             "        so E_ra is fixed at 0.248 and the ODE's p_ra is 9.638 — equal to the bed it\n"
+             "        drains, as it must be at zero flow. But the MONITOR's phase keeps running\n"
+             "        (circulation.py ~1458), so it recomputes p_ra across a full atrial cycle\n"
+             "        (7.77 to 17.49) and `p_cvp_edi = min(_cvp_win)` reports the TROUGH, 7.772.\n"
+             "        **The reported CVP during arrest is the trough of an atrial contraction the\n"
+             "        ODE is not performing.** Backlog item 78.\n"
+             "  1.342 mmHg (42 %) REAL. Systemic stressed volume falls 184 mL as the flaccid\n"
+             "        chambers swallow ~299 mL (275 -> 574 mL), which the table-based formula does\n"
+             "        not account for; 0.247 of it is the arterial trapping above.\n"
+             "\n"
+             "So the model's static filling pressure at arrest is 9.64 mmHg, not 7.78. The plateau\n"
+             "is genuine — stable from 70 s to 299 s of arrest.\n"
+             "**USE A VENOUS RETURN CURVE, NOT AN ARREST**, to compare against a literature Pmsf:\n"
+             "four inspiratory holds with a fit to zero flow, as tools/venous_return_curve.py does\n"
+             "and as Maas and de Wit both did. Measured that way the model gives 20.81 mmHg.")
 
 
 def main():

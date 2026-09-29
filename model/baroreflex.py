@@ -278,10 +278,11 @@ DEFAULT_REFLEX_RESPONSIVENESS = {
 #   de Wit 2016 (human, holds)  light -> deep propofol        -23.3 %
 #   Appleton 1986 (dog, asystole) intact -> ganglionic block  -26 %
 # on mean circulatory filling pressure. Partial withdrawal by anaesthesia sits
-# below complete blockade, as it must. Three independent methods and species
-# converging on a RATIO — grade B, and a ratio survives the species jump that
-# Appleton's absolute volumes do not (he says so himself: dogs have a far larger
-# splenic reservoir).
+# below complete blockade, as it must, so the two human figures are LOWER BOUNDS
+# on the complete-withdrawal value rather than estimates of it. The three order
+# correctly and that ordering is itself the check; the ratio is what survives the
+# species jump, which Appleton's absolute volumes do not (he says so himself:
+# dogs carry a far larger splenic reservoir).
 #
 # **RESTING SYMPATHETIC VENOUS TONE IS WORTH ROUGHLY A QUARTER OF MEAN
 # CIRCULATORY FILLING PRESSURE.** This constant is calibrated to reproduce that.
@@ -316,9 +317,29 @@ DEFAULT_REFLEX_RESPONSIVENESS = {
 # less than 1e-9 from floating-point round-trip, none above. Resting MAP, CO and
 # CVP are identical to the decimal at every tone value.
 #
-# GRADE B, and it is a RATIO — which is what survives the dog-to-human jump.
-# Appleton's absolute volumes do not, and he says so himself: dogs carry a far
-# larger splenic reservoir. CAVEAT: his control columns are UNPAIRED, n = 12
+# **GRADE D — a cross-species MAGNITUDE, expressed as a ratio. Corrected from
+# grade B on 2026-09-29, and this file's own calibration note is what refutes the
+# B.** Grade B needs several independent sources to agree ON THIS QUANTITY. Here
+# only Appleton measures it: the note above excludes Hahn and de Wit from setting
+# the constant, because a PARTIAL anaesthetic withdrawal is a different quantity
+# from COMPLETE ganglionic blockade and belongs to `sympathetic_outflow_scale`
+# below 1. So the adopted 0.24 is pinned by ONE DOG STUDY, with two human partial
+# withdrawals bounding it from below (-13.8 %, -23.3 %).
+#
+# **Three sources supporting the MECHANISM is not three sources supporting the
+# NUMBER, and counting them as such is the grade-B error CLAUDE.md warns about**
+# — agreement reads as confirmation. What the three genuinely establish is that
+# resting venous tone is worth a substantial fraction of filling pressure and
+# that anaesthesia withdraws part of it. The fraction's VALUE is dog-anchored.
+#
+# Pang 2001 was read in full on 2026-09-29 looking for a human number and did not
+# supply one; what it did settle is the ANATOMY (splanchnic mobilizable, limb
+# veins largely passive), which supports where the tone is applied, not how large
+# it is. **Grade D is the correct label until a human complete-withdrawal
+# measurement exists, and the mitigation is already in place: the constant enters
+# as a ratio, never as an absolute volume.**
+#
+# CAVEAT ON APPLETON ITSELF: his control columns are UNPAIRED, n = 12
 # reflex-intact against n = 5 blocked, on different days.
 VENOUS_RESTING_TONE = 0.24
 

@@ -154,6 +154,26 @@ Every change that touches physiology follows the same loop:
 The regression suite is a ratchet. If a change cannot leave it green without weakening a
 test, that is a finding to report, not a licence to retune.
 
+### Assert through the code path, not alongside it
+
+**A guard must be able to fail. Break the mechanism and watch it fire — if it stays green,
+it is not a guard.** Two ways to get this wrong, and both happened on 2026-09-29:
+
+- **It reads the wrong object.** Section 15 watched `BaroreflexController`, so it slept
+  through a resting venous tone added in `_odes`.
+- **It mirrors the formula it guards.** The repair recomputed `1/(1 - tone)` inside the
+  test. Deleting that factor from `circulation.py` left the repaired test green. Section 38
+  drives the same invariant through `run_simulation` and failed at once.
+
+The second is worse, because it looks like coverage of exactly the right thing. **Prefer a
+test that runs the model to one that recomputes it**, and verify by sabotage before trusting
+a new guard.
+
+**And before rewriting a guard that did not fire, ask whether it was measuring the right
+QUANTITY.** Section 15's real defect was that Abboud measured venous distensibility — a
+compliance — while the model's tone acts on unstressed volume. The guard could never have
+fired, and widening it would not have helped.
+
 **Step 6 exists because backlog entries go stale SILENTLY.** An item gets fixed as a side
 effect of other work and nothing closes it. Three instances were found in a single audit on
 2026-09-01: item 20's pre/post-capillary ratio (claimed 25, measured 4.0 — fixed by

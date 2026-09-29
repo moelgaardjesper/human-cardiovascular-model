@@ -2112,6 +2112,30 @@ def test_venous_tone_factor_signs_by_drug_class():
 #      i.e. an unstressed resting human carries substantial ARTERIOLAR
 #      sympathetic tone and essentially NO venous sympathetic tone. The venous
 #      effector is a reserve, held near neutral until it is needed.
+#
+# WHICH QUANTITY [A1] MEASURED, AND IT IS NOT UNSTRESSED VOLUME — 2026-09-29.
+# Abboud reports venous DISTENSIBILITY, mL/100 mL of tissue, from a plethysmo-
+# graphic congesting-cuff curve. That is a COMPLIANCE, a slope. It is unchanged
+# by a shift in V0, so **[A1] constrains the venous compliance arm and says
+# nothing about the unstressed-volume arm.** The model's resting tone acts on V0
+# and leaves compliance at 1.0, so the two do not meet.
+#
+# WHY THIS GUARD WAS REVISITED — 2026-09-29. Item 70 pass 2 introduced a resting
+# venous tone of 0.24 and this test kept passing, because it reads
+# `BaroreflexController.v0_vein_factor` and the tone had deliberately been put in
+# `_odes`, OUTSIDE the controller. That looked like a blind guard.
+#
+# ON INSPECTION IT IS NOT BLIND — IT IS NARROW, AND THE DISTINCTION MATTERS.
+# The harm it describes (a venous reserve already spent at rest) cannot occur,
+# because `_odes` re-baselines V0 by 1/(1 - tone) so the resting operating point
+# is unchanged to floating point. That invariant is guarded END-TO-END by section
+# 38. Verified by breaking it: deleting the re-baselining moved MAP 95.411 ->
+# 96.790 and section 38 failed immediately.
+#
+# So the scope is now stated rather than widened. **An attempt to widen it here
+# made things worse** — it recomputed the same arithmetic inside the test, which
+# stayed green through the identical break. The correction that mattered was the
+# QUANTITY one above, not the object being read.
 # ===========================================================================
 
 def test_resting_baroreflex_tone_is_arterial_not_venous():
@@ -2122,9 +2146,52 @@ def test_resting_baroreflex_tone_is_arterial_not_venous():
     the venous reserve already partly spent — and every subsequent hypovolaemic
     or orthostatic challenge then has less reserve to recruit than a real
     patient does.
+
+    WHAT THIS TEST DOES *NOT* GUARD, and the boundary was drawn by experiment.
+    The docstring's stated harm — a spent venous reserve — is prevented by the
+    V0 re-baselining in `_odes`, and the guard for that is
+    `test_resting_venous_tone_is_neutral_while_outflow_is_intact` in section 38,
+    which drives it through `run_simulation`. **A first attempt at this repair
+    asserted the re-baselining here too, and it was worthless: it recomputed the
+    `1/(1 - tone)` arithmetic in the test instead of calling the model.** Deleting
+    the factor from `circulation.py` left it green. Section 38 failed on the same
+    break at once (MAP 95.411 -> 96.790). So the re-baselining is covered, by the
+    test that runs the model, and this one stays on the controller — where a
+    resting set-point would actually be introduced.
+
+    THE LESSON IS THE SAME ONE TWICE. A guard that mirrors the formula it guards
+    is as blind as a guard that reads the wrong object. **Assert through the code
+    path, not alongside it.**
     """
     from model.baroreflex import BaroreflexController
+    from model.pharmacology import combined_drug_factors
 
+    # 1. THE TONE MUST ACT ON UNSTRESSED VOLUME, NOT ON COMPLIANCE — because
+    #    compliance is the arm [A1] actually measured, and he found it unchanged
+    #    (4.26 -> 4.46 and 4.50 mL/100 mL, p > 0.05). The undrugged venous
+    #    compliance factor is read from the code rather than assumed, so this
+    #    fails if resting tone is ever routed through it.
+    #
+    #    WHAT THIS GUARD CANNOT SEE, stated so it is not mistaken for more than
+    #    it is: `_odes` takes `vc` from the drug dict only, so an undrugged run
+    #    has no route by which tone COULD reach compliance today. The assertion
+    #    is therefore structural — it pins the current wiring, and would catch a
+    #    change that added such a route through the drug factors. It would NOT
+    #    catch one that multiplied `c.compliance` directly in `_odes`.
+    #
+    #    AND IT DOES NOT MAKE THE MODEL RIGHT ABOUT THE PHYSIOLOGY. Maas 2013
+    #    says smooth-muscle tone moves unstressed volume and cross-sectional area
+    #    TOGETHER, so a real blockade should move both. The model moves only V0 —
+    #    a known simplification, recorded beside _VENOUS_DRAIN_IDX.
+    assert combined_drug_factors({})["venous_compliance_factor"] == 1.0, (
+        "the undrugged venous compliance factor is not 1.0, so something now "
+        "changes venous compliance at rest. [A1] measured venous DISTENSIBILITY "
+        "— a compliance — and found it UNCHANGED after alpha-blockade (p > 0.05); "
+        "resting sympathetic tone must act on unstressed volume instead"
+    )
+
+    # 2, 3 and 4. THE CONTROLLER'S DYNAMIC ARMS. A resting set-point on the
+    #    venous effector would show up here, and the arterial arm must dominate.
     b = BaroreflexController(dt=0.001)
     for _ in range(60000):                      # 60 s at a resting operating point
         b.update(88.1, 45.0, 2.9)
