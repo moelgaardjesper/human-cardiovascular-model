@@ -2044,15 +2044,51 @@ def test_venous_tone_modulates_preload_regression():
 
 
 def test_venous_tone_factor_signs_by_drug_class():
-    """Vasopressors venoconstrict (factor < 1); IV anaesthetics venodilate
-    (factor > 1). Guards the sign convention, which a prior version had
-    contradictory between the pressor and anaesthetic drug classes."""
-    vt = lambda d: combined_drug_factors(d)["venous_tone_factor"]
-    assert vt({"norepinephrine": 0.1}) < 1.0, "norepinephrine should venoconstrict"
-    assert vt({"phenylephrine":  1.0}) < 1.0, "phenylephrine should venoconstrict"
-    assert vt({"vasopressin":    2.0}) < 1.0, "vasopressin should venoconstrict"
-    assert vt({"propofol":       2.0}) > 1.0, "propofol should venodilate"
-    assert vt({"spinal":         1.0}) > 1.0, "spinal should venodilate"
+    """Vasopressors venoconstrict; IV anaesthetics venodilate.
+
+    Guards the sign convention, which a prior version had contradictory between
+    the pressor and anaesthetic drug classes.
+
+    **THIS NOW CHECKS THE END-TO-END EFFECT, NOT ONE INTERMEDIATE VARIABLE**, and
+    the change is a strengthening. Until item 70 pass 3 every drug's venous
+    effect travelled through `venous_tone_factor`, so reading that key was
+    enough. The alpha1 agonists now go through a SHARED receptor stage instead
+    (`alpha1_venous_drive`), and their `venous_tone_factor` is 1.0 — so the old
+    assertion failed for noradrenaline and phenylephrine even though both still
+    venoconstrict correctly.
+
+    **The honest fix is to follow the effect, not to relax the assertion.**
+    CLAUDE.md names this guard as one that must not be weakened to make a
+    calibration fit, and it exists because `venous_tone_factor` was once a dead
+    variable — assembled and never applied, so venoconstriction silently did
+    nothing for months. Reading the final V0 multiplier catches that failure
+    through EITHER pathway, which reading one key no longer does.
+    """
+    from model.pharmacology import alpha1_tone_drive, ALPHA1_VENOUS_EMAX
+
+    tone_drive = alpha1_tone_drive(0.24)      # the default resting tone
+
+    def v0_multiplier(drugs):
+        """The factor the ODE actually applies to mobilizable unstressed volume."""
+        f = combined_drug_factors(drugs)
+        drive = tone_drive + f["alpha1_venous_drive"]
+        alpha1 = 1.0 - ALPHA1_VENOUS_EMAX * (drive / (1.0 + drive))
+        return f["venous_tone_factor"] * alpha1
+
+    baseline = v0_multiplier({})
+    for drug, dose in (("norepinephrine", 0.1), ("phenylephrine", 1.0),
+                       ("vasopressin", 2.0)):
+        assert v0_multiplier({drug: dose}) < baseline, (
+            f"{drug} should venoconstrict — it must LOWER the unstressed volume "
+            f"multiplier below the undrugged {baseline:.4f}. Check both pathways: "
+            f"venous_tone_factor for non-alpha1 drugs, alpha1_venous_drive for "
+            f"alpha1 agonists."
+        )
+    for drug, dose in (("propofol", 2.0), ("spinal", 1.0)):
+        assert v0_multiplier({drug: dose}) > baseline, (
+            f"{drug} should venodilate — it must RAISE the unstressed volume "
+            f"multiplier above the undrugged {baseline:.4f}"
+        )
 
 
 # ===========================================================================
@@ -2828,21 +2864,33 @@ def test_every_drug_is_neutral_at_zero_dose():
         "vasopressin": vasopressin, "epinephrine": epinephrine,
         "propofol": propofol, "spinal_anaesthesia": spinal_anaesthesia,
     }
+    # MOST TERMS MULTIPLY, so neutral is 1.0. A few ADD, and for those neutral is
+    # 0.0 — `alpha1_venous_drive` joins a shared receptor pool (item 70 pass 3)
+    # rather than scaling anything. The additive keys are listed EXPLICITLY, so a
+    # future additive term that is not declared here fails loudly against the
+    # strict rule instead of being waved through at 0.0.
+    ADDITIVE = {"alpha1_venous_drive"}
+
+    def neutral(key):
+        return 0.0 if key in ADDITIVE else 1.0
+
     for name, fn in drugs.items():
         for factor, value in fn(0.0).items():
-            assert value == pytest.approx(1.0, abs=1e-12), (
-                f"{name}(0.0) returns {factor}={value}, must be exactly 1.0. "
-                f"A drug that is not being given must do nothing. If this is a "
-                f"'fraction of another effect' term, it must be written "
-                f"1 + k*(f - 1), not f*k — the latter inverts the effect."
+            assert value == pytest.approx(neutral(factor), abs=1e-12), (
+                f"{name}(0.0) returns {factor}={value}, must be exactly "
+                f"{neutral(factor)}. A drug that is not being given must do "
+                f"nothing. If this is a 'fraction of another effect' term, it "
+                f"must be written 1 + k*(f - 1), not f*k — the latter inverts "
+                f"the effect. If it is a new ADDITIVE term, declare it in "
+                f"ADDITIVE above and say in pharmacology.py why it adds."
             )
 
     # And through the combining path, which is what the model actually calls.
     for name in drugs:
         for factor, value in combined_drug_factors({name: 0.0}).items():
-            assert value == pytest.approx(1.0, abs=1e-12), (
+            assert value == pytest.approx(neutral(factor), abs=1e-12), (
                 f"combined_drug_factors({{{name!r}: 0.0}}) returns "
-                f"{factor}={value}, must be exactly 1.0"
+                f"{factor}={value}, must be exactly {neutral(factor)}"
             )
 
 
@@ -5961,9 +6009,16 @@ def test_resting_venous_tone_is_neutral_while_outflow_is_intact():
     Verified more broadly when this landed: 56 output arrays across a 45 deg tilt
     with phenylephrine and a 2000 mL/min bleed, 11 bit-for-bit and 45 differing by
     under 1e-9 from the floating-point round-trip. This asserts the cheap half.
+
+    THE TONE HAS A CEILING, AND PASS 3 IMPOSED IT. Resting tone cannot exceed
+    `ALPHA1_VENOUS_EMAX` (0.35), because it is an occupancy of the same receptor
+    pool the drugs use: a tone that saturated the receptor would leave an alpha1
+    agonist with nothing to add. `alpha1_tone_drive` raises ValueError above it.
+    The sweep below therefore stops at 0.32. It used to include 0.40, which pass
+    3 correctly refused.
     """
     base = _tone_rest(0.0)
-    for tone in (0.10, 0.24, 0.40):
+    for tone in (0.10, 0.24, 0.32):
         toned = _tone_rest(tone)
         for k in ("map", "co", "cvp", "sv"):
             assert abs(toned[k] - base[k]) < 1e-4, (
@@ -6050,4 +6105,106 @@ def test_ganglionic_blockade_lowers_filling_pressure_appleton1986():
         f"Appleton's -26 %. VENOUS_RESTING_TONE is 0.24 and is calibrated to this; "
         f"if the venous compartments, their unstressed volumes or the mobilizable "
         f"set have changed, the constant needs re-deriving — do NOT widen this band."
+    )
+
+
+# ===========================================================================
+# 39. THE SHARED ALPHA1 VENOUS STAGE — backlog item 70, pass 3
+#
+# Nerves and alpha1 drugs compete for one receptor pool, so they add their DRIVE
+# into one saturating occupancy rather than multiplying separate factors. The
+# drug's venous effect therefore GROWS as sympathetic tone is withdrawn — which
+# a fixed e_max could not express: 0.10 fits Schaefers' awake men and 0.30 fits
+# the anaesthetised cohorts, and neither value fits both.
+#
+# Every constant is derived from a fixed point. Hojlund and Juhl-Olsen, the
+# held-out anaesthetised cohorts, were NOT used.
+# ===========================================================================
+
+
+def test_alpha1_drives_sum_and_non_alpha1_drugs_stay_out_of_the_stage():
+    """Two alpha1 agonists share receptors; a V1 agonist does not.
+
+    `alpha1_venous_drive` must ADD across drugs, where every other factor
+    multiplies. Vasopressin acts on V1 and propofol is not an agonist at all, so
+    both keep their own `venous_tone_factor` and stay outside the pool.
+    """
+    from model.pharmacology import combined_drug_factors as C
+
+    phenyl = C({"phenylephrine": 1.0})["alpha1_venous_drive"]
+    norad = C({"norepinephrine": 0.1})["alpha1_venous_drive"]
+    both = C({"phenylephrine": 1.0, "norepinephrine": 0.1})["alpha1_venous_drive"]
+    assert phenyl > 0 and norad > 0
+    assert both == pytest.approx(phenyl + norad, rel=1e-12), (
+        f"alpha1 drives must SUM, not multiply: {phenyl:.4f} + {norad:.4f} "
+        f"should be {phenyl + norad:.4f}, got {both:.4f}"
+    )
+    for drug, dose in (("vasopressin", 2.0), ("propofol", 2.0), ("spinal", 1.0)):
+        assert C({drug: dose})["alpha1_venous_drive"] == 0.0, (
+            f"{drug} is not an alpha1 agonist and must not enter the shared pool"
+        )
+    assert C({"vasopressin": 2.0})["venous_tone_factor"] < 1.0, (
+        "vasopressin lost its own venous_tone_factor when the stage was added"
+    )
+    assert C({"propofol": 2.0})["venous_tone_factor"] > 1.0, (
+        "propofol lost its own venodilating factor when the stage was added"
+    )
+
+
+def test_the_alpha1_stage_reproduces_the_awake_response_exactly():
+    """The awake calibration must be untouched, or Schaefers stops meaning anything.
+
+    `D_MAX` is SOLVED so the awake venous factor at a mid-clinical dose equals
+    what the old private `venous_tone_factor` produced. That is what keeps
+    Schaefers' five flow quantities passing. Verified more broadly when this
+    landed: 56 of 56 output arrays bit-for-bit against the previous commit,
+    including a phenylephrine run at 45 degrees of tilt.
+    """
+    from model.pharmacology import (combined_drug_factors, alpha1_tone_drive,
+                                    ALPHA1_VENOUS_EMAX)
+    tone = 0.24
+    for drug, dose, old_ec50, old_emax in (("phenylephrine", 1.0, 0.80, 0.10),
+                                           ("norepinephrine", 0.1, 0.20, 0.15)):
+        drive = (alpha1_tone_drive(tone)
+                 + combined_drug_factors({drug: dose})["alpha1_venous_drive"])
+        new = 1.0 - ALPHA1_VENOUS_EMAX * (drive / (1.0 + drive))
+        old = (1.0 - tone) * (1.0 - old_emax * dose / (old_ec50 + dose))
+        assert new == pytest.approx(old, abs=1e-12), (
+            f"{drug} at {dose}: the shared stage gives an awake V0 factor of "
+            f"{new:.10f} where the old private factor gave {old:.10f}. D_MAX is "
+            f"SOLVED from this identity — check _alpha1_dmax_from_awake."
+        )
+
+
+def test_withdrawing_tone_makes_phenylephrine_more_venoactive():
+    """The point of the whole pass: the drug works better when tone is gone.
+
+    Awake veins are already constricted, so an alpha1 agonist adds little.
+    Anaesthesia withdraws the tone and the drug has room.
+
+    Calibration-independent — only the ordering and a floor on the ratio are
+    asserted. The measured differential at a mid-clinical dose is about 2.8x,
+    recorded in docs/validation_log.md 2026-09-28. It is not asserted tightly
+    because no source gives it directly.
+    """
+    from model.pharmacology import (combined_drug_factors, alpha1_tone_drive,
+                                    ALPHA1_VENOUS_EMAX)
+    tone = 0.24
+    drug_drive = combined_drug_factors({"phenylephrine": 1.0})["alpha1_venous_drive"]
+
+    def reduction(ks):
+        base_drive = alpha1_tone_drive(tone) * ks
+        f = lambda d: 1.0 - ALPHA1_VENOUS_EMAX * (d / (1.0 + d)) if d > 0 else 1.0
+        return 1.0 - f(base_drive + drug_drive) / f(base_drive)
+
+    awake, partial, blocked = reduction(1.0), reduction(0.2), reduction(0.0)
+    assert awake < partial < blocked, (
+        f"the drug's venous effect must GROW as tone is withdrawn: awake "
+        f"{awake:.4f}, partial {partial:.4f}, blocked {blocked:.4f}"
+    )
+    assert partial > 2.0 * awake, (
+        f"withdrawing most of the tone only moved the drug's venous effect from "
+        f"{awake:.4f} to {partial:.4f}. A multiplicative arrangement gives about "
+        f"1.32x; the saturating stage should give roughly 3x. If this fails the "
+        f"stage has collapsed back to a fixed fraction."
     )

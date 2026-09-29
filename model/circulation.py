@@ -46,7 +46,8 @@ from .heart import (
 from .gravity import hydrostatic_delta_mmhg, GravityEnvironment, smooth_tilt_profile, positional_itp_mmhg
 from .baroreflex import (BaroreflexController,
                          VENOUS_RESTING_TONE as B_VENOUS_RESTING_TONE)
-from .pharmacology import combined_drug_factors, NEUTRAL_FACTORS
+from .pharmacology import (combined_drug_factors, NEUTRAL_FACTORS,
+                           ALPHA1_VENOUS_EMAX, alpha1_tone_drive)
 from .respiration import (
     intrathoracic_pressure, respiratory_sinus_arrhythmia, valsalva_itp_mmhg,
     ABDOMINAL_TRANSMISSION,
@@ -683,8 +684,23 @@ def _odes(t: float, V: np.ndarray, params: SimParams, baro: BaroreflexController
     # whether the reflex is on or off, so reflex-off still means only "no dynamic
     # modulation" and every existing reflex-off test is untouched.
     _venous_tone_rest = getattr(params, "venous_resting_tone", 0.0)
-    _tone_factor = 1.0 - _venous_tone_rest * getattr(params, "sympathetic_outflow_scale", 1.0)
-    vt = drugs.get("venous_tone_factor", 1.0) * _tone_factor
+    _ks = getattr(params, "sympathetic_outflow_scale", 1.0)
+    # THE SHARED ALPHA1 STAGE — item 70 pass 3. Nerves and alpha1 drugs add their
+    # DRIVE into one saturating occupancy, because they compete for one receptor
+    # pool. The drug's effect therefore GROWS as tone is withdrawn, which is what
+    # a fixed e_max could not express: 0.10 fits awake men and 0.30 fits
+    # anaesthetised patients, and neither fits both.
+    #
+    # Neutral where it must be. With tone intact and no alpha1 drug the factor is
+    # exactly (1 - venous_resting_tone), which is what pass 2 applied.
+    # Non-alpha1 venodilators (propofol, spinal) and V1 agonists (vasopressin)
+    # keep their own `venous_tone_factor` and multiply on top — different
+    # receptors, so they do not share this pool.
+    _a1_drive = alpha1_tone_drive(_venous_tone_rest) * _ks \
+        + drugs.get("alpha1_venous_drive", 0.0)
+    _alpha1_factor = (1.0 - ALPHA1_VENOUS_EMAX * (_a1_drive / (1.0 + _a1_drive))
+                      if _a1_drive > 0.0 else 1.0)
+    vt = drugs.get("venous_tone_factor", 1.0) * _alpha1_factor
     if baro is not None:
         vt *= baro.v0_vein_factor
     # Venous COMPLIANCE, a separate degree of freedom from unstressed volume.

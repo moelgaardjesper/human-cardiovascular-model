@@ -101,6 +101,84 @@ def _hill(dose: float, ec50: float, e_max: float, n: float = 1.0) -> float:
 #
 # Values above the mid-clinical dose are extrapolation: the saturating value of
 # 3.6 is not constrained by any source read so far.
+# ---------------------------------------------------------------------------
+# THE SHARED ALPHA1 VENOUS STAGE — backlog item 70, pass 3 (2026-09-28).
+#
+# THE PROBLEM. Phenylephrine's venous e_max was 0.10, which fits Schaefers'
+# AWAKE men. The anaesthetised cohorts need about 0.30. One fixed number cannot
+# serve both, and raising it breaks Schaefers' flow bands.
+#
+# THE PHYSIOLOGY. Endogenous sympathetic tone and an exogenous alpha1 agonist
+# act on the SAME receptors. Awake veins are already constricted, so the drug
+# adds little. Anaesthesia withdraws the tone and the drug has room. The drug's
+# effect is therefore not a fixed fraction — it depends on what is unoccupied.
+#
+# THE STAGE. Nerves and drug add their DRIVE into one saturating occupancy:
+#     drive     = TONE_DRIVE * sympathetic_outflow_scale + sum(drug drives)
+#     occupancy = drive / (1 + drive)
+#     v0 factor = 1 - ALPHA1_VENOUS_EMAX * occupancy
+# Applied in circulation._odes. Drugs contribute `alpha1_venous_drive`, which
+# SUMS rather than multiplies — two alpha1 agonists share receptors, they do not
+# act independently.
+#
+# EVERY CONSTANT IS DERIVED FROM A FIXED POINT. None was tuned to an endpoint:
+#   ALPHA1_VENOUS_EMAX 0.35  the canine-anchored 0.29-0.39 estimate, and the
+#                            quantity Appleton 1986 measures on a ganglion-
+#                            blocked dog (methoxamine, -4.2 mL/kg unstressed)
+#   TONE_DRIVE               solved so the resting occupancy reproduces pass 2's
+#                            venous_resting_tone exactly. Not a free parameter.
+#   each drug's D_MAX        solved so the AWAKE response is unchanged, which is
+#                            what keeps Schaefers passing.
+#
+# **HOJLUND AND JUHL-OLSEN WERE NOT USED.** They are the held-out anaesthetised
+# cohorts. If the stage works, their agreement is a RESULT, not a fit.
+#
+# A SIMPLER FORM WAS REJECTED, recorded so it is not re-tried. Letting the drug
+# act only on what tone has left — `1 - [T + (1-T)*hill]` — makes it 1/(1-0.24)
+# = 1.32x more effective when tone is withdrawn. The gap is about 3x. The rest
+# must come from SATURATION: resting tone sits high on the occupancy curve (0.69)
+# even though it reduces V0 by only 24 %.
+ALPHA1_VENOUS_EMAX = 0.35
+
+
+def alpha1_tone_drive(resting_tone: float) -> float:
+    """Drive that reproduces `resting_tone` as a V0 reduction. Not free."""
+    if resting_tone <= 0.0:
+        return 0.0
+    occ = resting_tone / ALPHA1_VENOUS_EMAX
+    if occ >= 1.0:
+        raise ValueError(f"venous_resting_tone {resting_tone} is at or above "
+                         f"ALPHA1_VENOUS_EMAX {ALPHA1_VENOUS_EMAX}; the shared "
+                         f"stage cannot represent a tone that saturates the receptor")
+    return occ / (1.0 - occ)
+
+
+def _alpha1_dmax_from_awake(old_e_max, ec50, anchor_dose, resting_tone):
+    """Solve D_MAX so the AWAKE venous response at `anchor_dose` is UNCHANGED.
+
+    DERIVED, NOT CHOSEN, and computed rather than hard-coded so it cannot drift
+    from the numbers it is solved against. A first version rounded it to three
+    decimals and moved aortic pressure by 0.018 mmHg in a pressor run — harmless,
+    but it made "the awake response is unchanged" not quite true.
+
+    This is what keeps Schaefers passing: his five flow quantities are the awake
+    calibration, and the shared stage must reproduce them exactly before it is
+    allowed to say anything about anaesthetised patients.
+    """
+    old_factor = 1.0 - old_e_max * anchor_dose / (ec50 + anchor_dose)
+    target = (1.0 - resting_tone) * old_factor        # V0 factor to reproduce
+    occ = (1.0 - target) / ALPHA1_VENOUS_EMAX
+    drive = occ / (1.0 - occ)
+    return ((drive - alpha1_tone_drive(resting_tone))
+            / (anchor_dose / (ec50 + anchor_dose)))
+
+
+# Solved against the DEFAULT resting tone. Both anchor doses are mid-clinical.
+_REF_TONE = 0.24
+ALPHA1_PHENYL_DMAX = _alpha1_dmax_from_awake(0.10, 0.80, 1.0, _REF_TONE)
+ALPHA1_NORAD_DMAX  = _alpha1_dmax_from_awake(0.15, 0.20, 0.1, _REF_TONE)
+
+
 ALPHA1_POSTCAP_EC50  = 0.20
 ALPHA1_POSTCAP_HILL  = 1.6
 ALPHA1_POSTCAP_EMAX  = 2.60
@@ -131,8 +209,11 @@ def norepinephrine(dose_mcg_kg_min: float) -> dict:
         # which is the tell: every other factor here is 1.0 at zero dose, because
         # that is what a dose-response means.
         "rv_emax_factor": 1.0 + 0.7 * (emax_factor - 1.0),
-        # α1 venoconstriction reduces venous V0 (recruits splanchnic reservoir) → <1.0
-        "venous_tone_factor": 1.0 - _hill(dose_mcg_kg_min, ec50=0.20, e_max=0.15),
+        # Venous alpha1 through the SHARED stage — item 70 pass 3. Reproduces the
+        # old `1 - hill(dose, 0.20, 0.15)` awake, and grows as tone is withdrawn.
+        "venous_tone_factor": 1.0,
+        "alpha1_venous_drive": ALPHA1_NORAD_DMAX * _hill(dose_mcg_kg_min,
+                                                         ec50=0.20, e_max=1.0),
         # α1 postcapillary constriction raises capillary pressure → filtration out
         "postcap_factor": 1.0 + _hill(dose_mcg_kg_min,
                                       ec50=ALPHA1_POSTCAP_EC50,
@@ -198,8 +279,13 @@ def phenylephrine(dose_mcg_kg_min: float) -> dict:
         "hr_factor": 1.0,          # baroreflex will decrease HR
         "lv_emax_factor": 1.0,
         "rv_emax_factor": 1.0,
-        # Pure α1 venoconstriction reduces venous V0 → <1.0
-        "venous_tone_factor": 1.0 - _hill(dose_mcg_kg_min, ec50=0.80, e_max=0.10),
+        # Venous alpha1 goes through the SHARED stage, not a private factor —
+        # item 70 pass 3. The old `1 - hill(dose, 0.80, 0.10)` is reproduced
+        # exactly in the AWAKE state; what changes is that the effect now grows
+        # as sympathetic tone is withdrawn, which is the whole point.
+        "venous_tone_factor": 1.0,
+        "alpha1_venous_drive": ALPHA1_PHENYL_DMAX * _hill(dose_mcg_kg_min,
+                                                          ec50=0.80, e_max=1.0),
         # Postcapillary constriction. Abboud [A4] showed the venous response is
         # α-receptor-mediated — phenoxybenzamine abolished it (-84%) while only
         # partly reducing the arterial (-28%) — so a pure α1 agonist must have it.
@@ -382,6 +468,9 @@ def combined_drug_factors(drugs: dict) -> dict:
         "lv_emax_factor": 1.0,
         "rv_emax_factor": 1.0,
         "venous_tone_factor": 1.0,
+        # ALPHA1 DRIVES SUM, they do not multiply: two alpha1 agonists compete for
+        # one receptor pool. Zero is "no alpha1 drug". Item 70 pass 3.
+        "alpha1_venous_drive": 0.0,
         # No drug returns this yet, so it stays 1.0 and every run is unchanged.
         "venous_compliance_factor": 1.0,
         "venous_resistance_factor": 1.0,
@@ -395,7 +484,10 @@ def combined_drug_factors(drugs: dict) -> dict:
             continue
         effect = fn(dose)
         for key in combined:
-            combined[key] *= effect.get(key, 1.0)
+            if key == "alpha1_venous_drive":
+                combined[key] += effect.get(key, 0.0)
+            else:
+                combined[key] *= effect.get(key, 1.0)
     return combined
 
 
@@ -405,6 +497,7 @@ NEUTRAL_FACTORS = {
     "lv_emax_factor": 1.0,
     "rv_emax_factor": 1.0,
     "venous_tone_factor": 1.0,
+    "alpha1_venous_drive": 0.0,
     "venous_compliance_factor": 1.0,
     "venous_resistance_factor": 1.0,
     "postcap_factor": 1.0,
