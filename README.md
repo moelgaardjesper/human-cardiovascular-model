@@ -135,7 +135,9 @@ Worth stating plainly, because "21 compartments expanded to 23" undersells the d
 
 That is **1,237 of 2,577 code lines (48 %) in modules Heldt has no equivalent for** (re-counted 2026-09-16; the previous figure counted a wider file set). The inherited half has not stood still either: the venous system was rebuilt wholesale to literature values (compliances changed 10–50×), the single lower-body vein was split into three serial segments, limb veins were given a nonlinear collapsible-tube law, and positional intrathoracic-pressure coupling was added.
 
-Beyond the module table, the model has since gained **instrumented protocols rather than just mechanisms** — a Valsalva manoeuvre, an inspiratory hold, and a circulatory arrest that measures mean systemic filling pressure the way a human study does, by stopping the heart and reading the equilibration.
+Beyond the module table, the model has since gained **instrumented protocols rather than just mechanisms** — a Valsalva manoeuvre, an inspiratory hold, and a circulatory arrest, so a quantity can be measured the way a human study measures it rather than read out of the state vector.
+
+**One correction to how that was stated, made 2026-09-29.** This sentence previously claimed the arrest "measures mean systemic filling pressure the way a human study does, by stopping the heart and reading the equilibration." **Two things are wrong with that and both are now measured.** First, the filling pressure the model reports during an arrest is **1.87 mmHg too low**: the ODE correctly holds the heart flaccid, but the output monitor keeps its own cardiac phase running and reports a trough of an atrial contraction the ODE is not performing. Second, even reported correctly an arrest plateau is *not* whole-system filling pressure, because the relaxed chambers take up about 184 mL of systemic stressed volume that a table-based calculation assumes stays in the vessels. **The protocol used for every filling-pressure comparison in this repository is the inspiratory-hold venous return curve**, which is what Maas and de Wit did and what `tools/venous_return_curve.py` reproduces; the arrest is not used for that number. The reporting defect is carried as a known limitation.
 
 The honest description is a **Heldt-derived circuit that has been substantially re-parameterised and extended**, not an implementation of Heldt. It is validated independently against **62 distinct sources** rather than against Heldt's outputs (counted by `tools/source_index.py`, which derives the list from the identifiers in the suite rather than from a hand-kept tally).
 
@@ -527,6 +529,35 @@ future split must place the liver in **series** (gut → liver → IVC), not in 
 would insert resistance into the venous return path. Note also that the two sub-beds move in
 *opposite* directions under at least one stimulus (atrial natriuretic peptide lowers hepatic
 and raises intestinal blood content), so the lumping has a measured cost.
+
+**A second cost of the same lumping, added 2026-10-01, and this one is a disagreement with a
+human measurement.** Venous tone — the resting sympathetic tone, the baroreflex venous arm and
+every α₁ pressor — is applied to the *mobilizable* reservoir, which is the splanchnic and
+upper-body venous compartments. **The upper-body compartment is a single lump covering head,
+neck, arms and skin, and the model treats all 764 mL of its unstressed volume as
+mobilizable.** Samueloff, Browse & Shepherd
+([PMID 5903943](https://pubmed.ncbi.nlm.nih.gov/5903943/), 10 normal adults) measured venous
+wall tension directly in human forearm, hand and foot veins at constant volume during 4 minutes
+of 70° head-up tilt. They found venoconstriction that peaked at 27 s and had **gone by 133 s**,
+while resistance-vessel constriction in the same limb was sustained throughout — and no venous
+response at all when the tilt was applied slowly. Their conclusion is that arterial pressure is
+maintained upright *without* active participation by the limb capacity vessels.
+
+**Both sources can be right, which is why this is a lumping problem rather than a wrong
+parameter.** The split the model is justified by (Gelman 2008) places *cutaneous* veins in the
+mobilizable group, while Samueloff's limb measurement is dominated by *muscle*. The compartment
+mixes a bed he excludes with a bed Gelman includes. **What is missing is the fraction** — a
+human division of upper-body venous volume between skin and skeletal muscle — and until that
+exists the model over-attributes mobilizable volume to the upper body by an unknown amount. It
+is recorded here rather than patched, for the same reason as the regional-distribution gap
+above: narrowing the set without the fraction would move four drug calibrations that currently
+agree with their sources, and trade a measured disagreement for an unmeasured one.
+
+Samueloff also describes a behaviour the architecture cannot express at all: **a venous
+constriction that fades while its stimulus continues and the arterial arm stays engaged.** The
+reflex drives each effector from one filtered pressure error, so a sustained error gives a
+sustained venous response. Two arms of one reflex adapting on different timescales needs
+per-effector adaptation, which does not exist here.
 
 ### The left atrium
 Left atrial emptying fraction is 42.8 % against 61.1 ± 6.2. The atrium is under-filled and stops
