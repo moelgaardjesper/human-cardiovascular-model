@@ -139,7 +139,9 @@ Beyond the module table, the model has since gained **instrumented protocols rat
 
 **One correction to how that was stated, made 2026-09-29.** This sentence previously claimed the arrest "measures mean systemic filling pressure the way a human study does, by stopping the heart and reading the equilibration." **Two things are wrong with that and both are now measured.** First, the filling pressure the model reports during an arrest is **1.87 mmHg too low**: the ODE correctly holds the heart flaccid, but the output monitor keeps its own cardiac phase running and reports a trough of an atrial contraction the ODE is not performing. Second, even reported correctly an arrest plateau is *not* whole-system filling pressure, because the relaxed chambers take up about 184 mL of systemic stressed volume that a table-based calculation assumes stays in the vessels. **The protocol used for every filling-pressure comparison in this repository is the inspiratory-hold venous return curve**, which is what Maas and de Wit did and what `tools/venous_return_curve.py` reproduces; the arrest is not used for that number. The reporting defect is carried as a known limitation.
 
-The honest description is a **Heldt-derived circuit that has been substantially re-parameterised and extended**, not an implementation of Heldt. It is validated independently against **62 distinct sources** rather than against Heldt's outputs (counted by `tools/source_index.py`, which derives the list from the identifiers in the suite rather than from a hand-kept tally).
+The honest description is a **Heldt-derived circuit that has been substantially re-parameterised and extended**, not an implementation of Heldt. It is anchored on independent measurement rather than on Heldt's outputs — against **76 distinct sources**, of which **35 are asserted by a passing test**, counted by `tools/source_index.py` from the identifiers in the suite rather than from a hand-kept tally.
+
+**That sentence used to read "validated independently against 62 distinct sources", and it was wrong in two ways at once — corrected 2026-10-01.** The total had grown to 76 while the text said 62, and more importantly **one number was standing in for three different things.** The tool's own breakdown: 35 sources carry a passing test, **21 are carried as strict `xfail`s that record a measured disagreement**, and 20 are cited in `model/` as a parameter justification with no test repeating their identifier. An xfail does not validate its source — it is a documented gap that fails the day it closes — so quoting one count as "validated against" inflated the claim by conflating agreement with disagreement. **The honest figure for validation is the smaller one.** This was caught by re-running the tool after adding a source, which is the only reason it surfaced: nothing fails when published prose goes stale.
 
 Heldt's *topology* survives all of it. Almost none of his numbers do — and the one place a Heldt value was still carried, `RV_EMAX`, was replaced the moment anyone checked, because a parameter table from another model is not a measurement.
 
@@ -149,8 +151,11 @@ Heldt's *topology* survives all of it. Almost none of his numbers do — and the
 
 **This is a representative list, not the bibliography.** Five papers are given
 here because they are load-bearing — remove any one and a structural commitment
-of the model loses its justification. The model cites **62 distinct sources** in
-total.
+of the model loses its justification. The model cites **76 distinct sources** in
+total: **35 with a passing test, 21 carried as strict `xfail`s recording a
+measured disagreement, and 20 cited in `model/` as parameter justifications that
+no test repeats.** Those three are not the same thing and the counts are given
+separately on purpose.
 
 **That full list is generated, never hand-maintained.** `tools/source_index.py`
 walks every PMID, PMC and DOI already written into the test docstrings and
@@ -485,7 +490,7 @@ real published protocols rather than the authors' own account of them.
 
 Whether a study is genuinely out-of-sample is decided mechanically, not from
 memory: `python3 tools/check_insample.py <PMID or DOI>` searches every
-identifier already cited in the model and its suite. Sixty-two sources is well
+identifier already cited in the model and its suite. Seventy-six sources is well
 past what anyone recalls reliably, and that failure would be silent and
 self-serving.
 
