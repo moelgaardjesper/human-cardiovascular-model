@@ -155,6 +155,59 @@ _TAU_SYMP_SLOW  = 20.0   # sympathetic slow (sustained SVR, venous tone)
 # from _TAU_SYMP_FAST so the SVR pathway is untouched by HR recalibration.
 _TAU_SYMP_HR    =  5.0   # sympathetic, heart rate
 
+# ---------------------------------------------------------------------------
+# THE LIMB VENOUS ARM ADAPTS — Samueloff 1966 (PMID 5903943), HUMAN.
+#
+# WHAT IS BEING REPRESENTED. Limb capacity vessels constrict TRANSIENTLY on
+# orthostatic stress and are back at baseline while the stimulus continues,
+# whereas the resistance vessels of the same limb stay constricted throughout.
+# Samueloff measured it at constant volume in an occluded limb, so a pressure
+# rise there is a change in UNSTRESSED VOLUME — the quantity this arm multiplies.
+#
+#   70 deg head-up tilt, 4 min, 8 subjects / 30 experiments (forearm, hand):
+#     peak 7.9 mmHg (4.0-14.2), AT 27 s; whole response over by 133 s (62-240)
+#     forearm blood flow 3.6 -> 2.5 mL/100 mL/min and SUSTAINED all 4 min
+#   foot veins, 1 subject / 3 tilts:
+#     peaks 3.5, 4.5, 5.0 mmHg; durations 110, 98, 70 s
+#
+# WHY A HIGH-PASS, AND WHY THIS IS NOT A FITTED TIME CONSTANT. The arm already
+# sees a drive filtered at _TAU_SYMP_SLOW = 20 s. Subtracting a slower tracker of
+# that same drive gives a response that rises, peaks and decays to zero, and for
+# two cascaded exponentials the peak sits at
+#       t_peak = T1*T2*ln(T2/T1) / (T2 - T1)
+# With T1 = 20 (already there) and T2 = 40, t_peak = 27.7 s. **Samueloff measured
+# 27 s.** One new constant, and the peak time is a CONSEQUENCE of it rather than
+# something fitted to it. At 133 s the response is ~14 % of its peak.
+_TAU_VENOUS_LIMB_ADAPT = 40.0   # s, washout of the limb venous arm
+
+# Peak size. Samueloff's FOOT peak of 3.5-5.0 mmHg at constant volume converts to
+# an unstressed-volume change by dV0 = dP * C: with foot_vein C = 4.0 mL/mmHg that
+# is 14-20 mL, i.e. **5.5-7.9 % of the foot's 254 mL V0**. The gain below is set so
+# the measured peak lands inside that band; see validation_log.md 2026-10-01 for
+# the realised figure. It is larger than _gain_v0_vein because the high-pass costs
+# about half the drive at the peak, so the same gain would give half the effect.
+#
+# **GRADE C, AND THE REASON IS A BED TRANSFER.** The TIME COURSE is anchored on
+# forearm and hand (n = 8, 30 experiments) and only cross-checked against the foot
+# (n = 1, 3 tilts, durations 70-110 s against the forearm's 133 s). The MAGNITUDE
+# is foot-only, so n = 1. **We are applying an upper-limb result to the lower legs**
+# on the grounds that Samueloff and Pang both treat limb veins as one class —
+# sparsely innervated, largely passive, mobilising little volume. That is an
+# argument from class membership, not a measurement of the leg, and it is the
+# honest limit of this constant.
+#
+# AND THE CONVERSION IS AN UNDERESTIMATE OF THE REALISED PRESSURE. The limb veins
+# carry a nonlinear collapsible-tube law (p_stiffen 8-12 mmHg), so when a leg is
+# dependent and distended the LOCAL compliance is well below the tabulated C and
+# the same dV0 produces a LARGER dP than the linear conversion above implies.
+# Recorded, not asserted.
+# MEASURED 2026-10-01 at 70 deg tilt. A first value of 0.21 OVERSHOT: peak 7.94 %
+# of V0 and 5.04 mmHg, just above the top of both bands. 0.18 is set to land near
+# the middle instead. The peak TIME was unaffected either way (27.6 s), which is
+# the point — the time constant sets the timing and the gain sets the size, and
+# they do not trade off.
+_GAIN_V0_VEIN_LIMB = 0.18
+
 
 # --- Heart-rate arm of the arterial baroreflex ------------------------------
 # CALIBRATED AGAINST Fritsch JM, Rea RF, Eckberg DL 1989 (PMID 2916705),
@@ -398,12 +451,22 @@ class BaroreflexController:
         self._a_fast    = min(1.0, dt / _TAU_SYMP_FAST)
         self._a_symp_hr = min(1.0, dt / _TAU_SYMP_HR)
         self._a_slow    = min(1.0, dt / _TAU_SYMP_SLOW)
+        # Limb venous arm: a slower tracker of the SAME drive, subtracted to make
+        # the limb response transient. Samueloff 1966.
+        self._a_vein_limb   = min(1.0, dt / _TAU_VENOUS_LIMB_ADAPT)
+        self._vein_limb_adapt = 0.0
 
         # Effector outputs (read by run_simulation after each update)
         self.hr_delta       = 0.0
         self.svr_factor     = 1.0
         self.emax_factor    = 1.0
         self.v0_vein_factor = 1.0
+        # The LIMB venous arm — a SEPARATE effector on a SEPARATE bed. 1.0 = no
+        # effect, < 1 = venoconstriction (it multiplies unstressed volume, so the
+        # same inverted convention as v0_vein_factor). Applied to
+        # TRANSIENT_VENOUS_BEDS in circulation._odes, never to the mobilizable
+        # reservoir: the splanchnic bed sustains its response and the legs do not.
+        self.v0_vein_limb_factor = 1.0
 
         # Effector gains
         # HR: one sourced curve (Fritsch 1989 — see the module constants), split
@@ -535,6 +598,24 @@ class BaroreflexController:
         self.emax_factor    = 1.0 + self._gain_emax    * (self._r_emax   * _sigmoid(sym_vasc, scale=15.0))
         self.v0_vein_factor = 1.0 - self._gain_v0_vein * (self._r_venous * _sigmoid(sym_vasc, scale=20.0))
 
+        # THE LIMB VENOUS ARM — same drive, same responsiveness, DIFFERENT
+        # DYNAMICS. Samueloff 1966 (PMID 5903943): limb capacity vessels constrict
+        # transiently and are back at baseline while the stimulus continues, while
+        # the resistance vessels of the same limb stay constricted. Subtracting a
+        # slower tracker of the drive is what makes it transient; see
+        # _TAU_VENOUS_LIMB_ADAPT for why the peak time is a consequence and not a
+        # fit.
+        #
+        # IT USES `sym_vasc`, NOT A NEW SIGNAL. The afferent side is the same
+        # sympathetic drive — Samueloff found the AFFERENT pathway undetermined but
+        # the efferent limb fully reactive, so what differs between beds is the
+        # effector, not the signal reaching it. One drive, two dynamics.
+        self._vein_limb_adapt = ((1.0 - self._a_vein_limb) * self._vein_limb_adapt
+                                 + self._a_vein_limb * sym_vasc)
+        sym_vasc_limb = sym_vasc - self._vein_limb_adapt
+        self.v0_vein_limb_factor = 1.0 - _GAIN_V0_VEIN_LIMB * (
+            self._r_venous * _sigmoid(sym_vasc_limb, scale=20.0))
+
         # Clamp to physiological limits.
         # SVR range tightened 0.3–3.0 → 0.5–1.8: prevents extreme vasoconstriction/
         # vasodilation that amplified oscillations at steep tilt angles.
@@ -555,6 +636,12 @@ class BaroreflexController:
         # cap, high-MAP venodilation drops preload enough to invert the
         # epinephrine dose–CO curve (a non-physiological artefact).
         self.v0_vein_factor = np.clip(self.v0_vein_factor,   0.75, 1.0)
+        # The limb arm is constriction-only too, and here that is SOURCED rather
+        # than inferred. Samueloff 1966: the return of blood to the chest on
+        # resuming the horizontal position "never caused a decrease of venous
+        # tone" — in 35 % of observations it caused a further transient RISE, and
+        # in 80 % on releasing lower-body suction. So the upper bound is 1.0.
+        self.v0_vein_limb_factor = np.clip(self.v0_vein_limb_factor, 0.75, 1.0)
 
 
 def _sigmoid(x: float, scale: float = 10.0) -> float:

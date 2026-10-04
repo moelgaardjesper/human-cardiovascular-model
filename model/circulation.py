@@ -130,6 +130,34 @@ _VENOUS_TONE_IDX = frozenset(IDX[name] for name in MOBILIZABLE_VENOUS_RESERVOIR)
 # it is not part of systemic venous return.
 _VENOUS_DRAIN_IDX = frozenset(IDX[name] for name in VENOUS_RESERVOIR)
 
+# Beds carrying the TRANSIENT limb venous arm — Samueloff 1966 (PMID 5903943),
+# HUMAN. These are deliberately DISJOINT from MOBILIZABLE_VENOUS_RESERVOIR, and
+# the disjointness is the physiology rather than a convenience.
+#
+# **TWO BEDS, TWO TIME COURSES, ONE DRIVE.** Samueloff measured limb capacity
+# vessels at constant volume through 4 min of 70 deg head-up tilt: they constrict,
+# peak at 27 s, and are back at baseline by 133 s while the RESISTANCE vessels of
+# the same limb stay constricted throughout. The splanchnic bed is not measured
+# there and sustains its response in this model, which is what orthostatic venous
+# return depends on. So the mobilizable reservoir gets `v0_vein_factor` (sustained)
+# and these get `v0_vein_limb_factor` (transient).
+#
+# **DRUGS DO NOT REACH THESE BEDS, and that is unchanged.** `venous_tone_factor`
+# and the shared alpha1 stage still act only on _VENOUS_TONE_IDX. Samueloff's
+# finding is about the REFLEX; Pang and Bell both have limb veins largely passive
+# to circulating drug. So registration 007's result — that the model cannot
+# recruit pooled leg blood with a pressor — still stands, and backlog items 9 and
+# 64 are untouched by this.
+#
+# WHY A TRANSIENT ARM CHANGES NOTHING AT THE ENDPOINT, which is itself a measured
+# constraint. Brown, Wood & Lampert 1949 (cited by Samueloff): under ganglionic
+# blockade the volume ultimately displaced to the legs on tilting was NOT
+# increased, only the RATE of filling rose. Because this factor returns to 1.0
+# while the tilt continues, the settled leg volume is unchanged by construction —
+# the arm can only alter how fast the legs fill. That is asserted, not assumed.
+TRANSIENT_VENOUS_BEDS = ("thigh_vein", "calf_vein", "foot_vein")
+_VENOUS_LIMB_IDX = frozenset(IDX[name] for name in TRANSIENT_VENOUS_BEDS)
+
 
 # Compartments that lie inside the chest and are therefore surrounded by pleural
 # pressure. ITP is added to their intraluminal pressure in _odes().
@@ -782,6 +810,13 @@ def _odes(t: float, V: np.ndarray, params: SimParams, baro: BaroreflexController
         # Appleton 1986 measured and what the calibration is checked against.
         v0 = ((c.unstressed_volume / (1.0 - _venous_tone_rest)) * vt
               if in_venous_tone_set else c.unstressed_volume)
+        # THE TRANSIENT LIMB ARM — Samueloff 1966. Disjoint from the tone set, so
+        # this never double-applies with `vt`. No resting re-baselining is needed
+        # because the arm is a HIGH-PASS: once the drive settles, its tracker has
+        # caught up and the factor is exactly 1.0, so the resting operating point
+        # is untouched and only a CHANGE in drive moves these beds.
+        if baro is not None and idx in _VENOUS_LIMB_IDX:
+            v0 *= baro.v0_vein_limb_factor
         compliance = c.compliance * vc if in_venous_tone_set else c.compliance
         # Venous stress relaxation (slow_dynamics.py) adds a slowly-varying
         # offset to unstressed volume: sustained distension lets the wall creep,
@@ -1716,10 +1751,35 @@ def run_simulation(
                 V = V + dV_slow
 
         # Advance integrated cardiac phases for the next step.
-        # During a circulatory arrest the ventricular phase is PINNED in
-        # diastole instead, so elastance sits at E_min and the heart stops
-        # ejecting. The monitor phase keeps running so the output trace stays
-        # sampled at a fixed rate.
+        # During a circulatory arrest BOTH phases are PINNED in diastole, so
+        # elastance sits at E_min, the heart stops ejecting, and the reported
+        # pressures describe the same heart the ODE is integrating.
+        #
+        # **THE MONITOR PHASE USED TO KEEP RUNNING, AND THAT WAS BACKLOG ITEM 78**
+        # — fixed 2026-10-01. The justification written here was that it "keeps
+        # running so the output trace stays sampled at a fixed rate", and that was
+        # simply wrong: output sampling is driven by `output_every` and `_oi`, and
+        # `_monitor_phase` is read in exactly ONE place — the lagged E_ra/E_la used
+        # for CVP and PCWP monitoring. So it never affected sampling.
+        #
+        # WHAT IT DID AFFECT. With the ventricular phase pinned and the monitor
+        # phase still advancing, the monitor recomputed atrial elastance across a
+        # full cardiac cycle while the ODE held it fixed at 0.248. The ODE's p_ra
+        # was 9.638 mmHg — equal to the venous bed it drains, as zero flow
+        # requires — while the monitor swept 7.77 to 17.49 and
+        # `p_cvp_edi = min(_cvp_win)` reported the TROUGH, 7.772.
+        # **The reported CVP during an arrest was the trough of an atrial
+        # contraction the ODE was not performing, 1.87 mmHg low.**
+        #
+        # It is the `hr_eff` bug again (2026-09-04): two parallel computations of
+        # one quantity, and the reported one drifted from the one that acts. The
+        # fix is the same shape — make the two follow ONE rule.
+        #
+        # HOW IT WAS FOUND, worth keeping: a sustained pressure gradient with zero
+        # net flow is IMPOSSIBLE, and compartment volumes were stable out to 299 s
+        # of arrest. That contradiction located it. The guard in
+        # tests/test_circulation.py section 41 asserts the invariant rather than
+        # the number.
         _arresting = (
             params.arrest_start_s is not None
             and params.arrest_duration_s > 0.0
@@ -1745,7 +1805,12 @@ def run_simulation(
                                 if _pp_mean > 0.0 else 0.0)
                     _ppv_now = min(100.0, max(0.0, _ppv_now))
                 _beat_hi = _beat_lo = None
-        _monitor_phase = (_monitor_phase + _hr_monitor / 60.0 * dt) % 1.0
+        # Pinned under arrest for the same reason as `_cardiac_phase` above —
+        # item 78. One rule, both phases.
+        if _arresting:
+            _monitor_phase = _ARREST_PHASE
+        else:
+            _monitor_phase = (_monitor_phase + _hr_monitor / 60.0 * dt) % 1.0
 
         # Guard: volumes can't go negative; replace NaN/inf from overflow
         V = np.maximum(V, 0.0)
