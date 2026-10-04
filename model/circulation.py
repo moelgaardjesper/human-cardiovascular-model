@@ -63,7 +63,15 @@ from .slow_dynamics import (init_slow_state, update_slow_state,
 VENOUS_RESERVOIR = (
     "upper_body_vein", "svc", "renal_vein", "splanchnic_vein",
     "thigh_vein", "calf_vein", "foot_vein", "ivc",
+    "ivc_renal", "ivc_infrarenal",     # the IVC split, items 65 and 72
 )
+
+# The venous compartments that are pure CONDUITS — they receive venous inflow
+# rather than arterial, so they are NOT exchange beds and carry no Starling
+# filtration. Named once here so that tests and tools DERIVE the exchange-bed set
+# instead of writing their own list of conduits, which is exactly how splitting
+# the IVC would otherwise have silently made two new "missing filtration beds".
+VENOUS_CONDUITS = ("svc", "ivc", "ivc_renal", "ivc_infrarenal")
 
 
 # Body regions for the fluid-distribution avatar — groups compartments into
@@ -82,6 +90,12 @@ BODY_REGIONS = {
     ),
     "legs": (
         "lower_body_art", "thigh_vein", "calf_vein", "foot_vein", "ivc",
+        # The IVC split keeps all three segments where the lumped IVC already was.
+        # NOTE THIS IS ANATOMICALLY QUESTIONABLE — the IVC is abdominal, not a leg
+        # vessel — but moving it would shift the regional blood-volume figures the
+        # leg rebuild's stage 2 is aimed at, so it is left for that stage to decide
+        # deliberately rather than changed here as a side effect.
+        "ivc_renal", "ivc_infrarenal",
     ),
 }
 
@@ -157,6 +171,18 @@ _VENOUS_DRAIN_IDX = frozenset(IDX[name] for name in VENOUS_RESERVOIR)
 # the arm can only alter how fast the legs fill. That is asserted, not assumed.
 TRANSIENT_VENOUS_BEDS = ("thigh_vein", "calf_vein", "foot_vein")
 _VENOUS_LIMB_IDX = frozenset(IDX[name] for name in TRANSIENT_VENOUS_BEDS)
+
+# Every compartment whose pressure comes from the vascular (compliance) law —
+# i.e. everything except the four elastance-driven cardiac chambers.
+#
+# DERIVED, NOT LISTED, and that is the point. Until 2026-10-04 `_odes` iterated a
+# HAND-WRITTEN list of 19 indices. A compartment missing from it keeps a pressure
+# of exactly zero for the whole run while flows still pour into it — the
+# "mechanism silently inert" class this project has hit eleven times. The IVC
+# split added two compartments and both had to be remembered by hand; deriving
+# the set means the next one cannot be forgotten.
+_CARDIAC_CHAMBERS = ("right_atrium", "right_ventricle", "left_atrium", "left_ventricle")
+_VASCULAR_IDX = tuple(idx for name, idx in IDX.items() if name not in _CARDIAC_CHAMBERS)
 
 
 # Compartments that lie inside the chest and are therefore surrounded by pleural
@@ -243,6 +269,9 @@ _NO_ORIFICE = {v: None for v in _ORIFICE_K}
 ABDOMINAL_COMPARTMENTS = (
     "abdominal_aorta", "renal_art", "renal_vein",
     "splanchnic_art", "splanchnic_vein", "ivc",
+    # All three IVC segments are infra-diaphragmatic and intra-abdominal, from the
+    # iliac confluence to the diaphragm. Membership is anatomy, not a knob.
+    "ivc_renal", "ivc_infrarenal",
 )
 _ABDOMINAL_IDX = tuple(IDX[name] for name in ABDOMINAL_COMPARTMENTS)
 
@@ -788,14 +817,7 @@ def _odes(t: float, V: np.ndarray, params: SimParams, baro: BaroreflexController
     P = np.zeros(len(comp))
 
     # Vascular compartments
-    for idx in [i["aorta"], i["brachiocephalic"], i["upper_body_art"],
-                i["upper_body_vein"], i["svc"],
-                i["abdominal_aorta"], i["renal_art"], i["renal_vein"],
-                i["splanchnic_art"], i["splanchnic_vein"],
-                i["lower_body_art"],
-                i["thigh_vein"], i["calf_vein"], i["foot_vein"], i["ivc"],
-                i["pulmonary_art"], i["pulmonary_cap"], i["pulmonary_vein"],
-                i["coronary"]]:
+    for idx in _VASCULAR_IDX:
         c = comp[idx]
         in_venous_tone_set = idx in _VENOUS_TONE_IDX
         # RE-BASELINE FOR RESTING TONE — item 70 pass 2. The tabulated V0 was set
@@ -967,7 +989,7 @@ def _odes(t: float, V: np.ndarray, params: SimParams, baro: BaroreflexController
     # placement note in compartments.py.
     Q_ao_brachio  = (P[i["aorta"]] - P[i["brachiocephalic"]] + hdp("aorta") - hdp("brachiocephalic")) / R("brachiocephalic")
     Q_brachio_ub  = (P[i["brachiocephalic"]] - P[i["upper_body_art"]] + hdp("brachiocephalic") - hdp("upper_body_art")) / R("upper_body_art")
-    Q_ub_art_vein = (P[i["upper_body_art"]] - P[i["upper_body_vein"]]) / R("upper_body_vein", True)
+    Q_ub_art_vein = (P[i["upper_body_art"]] - P[i["upper_body_vein"]] + hdp("upper_body_art") - hdp("upper_body_vein")) / R("upper_body_vein", True)
     # Every exchange bed now owns both its own numbers: `resistance` is its
     # arteriole + exchange segment, `drain_resistance` its outflow. (This one used
     # to read svc.resistance, leaving upper_body_vein.drain_resistance defaulting
@@ -975,10 +997,10 @@ def _odes(t: float, V: np.ndarray, params: SimParams, baro: BaroreflexController
     Q_ub_vein_svc = (P[i["upper_body_vein"]] - P[i["svc"]] + hdp("upper_body_vein") - hdp("svc")) / R_drain("upper_body_vein")
 
     Q_ao_abd      = (P[i["aorta"]] - P[i["abdominal_aorta"]] + hdp("aorta") - hdp("abdominal_aorta")) / R("abdominal_aorta")
-    Q_abd_renal   = (P[i["abdominal_aorta"]] - P[i["renal_art"]]) / R("renal_art")
-    Q_renal_vein  = (P[i["renal_art"]] - P[i["renal_vein"]]) / R("renal_vein", True)
-    Q_abd_splanch = (P[i["abdominal_aorta"]] - P[i["splanchnic_art"]]) / R("splanchnic_art")
-    Q_splanch_vein= (P[i["splanchnic_art"]] - P[i["splanchnic_vein"]]) / R("splanchnic_vein", True)
+    Q_abd_renal   = (P[i["abdominal_aorta"]] - P[i["renal_art"]] + hdp("abdominal_aorta") - hdp("renal_art")) / R("renal_art")
+    Q_renal_vein  = (P[i["renal_art"]] - P[i["renal_vein"]] + hdp("renal_art") - hdp("renal_vein")) / R("renal_vein", True)
+    Q_abd_splanch = (P[i["abdominal_aorta"]] - P[i["splanchnic_art"]] + hdp("abdominal_aorta") - hdp("splanchnic_art")) / R("splanchnic_art")
+    Q_splanch_vein= (P[i["splanchnic_art"]] - P[i["splanchnic_vein"]] + hdp("splanchnic_art") - hdp("splanchnic_vein")) / R("splanchnic_vein", True)
     Q_abd_lb      = (P[i["abdominal_aorta"]] - P[i["lower_body_art"]] + hdp("abdominal_aorta") - hdp("lower_body_art")) / R("lower_body_art")
 
     # Capillary inflow from lower body arteries to each venous segment (30/40/30% split).
@@ -990,9 +1012,9 @@ def _odes(t: float, V: np.ndarray, params: SimParams, baro: BaroreflexController
     # (see the leg-vein block in compartments.py), so the patient SVR calibration
     # and the PAD factor can reach them. Drug-scaled like every other arteriolar
     # segment.
-    Q_lb_art_thigh = (P[i["lower_body_art"]] - P[i["thigh_vein"]]) / R("thigh_vein", True)
-    Q_lb_art_calf  = (P[i["lower_body_art"]] - P[i["calf_vein"]])  / R("calf_vein", True)
-    Q_lb_art_foot  = (P[i["lower_body_art"]] - P[i["foot_vein"]])  / R("foot_vein", True)
+    Q_lb_art_thigh = (P[i["lower_body_art"]] - P[i["thigh_vein"]] + hdp("lower_body_art") - hdp("thigh_vein")) / R("thigh_vein", True)
+    Q_lb_art_calf  = (P[i["lower_body_art"]] - P[i["calf_vein"]]  + hdp("lower_body_art") - hdp("calf_vein"))  / R("calf_vein", True)
+    Q_lb_art_foot  = (P[i["lower_body_art"]] - P[i["foot_vein"]]  + hdp("lower_body_art") - hdp("foot_vein"))  / R("foot_vein", True)
 
     # Muscle pump: rhythmic calf compression drives venous return.
     # sin²(2πft) profile: always ≥ 0 (no suction phase), smooth, periodic.
@@ -1007,10 +1029,22 @@ def _odes(t: float, V: np.ndarray, params: SimParams, baro: BaroreflexController
     # Pump boost applied to foot→calf and calf→thigh (calf contraction zone).
     Q_foot_calf  = max(0.0, (P[i["foot_vein"]]  - P[i["calf_vein"]]  + hdp("foot_vein")  - hdp("calf_vein")  + pump_p) / R_drain("foot_vein"))
     Q_calf_thigh = max(0.0, (P[i["calf_vein"]]  - P[i["thigh_vein"]] + hdp("calf_vein")  - hdp("thigh_vein") + pump_p) / R_drain("calf_vein"))
-    Q_thigh_ivc  = max(0.0, (P[i["thigh_vein"]] - P[i["ivc"]]        + hdp("thigh_vein") - hdp("ivc"))                  / R_drain("thigh_vein"))
+    Q_thigh_ivc  = max(0.0, (P[i["thigh_vein"]] - P[i["ivc_infrarenal"]] + hdp("thigh_vein") - hdp("ivc_infrarenal")) / R_drain("thigh_vein"))
 
-    Q_renal_ivc   = (P[i["renal_vein"]]     - P[i["ivc"]]) / R_drain("renal_vein")
-    Q_splanch_ivc = (P[i["splanchnic_vein"]] - P[i["ivc"]]) / R_drain("splanchnic_vein")
+    # THE IVC AS THREE SEGMENTS — backlog items 65 and 72, 2026-10-04.
+    # Each tributary joins the segment at ITS OWN height, so none is charged a
+    # climb to a fictitious centroid, and every flow now carries its height term
+    # so the hydrostatic loop telescopes to zero around every circuit. The IVC is
+    # valveless, so the segment-to-segment flows have no one-way guard.
+    Q_infra_renalseg = (P[i["ivc_infrarenal"]] - P[i["ivc_renal"]] + hdp("ivc_infrarenal") - hdp("ivc_renal")) / R_drain("ivc_infrarenal")
+    Q_renalseg_supra = (P[i["ivc_renal"]]      - P[i["ivc"]]       + hdp("ivc_renal")      - hdp("ivc"))       / R_drain("ivc_renal")
+
+    # These two drains carried NO height term until 2026-10-04, deliberately:
+    # applying it at the lumped IVC's centroid opposed splanchnic drainage by
+    # 1.41 mmHg at -15 deg and broke head-down tilt. With the IVC split, each joins
+    # at its own level and the term is correct.
+    Q_renal_ivc   = (P[i["renal_vein"]]      - P[i["ivc_renal"]] + hdp("renal_vein")      - hdp("ivc_renal")) / R_drain("renal_vein")
+    Q_splanch_ivc = (P[i["splanchnic_vein"]] - P[i["ivc"]]       + hdp("splanchnic_vein") - hdp("ivc"))       / R_drain("splanchnic_vein")
 
     # Right heart inflows — one-way valves prevent retrograde venous flow.
     # Without the max(0,...) guard, positive ITP (mechanical PPV) can raise
@@ -1041,11 +1075,11 @@ def _odes(t: float, V: np.ndarray, params: SimParams, baro: BaroreflexController
     Q_mitral    = _valve_flow(P[i["left_atrium"]] - P[i["left_ventricle"]], params.mitral_r, _k["mitral"])
     # Aortic valve (LV → aorta). Never aorta.resistance — that is the systemic
     # arterial resistance, not a valve.
-    Q_aortic    = _valve_flow(P[i["left_ventricle"]] - P[i["aorta"]], params.aortic_r, _k["aortic"])
+    Q_aortic    = _valve_flow(P[i["left_ventricle"]] - P[i["aorta"]] + hdp("left_ventricle") - hdp("aorta"), params.aortic_r, _k["aortic"])
 
     # Coronary (aorta → coronary → right atrium)
-    Q_ao_cor    = (P[i["aorta"]] - P[i["coronary"]]) / R("coronary", True)
-    Q_cor_ra    = (P[i["coronary"]] - P[i["right_atrium"]]) / R("right_atrium") * 0.1
+    Q_ao_cor    = (P[i["aorta"]] - P[i["coronary"]] + hdp("aorta") - hdp("coronary")) / R("coronary", True)
+    Q_cor_ra    = (P[i["coronary"]] - P[i["right_atrium"]] + hdp("coronary") - hdp("right_atrium")) / R("right_atrium") * 0.1
 
     # -----------------------------------------------------------------------
     # dV/dt for each compartment
@@ -1066,7 +1100,9 @@ def _odes(t: float, V: np.ndarray, params: SimParams, baro: BaroreflexController
     dV[i["thigh_vein"]]      = Q_lb_art_thigh + Q_calf_thigh - Q_thigh_ivc
     dV[i["calf_vein"]]       = Q_lb_art_calf  + Q_foot_calf  - Q_calf_thigh
     dV[i["foot_vein"]]       = Q_lb_art_foot                 - Q_foot_calf
-    dV[i["ivc"]]             = Q_thigh_ivc + Q_renal_ivc + Q_splanch_ivc - Q_ivc_ra
+    dV[i["ivc_infrarenal"]]  = Q_thigh_ivc - Q_infra_renalseg
+    dV[i["ivc_renal"]]       = Q_infra_renalseg + Q_renal_ivc - Q_renalseg_supra
+    dV[i["ivc"]]             = Q_renalseg_supra + Q_splanch_ivc - Q_ivc_ra
     dV[i["right_atrium"]]    = Q_svc_ra + Q_ivc_ra + Q_cor_ra - Q_tricuspid
     dV[i["right_ventricle"]] = Q_tricuspid - Q_pulmonic
     dV[i["pulmonary_art"]]   = Q_pulmonic - Q_pa_cap

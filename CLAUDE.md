@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-A 23-compartment lumped-parameter cardiovascular simulator for clinical use.  
+A 25-compartment lumped-parameter cardiovascular simulator for clinical use.  
 Models blood pressure dynamics, cardiac output, and fluid shifts under:
 - Intraoperative posture changes (Trendelenburg, reverse Trendelenburg)
 - Vasopressor administration (norepinephrine, phenylephrine, vasopressin, epinephrine)
@@ -49,7 +49,7 @@ the background. `pytest.ini` carries the same table.
 
 ```
 model/
-  compartments.py   23 compartments (index 0-22), Compartment dataclass, IDX dict.
+  compartments.py   25 compartments (index 0-24), Compartment dataclass, IDX dict.
                     Limb veins use a nonlinear collapsible-tube law (p_stiffen)
   heart.py          Time-varying elastance (Suga-Sagawa), Frank-Starling scaling
   gravity.py        Hydrostatic pressure correction: ρgh·sin(α); smooth tilt profile;
@@ -105,7 +105,7 @@ tools/                 Reporting and audit tools. NONE of them is asserted by a 
 ### Compartment index order
 
 See `IDX` dict in `compartments.py`. Cardiac chambers: RA=15, RV=16, LA=20, LV=21.  
-State vector `V[0..22]` stores volumes in mL. Pressures are derived at every step — not stored in the state.
+State vector `V[0..24]` stores volumes in mL. Pressures are derived at every step — not stored in the state.
 
 ### Adding a new intervention
 

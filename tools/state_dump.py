@@ -68,7 +68,9 @@ NOMINAL_P = {
     "thigh_vein":       (5, 20),
     "calf_vein":        (5, 22),
     "foot_vein":        (5, 25),
-    "ivc":              (1, 10),
+    "ivc":              (1, 10),   # supra-hepatic segment since the 2026-10-04 split
+    "ivc_renal":        (1, 10),
+    "ivc_infrarenal":   (1, 10),
     "pulmonary_art":    (10, 25),
     "pulmonary_cap":    (5, 15),
     "pulmonary_vein":   (4, 14),

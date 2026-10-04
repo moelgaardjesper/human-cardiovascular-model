@@ -611,7 +611,39 @@ def default_compartments() -> list[Compartment]:
                     drain_resistance=0.100),  # 12
         Compartment("foot_vein",           4.00, 9.263, 254, -0.85,  298, p_stiffen= 8.0,
                     drain_resistance=0.140),  # 13
-        Compartment("ivc",                12.00, 0.04,  120, -0.15,  197, drain_resistance=CAVOATRIAL_R),  # 14 P0≈5
+        # ---- The IVC, now THREE segments — backlog items 65 and 72 (2026-10-04) ----
+        # `ivc` below is the SUPRA-HEPATIC segment only. The other two are appended
+        # at the END of this list (indices 23, 24) rather than inserted here, so
+        # that no existing compartment index moves — the chamber indices are
+        # documented (RA = 15, RV = 16, ...) and must stay stable.
+        #
+        # WHY SPLIT IT. A lumped IVC has ONE pressure at ONE height, so every
+        # tributary was charged a hydrostatic climb to the vessel's centroid
+        # (-0.15 m) that does not exist anatomically: renal veins join at L1-L2
+        # and hepatic veins just under the diaphragm, both well above it. Applying
+        # the hydrostatic term to the tributary drains at that centroid opposed
+        # splanchnic drainage by 1.41 mmHg at -15 deg and broke head-down tilt —
+        # which is why those two drains carried NO height term at all, and why the
+        # circulation could circulate under gravity with the heart stopped.
+        #
+        # THE GEOMETRY RULE, CHOSEN ON ANATOMY BEFORE ANY TILT RESULT WAS SEEN:
+        # each IVC segment sits at the height of the tributary that joins it, so
+        # every tributary enters with zero junction head and the climb is carried
+        # along the IVC itself, where it physically is.
+        #   ivc_infrarenal  -0.20  receives the leg drainage   (thigh_vein -0.20)
+        #   ivc_renal       -0.10  receives the renal drainage (renal_vein -0.10)
+        #   ivc (supra)     -0.08  receives the hepatic drainage (splanchnic_vein -0.08)
+        # Monotone toward the heart. CONSISTENCY CHECK, not a constraint: the
+        # volume-weighted centroid is 0.5*(-0.20) + 0.3*(-0.10) + 0.2*(-0.08) =
+        # -0.146 m against the old lumped -0.15 m, so the vessel as a whole sits
+        # where it did. **Do not move these to improve a tilt number** — that is how
+        # upper_body_vein's height came to be chosen for its tilt behaviour.
+        #
+        # COMPLIANCE AND V0 split 50 / 30 / 20 by approximate segment length
+        # (infra-renal longest, supra-hepatic shortest). Totals are UNCHANGED —
+        # 12.00 mL/mmHg and 120 mL — so the IVC as a whole stores what it did.
+        # GRADE D: an anatomical proportion, not a measurement.
+        Compartment("ivc",                 2.40, 0.04,   24, -0.08,   40, drain_resistance=CAVOATRIAL_R),  # 14 supra-hepatic
         # ---- Cardiac chambers (elastance model; R = valve resistance) ----
         # RA Vinit=155: at RA_EMIN=0.04 and P_ra_eq≈3.8 mmHg → V=60+3.8/0.04=155 mL.
         # End-diastolic (rolling-minimum) CVP ≈ 3 mmHg once RA partially empties ✓
@@ -649,6 +681,24 @@ def default_compartments() -> list[Compartment]:
         Compartment("left_ventricle",      0.08, VALVE_R,  10,  0.0,  138),  # 21 EDV≈160
         # ---- Coronary ----
         Compartment("coronary",            0.10, 15.0,   20,  0.05,   21),  # 22 flow≈0.3 L/min
+        # ---- The other two IVC segments — see the note at `ivc` above ----
+        # Appended, not inserted, so no existing index moves.
+        # Flow path: thigh_vein -> ivc_infrarenal -> ivc_renal -> ivc -> right_atrium.
+        #
+        # `drain_resistance` is the segment-to-segment resistance along the IVC.
+        # 0.005 mmHg.s/mL is SMALL ON PURPOSE: Poiseuille for a 2 cm, 10 cm vessel
+        # gives about 0.0007, and 0.005 is a numerically safe value of the same
+        # order (dt * G / C stays near 0.1, so explicit Euler decays monotonically).
+        # At ~30 mL/s it drops about 0.15 mmHg, so it barely moves the supine state.
+        # NOT CALIBRATED to anything; a larger value would start to throttle venous
+        # INITIAL VOLUMES re-derived from a settled 90 s supine run (2026-10-04),
+        # not proportioned from the old lumped 197 — item 16 was broken twice by
+        # adjusting starting volumes instead of re-deriving them.
+        # return, which is a property of the cavo-atrial junction, not the IVC lumen.
+        # `resistance` is not read by any flow for these two; it is set equal so the
+        # two fields cannot silently diverge.
+        Compartment("ivc_renal",           3.60, 0.005,  36, -0.10,   61, drain_resistance=0.005),  # 23
+        Compartment("ivc_infrarenal",      6.00, 0.005,  60, -0.20,  102, drain_resistance=0.005),  # 24
     ]
 
 

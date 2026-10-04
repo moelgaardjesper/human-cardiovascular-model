@@ -124,6 +124,7 @@ K_RELAX = RELAX_FRACTION / (1.0 - RELAX_FRACTION)   # multiplier on compliance
 STRESS_RELAX_COMPARTMENTS = (
     "upper_body_vein", "svc", "renal_vein", "splanchnic_vein",
     "thigh_vein", "calf_vein", "foot_vein", "ivc",
+    "ivc_renal", "ivc_infrarenal",     # the IVC split, items 65 and 72
 )
 
 

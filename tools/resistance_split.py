@@ -87,9 +87,10 @@ def main():
         return vs / c.compliance
 
     beds = (("upper body", "upper_body_art", "upper_body_vein", "svc"),
-            ("renal", "renal_art", "renal_vein", "ivc"),
+            # Each bed now drains into its OWN IVC segment (items 65/72, 2026-10-04).
+            ("renal", "renal_art", "renal_vein", "ivc_renal"),
             ("splanchnic", "splanchnic_art", "splanchnic_vein", "ivc"),
-            ("lower body", "lower_body_art", "thigh_vein", "ivc"))
+            ("lower body", "lower_body_art", "thigh_vein", "ivc_infrarenal"))
     print(f"    {'bed':14s} {'P_art':>7} {'P_vein':>7} {'P_cav':>7} "
           f"{'arteriolar':>11} {'venous':>8} {'venous %':>9}")
     for tag, art, vein, cav in beds:

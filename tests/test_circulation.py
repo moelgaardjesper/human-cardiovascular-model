@@ -506,6 +506,16 @@ def test_microgravity_vs_upright(microgravity_175_75, upright45_175_75):
     assert 50 <= s_ug["map"] <= 120, f"MAP out of survivable range: {s_ug['map']:.1f}"
 
 
+@pytest.mark.xfail(strict=True, raises=AssertionError, reason=(
+    "KNOWN GAP, PREDICTED BEFORE THE CHANGE. Leg rebuild stage 1 (2026-10-04) "
+    "closed the hydrostatic loop, so gravity no longer pumps blood round an "
+    "arrested circulation (section 32). The old head-down result depended on "
+    "that phantom pump. MEASURED 2026-10-04: dCO -0.124 L/min against a "
+    "pooled +0.33 (was +0.246 before stage 1). DO NOT TUNE IT BACK. Leading "
+    "hypothesis, untested: the legs hold too little blood (abdomen 44 per "
+    "cent of blood volume against Kiszka-Kanowitz 30), so head-down tilt has "
+    "too little to return. Backlog items 65 and 72; validation log 2026-10-04."
+))
 def test_trendelenburg_minus15_likhvantsev2025(supine_175_75, hdt15_175_75):
     """[PMID: 39500675 — Likhvantsev 2025 meta-analysis] Trendelenburg -15° vs supine.
 
@@ -1471,8 +1481,11 @@ def test_init_volumes_are_the_settled_equilibrium():
     settled = V[t >= t[-1] - 5.0].mean(axis=0)
     init = np.array([c.init_volume for c in comp])
 
-    veins = ["upper_body_vein", "svc", "renal_vein", "splanchnic_vein",
-             "thigh_vein", "calf_vein", "foot_vein", "ivc"]
+    # DERIVED from the model's own set (2026-10-04), not listed: the IVC split
+    # added two venous compartments, and a hand-written list here would have
+    # silently stopped checking them.
+    from model.circulation import VENOUS_RESERVOIR
+    veins = list(VENOUS_RESERVOIR)
     redistribution = sum(abs(settled[IDX[n]] - init[IDX[n]]) for n in veins)
     assert redistribution < 50.0, (
         f"venous settling transient is {redistribution:.0f} mL — init_volume is "
@@ -1653,39 +1666,6 @@ def _venous_return_curve(bleed_ml=0.0, sympathetic_outflow_scale=1.0, baroreflex
     return float(slope), float(-intercept / slope)
 
 
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason=(
-    "KNOWN DISAGREEMENT BETWEEN TWO HUMAN SOURCES, AND THE MODEL CANNOT SATISFY "
-    "BOTH. Opened 2026-10-02 when the transient LIMB venous arm landed "
-    "(Samueloff 1966, PMID 5903943 — section 40). "
-    "MEASURED 2026-10-02 by sweeping the limb gain, so the cause is not in "
-    "doubt: slope ratio 1.055 at limb gain 0 (passes), 0.905 at 0.09, and "
-    "**0.897 at the calibrated 0.18** against a floor of 0.90. The miss is three "
-    "thousandths and it is still a miss. "
-    "THE GAIN CANNOT BE LOWERED TO CLEAR IT. At 0.09 the limb venoconstriction "
-    "peak falls to about 2.2 mmHg, BELOW Samueloff's measured foot range of "
-    "3.5-5.0 — that would break the source the arm is calibrated to in order to "
-    "pass a different test, which is the move this project forbids. "
-    "MY FIRST EXPLANATION WAS REFUTED, recorded so it is not re-tried. Maas "
-    "measured >20 min after his volume change and quotes Rothe that reflex "
-    "venoconstriction appears within 7-10 s and contaminates anything later, so "
-    "the obvious reading was that this test measures INSIDE the 133 s limb "
-    "transient. Moving the window did NOT recover it: ratio 0.897 / 0.884 / "
-    "0.852 / 0.881 at 30 / 90 / 170 / 270 s after the bleed, worst in the "
-    "middle. **The rotation is not a timing artefact.** "
-    "WHAT THE LIMB ARM DOES TO THE OTHER HALF OF THIS TEST, which still passes: "
-    "it blunts the haemorrhage-induced fall in Pmsf from 7.47 to 4.82 mmHg by "
-    "recruiting leg blood centrally. That is the venous reserve working, and it "
-    "is a testable clinical claim — see docs/serendipity.md entry 7. "
-    "WHY IT IS CARRIED RATHER THAN SUPPRESSED (Jesper's call, 2026-10-02): the "
-    "conflict is probably REAL and the leg rebuild will not dissolve it. The "
-    "model's legs are UNDER-filled — the README's regional-distribution gap puts "
-    "about 500 mL that belongs in the limbs in the abdomen instead — and since "
-    "this arm recruits a FRACTION of leg unstressed volume, giving the legs "
-    "their missing volume makes the rotation LARGER, not smaller. "
-    "THE ASSERTION BELOW IS UNCHANGED. Only the bookkeeping is marked, so this "
-    "flips to a hard failure the day the model agrees with Maas again. "
-    "Full record in docs/validation_log.md, 2026-10-02."
-))
 def test_haemorrhage_shifts_venous_return_curve_without_rotating_it():
     """[PMID: 19237896 — Maas 2009] A moderate haemorrhage must lower Pmsf and
     leave the venous-return slope alone: resistance to venous return is a
@@ -1704,6 +1684,14 @@ def test_haemorrhage_shifts_venous_return_curve_without_rotating_it():
     the vascular waterfall Persichini describes takes over — a regime in which
     a linear venous return curve is not expected to hold, in the model or in a
     patient. It is asserted at 500 mL for that reason, not to avoid the result.
+
+    MARGIN IS THIN, AND THAT IS A MINOR FINDING, NOT A DEFECT. The transient
+    limb venous arm (Samueloff, section 40) rotates the curve slightly. Ratio
+    0.897 on 2026-10-02 (a strict xfail), 0.907 on 2026-10-04 after leg
+    rebuild stage 1 closed the hydrostatic loop. Both sit within a hair of the
+    0.90 floor. Maas built his curves from inspiratory holds, an imperfect
+    method, so a 1 % miss either side is model-versus-method scatter
+    (Jesper, 2026-10-04). The floor is unchanged.
     """
     base_slope, base_pmsf = _venous_return_curve(0.0)
     bled_slope, bled_pmsf = _venous_return_curve(500.0)
@@ -1981,6 +1969,14 @@ def _run_plr(tilt_deg, hem_ml=0, duration=30.0):
     return {k: float(np.mean(r[k][h:])) for k in ('map', 'co', 'hr', 'sv')}
 
 
+@pytest.mark.xfail(strict=True, raises=AssertionError, reason=(
+    "KNOWN GAP, SAME CAUSE AS LIKHVANTSEV. The model does a leg raise as a "
+    "whole-body head-down tilt (backlog item 53), so it inherits the head-down "
+    "break from leg rebuild stage 1. MEASURED 2026-10-04: hypovolaemic PLR "
+    "dCO -1.5 per cent against the >= +10 per cent responder threshold (was a "
+    "responder before stage 1). The normovolaemic arm still passes. DO NOT "
+    "TUNE IT BACK. Validation log, 2026-10-04."
+))
 def test_plr_fluid_responsiveness_monnet2016():
     """[PMID: 26825952 — Monnet, Marik & Teboul 2016] Meta-analysis of 21 studies,
     991 patients: PLR-induced CO ≥+10% predicts positive response to volume
@@ -3222,7 +3218,7 @@ def test_disk_output_round_trips_and_survives_a_crash(tmp_path):
 
     # High-resolution slices persist too, at full dt.
     assert disk["hires"]["aortic_p"].shape == (10000,)
-    assert disk["hires"]["volumes"].shape == (10000, 23)
+    assert disk["hires"]["volumes"].shape == (10000, len(IDX))
     assert disk["hires"]["windows"] == [(10.0, 20.0)]
 
     # CRASH SIMULATION: zero the tail of the trend, as an interrupted run would
@@ -5273,47 +5269,11 @@ def test_general_anaesthesia_does_not_cause_tachycardia_pmid25760679():
 # ===========================================================================
 # 32. The hydrostatic loop closes — backlog items 65 and 66
 #
-# These two tests PASS. They are guards on a fix landed 2026-09-25, and they
-# are written so the defect cannot come back silently.
+# These two tests PASS. The arrest test was a strict xfail until leg rebuild
+# stage 1 closed it on 2026-10-04. Both are guards so the defect cannot come
+# back silently.
 # ===========================================================================
 
-@pytest.mark.xfail(strict=True, reason=(
-    "KNOWN DEFECT — THE HYDROSTATIC LOOP DOES NOT CLOSE, AND IT CANNOT BE "
-    "CLOSED WITHOUT SPLITTING COMPARTMENTS. Backlog items 65 and 72. "
-    "MEASURED 2026-09-25, all three ways, because the obvious fix was tried and "
-    "made things worse. Adding the missing term to every flow DOES close the "
-    "loop — arrest drift at 45 degrees falls from 2.200 mL to 0.094 and every "
-    "exchange segment balances to within 0.02 mmHg — but it BREAKS head-down "
-    "tilt: Likhvantsev -15 deg goes from dCO +0.246 to -0.126 against a measured "
-    "+0.33, Monnet PLR from a responder to +4.0 per cent, and registration "
-    "007's head-down stroke volume from +37.8 per cent (inside the measured IQR "
-    "of 21 to 41) to +17.7 (below it), with the angle dependence INVERTED so "
-    "that steeper head-down returns LESS blood. "
-    "CONSERVATION CAN BE CLOSED CHEAPLY, AND IT DOES NOT HELP HEAD-DOWN TILT. "
-    "Measured 2026-09-26: splitting the IVC so each tributary joins at its own "
-    "level drives arrest drift to 0.006 mL at 24 compartments and 0.000 at 25. "
-    "Splitting the leg arteries as well (27) adds nothing. Junction heights "
-    "WITHOUT a split fail — 8.2 to 8.6 mmHg residuals on every leg segment — "
-    "because a lumped compartment has one pressure at one height. "
-    "BUT EVERY VARIANT THAT OBEYS CONSERVATION BREAKS HEAD-DOWN TILT: the best "
-    "gives Likhvantsev dCO +0.050 against a measured +0.33, where the "
-    "violating original gives +0.246. So the IVC junctions were NOT the cause "
-    "of the head-down failure, and the head-down calibration is compensating "
-    "for the violation itself. The real cause is not yet identified. "
-    "A PARTIAL FIX IS WORSE THAN EITHER EXTREME, and this is the number that "
-    "settled it: terms on the exchange segments but not the IVC junctions gives "
-    "an arrest drift of 3.291 mL — worse than the 2.200 of doing nothing. "
-    "DO NOT CLOSE THIS BY SPLITTING THE IVC ALONE — that passes this test and "
-    "breaks Likhvantsev and Monnet. It closes when the head-down response is "
-    "right for the right reason. Backlog items 65 and 72, correction of "
-    "2026-09-26. "
-    "WHAT THE FAILURE MEANS TODAY: the model's head-down tilt calibration is "
-    "compensating for an energy-conservation violation. Remove the violation "
-    "and head-down tilt stops working. That is worth knowing before anyone "
-    "trusts a Trendelenburg result. "
-    "strict=True so it flips to a FAILURE the day the splits land. "
-    "Full record in docs/validation_log.md, 2026-09-25."
-))
 def test_gravity_does_no_net_work_on_the_arrested_circulation():
     """Stop the heart, tilt the body, and the blood must stop moving.
 
@@ -5326,14 +5286,24 @@ def test_gravity_does_no_net_work_on_the_arrested_circulation():
     of resistance, compliance or compartment height, so it cannot be satisfied
     by retuning and it cannot be weakened to make a calibration fit.
 
-    **WHAT IT MEASURES TODAY.** Ten flow segments omit their height term. With
-    the heart STOPPED at 45 degrees head-up, `lower_body_art -> thigh_vein`
-    sits at a steady **+17.2 mmHg** driving pressure that nothing opposes, and
-    volume drifts **2.20 mL** over the last 20 s of arrest against 0.19 supine.
-    **Blood circulates for ever, with no heart.**
+    **HISTORY.** Until 2026-10-04 ten flow segments omitted their height term.
+    With the heart stopped at 45 degrees head-up the foot segment sat at a
+    steady +19.3 mmHg that nothing opposed, and volume drifted 2.20 mL over the
+    last 20 s. Blood circulated with no heart. This test was a strict xfail.
 
-    The renal bed is the control and it behaves: both its ends sit at -0.10 m,
-    so its gap is zero and its residual is -0.001 mmHg.
+    **CLOSED 2026-10-04 by leg rebuild stage 1:** the IVC split into three
+    segments, each at its tributary's height, and the height term on every
+    flow. Measured: drift 0.097 mL; worst residual upper body +0.020 mmHg,
+    foot -0.0002, splanchnic -0.0009.
+
+    **THE PRICE, recorded where it is paid:** head-down tilt now fails
+    (Likhvantsev and Monnet, both strict xfails). The old head-down result was
+    produced by the violation this test forbids.
+
+    The six segments below are arterial-to-venous exchange beds, which have no
+    valves. A shut leg valve may legitimately hold a pressure difference, so
+    the vein-to-vein segments are covered by the drift check instead, which
+    spans the whole circulation.
     """
     TILT = 45.0
     p = SimParams()
@@ -5851,10 +5821,15 @@ def test_every_exchange_bed_has_a_capillary_filtration_bed():
     receive venous inflow rather than arterial. Deriving them means this test
     cannot go stale against a compartment change the way a literal list would.
     """
-    from model.circulation import VENOUS_RESERVOIR
+    from model.circulation import VENOUS_RESERVOIR, VENOUS_CONDUITS
     from model.slow_dynamics import CAPILLARY_BEDS
 
-    conduits = {"svc", "ivc"}
+    # From the model, not a literal (2026-10-04). This test's own docstring says
+    # deriving the beds keeps it from going stale — but the CONDUIT set was still
+    # written by hand as {"svc", "ivc"}, so splitting the IVC would have made it
+    # report two pure conduits as missing filtration beds. Still an xfail, but for
+    # a partly wrong reason, and nothing would have said so.
+    conduits = set(VENOUS_CONDUITS)
     exchange_beds = set(VENOUS_RESERVOIR) - conduits
     filtering = {venous for _, venous, _ in CAPILLARY_BEDS}
 
