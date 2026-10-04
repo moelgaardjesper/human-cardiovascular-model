@@ -75,7 +75,7 @@ model/
                     with a nonlinear collapsible-tube law for the limb veins
   heart.py          Time-varying elastance (Suga-Sagawa); Frank-Starling plateau
   gravity.py        ΔP = ρgh·sin(α) per compartment; smooth tilt transitions;
-                    positional intrathoracic pressure
+                    positional intrathoracic pressure (zero since 2026-10-04)
   baroreflex.py     4-step arterial + cardiopulmonary reflex; HR arm gains
                     sourced to Fritsch 1989 and LBNP, not to a parameter table
   respiration.py    Intrathoracic pressure (spontaneous / mechanical); RSA
@@ -133,7 +133,7 @@ Worth stating plainly, because "21 compartments expanded to 23" undersells the d
 | Allometric patient scaling, 3-tier input calibration | `patient.py` |
 | **Patient age** — arterial compliance and chamber volumes by decade | `aging.py` |
 
-That is **1,237 of 2,577 code lines (48 %) in modules Heldt has no equivalent for** (re-counted 2026-09-16; the previous figure counted a wider file set). The inherited half has not stood still either: the venous system was rebuilt wholesale to literature values (compliances changed 10–50×), the single lower-body vein was split into three serial segments, limb veins were given a nonlinear collapsible-tube law, and positional intrathoracic-pressure coupling was added.
+That is **1,237 of 2,577 code lines (48 %) in modules Heldt has no equivalent for** (re-counted 2026-09-16; the previous figure counted a wider file set). The inherited half has not stood still either: the venous system was rebuilt wholesale to literature values (compliances changed 10–50×), the single lower-body vein was split into three serial segments, and limb veins were given a nonlinear collapsible-tube law.
 
 Beyond the module table, the model has since gained **instrumented protocols rather than just mechanisms** — a Valsalva manoeuvre, an inspiratory hold, and a circulatory arrest, so a quantity can be measured the way a human study measures it rather than read out of the state vector.
 
@@ -214,22 +214,22 @@ The mechanism works in both directions. On 2026-08-26 two xfails fired as XPASS 
 
 | # | Scenario | Reference | Literature target | Model result | |
 |---|---|---|---|---|---|
-| 1 | Supine resting haemodynamics | [Sejersen 2022](https://doi.org/10.14814/phy2.15216) — 10 healthy males, 177 cm, 80 kg | MAP 83±8 mmHg, HR 62±8 bpm, SV 110±16 mL, CO 7±2 L/min | MAP 88.9, HR 63.6, CO 6.10, SV 95.3 (re-measured 2026-10-04) | ✓ |
-| 2 | 20° HDT in normovolemic subjects — MAP↑, CO maintained | [Sejersen 2022](https://doi.org/10.14814/phy2.15216) | ΔSV ≈ 0 (n.s.), ΔCO ≈ 0, ΔMAP +2 mmHg (n.s.) — heart on Starling plateau when supine | ΔMAP −0.1 mmHg, ΔCO −0.13 L/min, ΔSV −2.0 mL — all near zero (re-measured 2026-10-04) | ✓ |
-| 3 | 6° HDT vs 20° upright: HR lower during HDT | [Verdini 2019](https://doi.org/10.1038/s41598-019-39360-6) — 17 males, 179 cm, 79 kg | HR_HDT < HR_upright (p < 0.001), MAP_HDT < MAP_upright | HR_HDT 68.8 vs HR_upright 71.6 bpm ✓; MAP_HDT 98.9 vs MAP_upright 92.3 — MAP order opposite to the study, not asserted (re-measured 2026-10-04) | ✓ on HR |
-| 4 | −15° Trendelenburg vs supine | [Likhvantsev 2025](https://doi.org/10.1053/j.jvca.2024.10.001) — meta-analysis, n=333, 16 studies | ΔCVP +4.13 mmHg (CI 2.42–5.84), ΔCO +0.33 L/min, ΔSV +8.27 mL, ΔHR −1.65 bpm At −30°, the like-for-like angle (see below): ΔCVP +4.2 mmHg ✓, **ΔCO −0.10 L/min, ΔSV −1.5 mL** — cardiac output now FALLS. At −15°: ΔCO −0.12. Re-measured 2026-10-04 | **✗ known gap** |
-| 5 | −30° Trendelenburg: CVP↑, MAP maintained | [Sibbald 1979](https://pubmed.ncbi.nlm.nih.gov/467083/) — n=61 normotensive patients | Preload↑, CO slightly↑, SVR↓ ~5%, MAP unchanged ΔCVP +4.2 mmHg, ΔMAP +0.2 mmHg. CO falls 0.10 L/min where Sibbald saw a slight rise; only CVP and MAP are asserted. Re-measured 2026-10-04 | ✓ on CVP and MAP |
-| 6 | 30° HUT dynamics: SV↓, CO↓, HR↑, MAP partially maintained | [Wieling 1998](https://doi.org/10.1042/cs0940347) — 6 healthy subjects | At 90° HUT: SV −39±9%, CO −26±10%, MAP +1±7 mmHg (maintained by baroreflex) | SV −20%, CO −16%, MAP −9.5 mmHg (30°, no muscle pump — see note below; re-measured 2026-10-04) | ✓ |
-| 7 | Graded HUT 0→20→30°: HR↑ and CO↓ monotonically | [Sarafian 2017](https://doi.org/10.3389/fphys.2016.00656) — 23 adults, graded tilt 0→60° | HR +41%, BP +10%, TPR +16% at 60°; monotonic increase with angle | HR 68.8→71.6→72.8 bpm, CO 5.97→5.35→5.03 L/min, monotonic (re-measured 2026-10-04) | ✓ |
-| 8 | Microgravity: CVP higher than upright Earth | [Buckey 1996](https://pubmed.ncbi.nlm.nih.gov/8853498/) | CVP supine 5–8 mmHg, drops to 2.5 mmHg in orbit; higher than upright standing | CVP µg 4.32 vs upright 45° 3.22 mmHg (re-measured 2026-10-04) | ✓ |
-| 9 | Cerebral perfusion pressure (CPP) decreases with upright posture | [Pohl & Cullen 2005](https://pubmed.ncbi.nlm.nih.gov/15983529/) | Beach-chair position: MAP drops 30–35 mmHg at brain level under GA; CPP risk < 50 mmHg | CPP supine 89 mmHg → 66 mmHg at 45° upright (re-measured 2026-10-04) | ✓ |
+| 1 | Supine resting haemodynamics | [Sejersen 2022](https://doi.org/10.14814/phy2.15216) — 10 healthy males, 177 cm, 80 kg | MAP 83±8 mmHg, HR 62±8 bpm, SV 110±16 mL, CO 7±2 L/min | MAP 88.4, HR 63.9, CO 6.01, SV 93.9 (re-measured 2026-10-04) | ✓ |
+| 2 | 20° HDT in normovolemic subjects — MAP↑, CO maintained | [Sejersen 2022](https://doi.org/10.14814/phy2.15216) | ΔSV ≈ 0 (n.s.), ΔCO ≈ 0, ΔMAP +2 mmHg (n.s.) — heart on Starling plateau when supine | ΔMAP +6.3 mmHg, ΔCO +0.66 L/min, ΔSV +16.0 mL — **the model now fills the heart in head-down tilt where these awake subjects did not** (re-measured 2026-10-04; the test asserts direction only) | ✓ on direction; magnitude disagrees |
+| 3 | 6° HDT vs 20° upright: HR lower during HDT | [Verdini 2019](https://doi.org/10.1038/s41598-019-39360-6) — 17 males, 179 cm, 79 kg | HR_HDT < HR_upright (p < 0.001), MAP_HDT < MAP_upright | HR_HDT 68.0 vs HR_upright 72.0 bpm ✓; MAP_HDT 100.6 vs MAP_upright 91.3 — MAP order opposite to the study, not asserted (re-measured 2026-10-04) | ✓ on HR |
+| 4 | −15° Trendelenburg vs supine | [Likhvantsev 2025](https://doi.org/10.1053/j.jvca.2024.10.001) — meta-analysis, n=333, 16 studies | ΔCVP +4.13 mmHg (CI 2.42–5.84), ΔCO +0.33 L/min, ΔSV +8.27 mL, ΔHR −1.65 bpm | At −15°: ΔCO +0.64 L/min ✓, ΔSV +11.6 mL ✓, **ΔCVP +0.5 mmHg ✗**. At −30°: ΔCO +1.29, ΔSV +24.6, ΔCVP +1.1. Re-measured 2026-10-04, after the fitted chest pressure was withdrawn — see *Head-down tilt passed for the wrong reason* | ✓ on CO and SV; **CVP a known gap** |
+| 5 | −30° Trendelenburg: CVP↑, MAP maintained | [Sibbald 1979](https://pubmed.ncbi.nlm.nih.gov/467083/) — n=61 normotensive patients | Preload↑, CO slightly↑, SVR↓ ~5%, MAP unchanged | ΔCVP +1.1 mmHg, ΔMAP +12.1 mmHg, ΔCO +1.29 L/min — CVP and MAP pass as asserted, but the MAP and CO rises are larger than Sibbald's "unchanged" and "slightly up" (re-measured 2026-10-04) | ✓ as asserted |
+| 6 | 30° HUT dynamics: SV↓, CO↓, HR↑, MAP partially maintained | [Wieling 1998](https://doi.org/10.1042/cs0940347) — 6 healthy subjects | At 90° HUT: SV −39±9%, CO −26±10%, MAP +1±7 mmHg (maintained by baroreflex) | SV −22%, CO −16%, MAP −10.0 mmHg (30°, no muscle pump — see note below; re-measured 2026-10-04) | ✓ |
+| 7 | Graded HUT 0→20→30°: HR↑ and CO↓ monotonically | [Sarafian 2017](https://doi.org/10.3389/fphys.2016.00656) — 23 adults, graded tilt 0→60° | HR +41%, BP +10%, TPR +16% at 60°; monotonic increase with angle | HR 69.1→72.0→73.2 bpm, CO 5.88→5.21→4.95 L/min, monotonic (re-measured 2026-10-04) | ✓ |
+| 8 | Microgravity: CVP higher than upright Earth | [Buckey 1996](https://pubmed.ncbi.nlm.nih.gov/8853498/) | CVP supine 5–8 mmHg, drops to 2.5 mmHg in orbit; higher than upright standing | CVP µg 4.24 vs upright 45° 3.10 mmHg (re-measured 2026-10-04) | ✓ |
+| 9 | Cerebral perfusion pressure (CPP) decreases with upright posture | [Pohl & Cullen 2005](https://pubmed.ncbi.nlm.nih.gov/15983529/) | Beach-chair position: MAP drops 30–35 mmHg at brain level under GA; CPP risk < 50 mmHg | CPP supine 88 mmHg → 65 mmHg at 45° upright (re-measured 2026-10-04) | ✓ |
 | 10 | Buckberg index falls with tachycardia (coronary ischaemia risk) | [Buckberg 1972/1978](https://pubmed.ncbi.nlm.nih.gov/4667030/) | DPTI/SPTI > 0.8 at rest; falls as diastolic time shortens with HR↑ | Buckberg **1.48** at rest → **0.49** at HR=160 bpm (re-measured 2026-09-22; this table previously read 1.12 → 0.44). **Direction reproduced. The MAGNITUDE is not validated and is biased high — see the note below the table.** | direction only |
 | 11 | PPV > 13% identifies fluid-responsive patient under mechanical ventilation | [Michard & Teboul 2000](https://doi.org/10.1164/ajrccm.162.1.9905119) — n=40 septic shock patients | PPV > 13% predicts ≥15% CO rise with fluid challenge (sens. 94%, spec. 96%) | Normovolaemic **PPV 10.6% (< 13 ✓)**; 1000 mL bleed PPV 28.2% (> 13 ✓); resuscitation lowers PPV 28.2 → 17.9 and raises CO +159% ✓ *(re-measured 2026-09-24; PPV is now computed per beat inside the ODE loop, so it no longer depends on output decimation — earlier figures used a different method and are not comparable)* | ✓ |
 | 12 | High spinal anaesthesia (≈T4): MAP↓, CO maintained, HR near-unchanged | [Malmqvist 1987](https://doi.org/10.1111/j.1399-6576.1987.tb02605.x) — n=30, average block T4–5 | MAP ↓≥30% at complete block; CO preserved; minor HR changes (baroreflex compensates) | MAP ↓>5%, CO maintained ±20%, MAP >45 mmHg | ✓ |
 | 13 | Vasopressin dose-response: MAP monotonically↑, CO maintained | [Patel 2002](https://doi.org/10.1097/00000542-200203000-00011) — n=13 septic shock | MAP rises with dose (0→2→4 U/hr); CO maintained; NE requirement ↓79% | MAP monotonically↑; CO maintained ±20% at 2 U/hr | ✓ |
 | 14 | NE vs phenylephrine on spinal baseline: NE preserves CO better | [Ngan Kee 2015](https://doi.org/10.1097/ALN.0000000000000601) — n=104, C-section spinal | NE CO 102.7% vs phenyl 93.8% (p=0.004); NE HR > phenyl HR (reflex bradycardia) | **NE CO 5.50 vs phenyl 5.14 ✓**; NE HR 66.7 vs phenyl 60.1 ✓ (reflex bradycardia on phenylephrine). Re-measured 2026-09-26 after phenylephrine's pressor ceiling was recalibrated; the noradrenaline values had already drifted from the 5.66 / 64.7 previously shown here | ✓ |
 | 15 | Epinephrine: CO monotonically↑ with dose; MAP_high > MAP_low (α dominance) | [Freyschuss 1986](https://doi.org/10.1042/cs0700199) — n=11 healthy, stepwise IV ADR | Concentration-dependent ↑SV and ↑CO; marked ↓vascular resistance at low dose | CO monotonically↑; MAP_high > MAP_low | ✓ |
-| 16 | PLR: CO ≥+10% identifies fluid-responsive patient (preload-dependent) | [Monnet, Marik & Teboul 2016](https://doi.org/10.1007/s00134-015-4134-1) — meta-analysis 21 studies, 991 patients | PLR-induced CO ≥+10% threshold: sens 0.85, spec 0.91, AUC 0.95 Normovolaemic: < 10 %, non-responder ✓; **hypovolaemic 1200 mL: ΔCO −1.5 %, not a responder.** Re-measured 2026-10-04 | **✗ known gap** |
+| 16 | PLR: CO ≥+10% identifies fluid-responsive patient (preload-dependent) | [Monnet, Marik & Teboul 2016](https://doi.org/10.1007/s00134-015-4134-1) — meta-analysis 21 studies, 991 patients | PLR-induced CO ≥+10% threshold: sens 0.85, spec 0.91, AUC 0.95 | Normovolaemic: ΔCO +9.6 % (< 10 %, non-responder — by a narrow margin) ✓; hypovolaemic 1200 mL: ΔCO +24.1 % (responder) ✓. Re-measured 2026-10-04 | ✓ |
 
 ### A note on row 10 — the coronary metric is biased in the unsafe direction
 
@@ -315,40 +315,26 @@ Summed as truncated cones, the whole aorta comes to **179–196 mL against the m
 The trap worth repeating: CT series often report **outer wall**, up to 42 % wider than the
 lumen, which is a factor of two in volume.
 
-### The largest open gap: where the blood sits
-
-Total blood volume is right. **Its distribution is not, and this is the single worst deviation
-in the model.**
+### Where the blood sits — closed 2026-09-11, and this section was stale until 2026-10-04
 
 [Kiszka-Kanowitz 2001](https://doi.org/10.1016/s0168-8278(01)00175-1) measured regional blood
-volume by whole-body scintigraphy in six healthy supine controls. **Every one of them sits
-between about 29 and 32 % abdominal. The model sits at 44.4 %** — outside the entire healthy
-range, and above all but one or two of the 23 patients with cirrhosis and portal hypertension
-in the same study. Put plainly: **the model distributes blood the way a patient with portal
-hypertension does.**
+volume by whole-body scintigraphy in six healthy supine controls. Every one of them sits between
+about 29 and 32 % abdominal (29.7 ± 1.2).
+
+The model used to hold 44.4 % — the distribution of a patient with portal hypertension. Commit
+`fd3fc65` moved 658 mL of unstressed volume out of the splanchnic bed on 2026-09-11. **This
+section kept reporting the old figure, as the model's largest open gap, for three weeks after
+that.** Re-measured 2026-10-04, settled supine:
 
 | region | model | healthy controls (n=6) |
 |---|---|---|
-| thoracic | 23.0 % | 27.4 ± 3.9 — within noise |
-| **abdominal** | **44.4 %** | **29.7 ± 1.2 — outside the observed range** |
-| rest of body (limbs, head, neck, chest wall) | 32.7 % | 42.9 (derived) |
+| abdominal (including all three IVC segments) | **31.1 %** | 29.7 ± 1.2, range ~29–32 ✓ |
+| thoracic | 23.1 % | 27.4 ± 3.9 |
+| legs, arteries and veins | 1414 mL | ~1400 mL (Arndt 1985, derived) ✓ |
 
-The excess is **+752 mL**, of which the thoracic deficit accounts for only ~228 mL. **The
-remainder belongs in the limbs.** Two earlier hypotheses about where it should go were both
-tested and refuted: not the arteries (the aortic derivation above puts the model ~45 mL *high*,
-not low) and not the thorax (every thoracic sub-compartment is individually at target, so there
-was never room there).
-
-It is also **unstressed** volume, not stressed — total systemic stressed volume is already
-correct against Maas. The splanchnic compartment holds 68 % of its volume as unstressed and
-carries half of all venous compliance in the model.
-
-Two attempts to sweep it have failed, in opposite and instructive ways. Holding total blood
-volume fixed while lowering unstressed volume merely relabels the same blood as stressed and
-overdrives the circulation. Letting total volume fall instead removes the blood from the model
-altogether — and changes **nothing** haemodynamically, which is precisely what "unstressed"
-means. Neither does the thing that has to happen: move it somewhere — and no compartment
-has a sourced basis for receiving it.
+The leg figure is an estimate derived from Arndt's thigh-cuff congestion test, not a direct
+measurement. What remains wrong with the legs is not how much blood they hold at rest, but how
+stiff they become as they fill — see *The legs pool too little blood*.
 
 ### Known literature disagreements
 
@@ -467,9 +453,16 @@ direction, with phenylephrine showing the expected reflex bradycardia. A dedicat
 (`test_norepinephrine_rv_inotropy_is_a_boost_not_a_suppression`) now asserts the sign directly,
 so the mechanism cannot silently invert again.
 
-**Previously listed: Scenario 4 — Trendelenburg ΔCVP** *(resolved 2026-06-17)*
+**Scenario 4 — Trendelenburg ΔCVP** *(reopened 2026-10-04)*
 
-The previous ΔCVP gap (+0.39 vs +4.13 mmHg) was a measurement-mode mismatch: the model tracked transmural CVP while clinical CVP includes the intrathoracic pressure (ITP) rise from abdominal viscera compressing the diaphragm in Trendelenburg. Positional ITP coupling is now implemented (`positional_itp_mmhg()` in `model/gravity.py`), applied to all thoracic compartments in `_odes()` and added to reported CVP. Model now produces ΔCVP +2.39 mmHg (lit CI 2.42–5.84 — just below the lower bound), ΔCO +0.24 L/min (lit +0.33).
+This was marked resolved on 2026-06-17 by adding a chest-pressure rise in head-down tilt
+(abdominal contents pushing the diaphragm up). **That value was fitted to the CVP, not
+measured, and it is withdrawn.** [Drummond & Martin 1978](https://doi.org/10.1093/bja/50.3.261)
+measured pleural pressure with an oesophageal balloon in nine anaesthetised, paralysed patients:
+15° head-down changed it by −0.17 mmHg (95 % CI −0.56 to +0.23). The model added +2.2. With it
+removed the CVP rise at −15° is about +0.5 mmHg against Likhvantsev's pooled +4.1 — open again,
+until the meta-analysis's included studies have been read (some may have had gas in the
+abdomen, which does raise abdominal pressure).
 
 ---
 
@@ -513,44 +506,36 @@ an xfail that starts passing fails the suite and forces someone to look.
 against Sjöstrand's 640 mL, and presented the absent calf muscle pump as the
 cause. Both were wrong.**
 
-Re-measured, the model pools far less than 220 mL:
-
-| what counts as "the legs" | pooled from supine to 90° |
-|---|---|
-| thigh, calf and foot veins | 57–69 mL |
-| plus the inferior vena cava | 143–157 mL |
-| plus the leg arteries | 153–161 mL |
-| **Sjöstrand 1953, standing** | **640 mL** |
-
-The baroreflex and the slow dynamics change these by under 10 mL, so the
-shortfall is mechanical.
+Re-measured, supine to 90° head-up, the leg arteries and the thigh, calf and foot
+veins together take up **96 mL** (67 mL before the calf change below). The
+baroreflex and the slow dynamics move this by under 10 mL, so the shortfall is
+mechanical. Sjöstrand's 640 mL for a standing person is widely quoted, but this
+project has not read that paper, so it is a direction, not a target.
 
 **The muscle pump cannot explain it, because it works in the opposite direction.**
-Calf contractions push blood OUT of the legs and reduce pooling; Sjöstrand's
-640 mL is what pools despite them. A model with no pump should pool *more* than a
-standing person, not a quarter as much. **The defect is leg capacity** — the leg
-veins hold too little and stiffen too early — and it matches the regional
-blood-volume gap above, where roughly 500 mL that belongs in the limbs sits in the
-abdomen instead.
+Calf contractions push blood OUT of the legs and reduce pooling. A model with no
+pump should pool *more* than a standing person, not a fraction as much.
+
+**Part of the cause was how the leg veins stiffen, and the calf is now fixed.**
+[Halliwill 1999](https://doi.org/10.1152/jappl.1999.87.4.1555) measured calf
+venous compliance halving at about 28–30 mmHg in healthy supine humans. The
+model's calf halved at 11, a value chosen to cap upright pooling rather than
+measured. Since 2026-10-04 it is 28. The thigh (12) and foot (8) keep their old,
+unsourced values, because no measurement for them has been read.
 
 The muscle pump is still absent, and that still matters for a conscious patient
 standing, walking, or tilted beyond 45°. Under anaesthesia it is inactive, so it
 does not affect the model's main clinical range.
 
-### Validated tilt range: −30° to +45° for pressures, 0° to +45° for cardiac output
-**Narrowed 2026-10-04.** Head-down CVP and MAP still agree with the literature, but head-down cardiac output does not — see *Head-down tilt passed for the wrong reason*.
+### Validated tilt range: −30° to +45°, except head-down CVP
+**Changed 2026-10-04.** Head-down cardiac output and stroke volume agree with the literature again,
+for a physiological reason. Head-down CVP does not — it rises about 0.5 mmHg at −15° against a
+pooled +4.1 — see *Head-down tilt passed for the wrong reason*.
 
-Beyond +45°, the lumped venous compartments cannot fully represent the distributed hydrostatic column without active venous return. Steep upright angles will show appropriate haemodynamic stress but overestimate cardiovascular collapse relative to a conscious patient. Cerebral perfusion at the +45° edge is now defended (CPP 66 mmHg on 2026-10-04, up from ~40 before the 2026-08-26 venous rework) — the residual limit on steeper angles is the absent skeletal-muscle pump, not the venous scale.
+Beyond +45°, the lumped venous compartments cannot fully represent the distributed hydrostatic column without active venous return. Steep upright angles will show appropriate haemodynamic stress but overestimate cardiovascular collapse relative to a conscious patient. Cerebral perfusion at the +45° edge is now defended (CPP 65 mmHg on 2026-10-04, up from ~40 before the 2026-08-26 venous rework) — the residual limit on steeper angles is the absent skeletal-muscle pump, not the venous scale.
 
 ### Frank-Starling plateau approximation
 Implemented as a hard cap on E_max above EDV = 130 mL. Correctly prevents SV increase in the fully normovolemic patient but overestimates the response when the patient input MAP is below the baroreflex setpoint (interpreted as mild hypovolemia by `patient.py`).
-
-### Regional blood volume distribution — the largest open gap
-Covered in full above. The abdomen holds 44.4 % of total blood volume against a measured
-29.7 ± 1.2 % in healthy supine controls, which is outside the healthy range and inside the
-cirrhotic one. The excess is **unstressed** volume — total stressed volume is already correct —
-and it belongs in the limbs. This is the model's worst deviation and no fix is attempted until
-the receiving compartment is sourced.
 
 ### Single-compartment splanchnic and upper-body veins
 Currently single lumped compartments. Each therefore has one height, so the hydrostatic
@@ -580,9 +565,9 @@ mobilizable group, while Samueloff's limb measurement is dominated by *muscle*. 
 mixes a bed he excludes with a bed Gelman includes. **What is missing is the fraction** — a
 human division of upper-body venous volume between skin and skeletal muscle — and until that
 exists the model over-attributes mobilizable volume to the upper body by an unknown amount. It
-is recorded here rather than patched, for the same reason as the regional-distribution gap
-above: narrowing the set without the fraction would move four drug calibrations that currently
-agree with their sources, and trade a measured disagreement for an unmeasured one.
+is recorded here rather than patched: narrowing the set without the fraction would move four
+drug calibrations that currently agree with their sources, and trade a measured disagreement for
+an unmeasured one.
 
 Samueloff also describes a behaviour the architecture cannot express at all: **a venous
 constriction that fades while its stimulus continues and the arterial arm stays engaged.** The
@@ -740,7 +725,7 @@ at 0.35 of the reflex responsiveness it had before this change.** Resting
 haemodynamics barely move (MAP +2 mmHg), but every reflex-mediated magnitude at
 that age is smaller than previously published figures from this model.
 
-### Limb veins now constrict transiently, and it costs a little agreement with Maas
+### Limb veins now constrict transiently, and the leg changes cost agreement with Maas
 
 Added 2026-10-02 from [Samueloff, Browse & Shepherd
 1966](https://pubmed.ncbi.nlm.nih.gov/5903943/) (human, 10 adults): limb capacity
@@ -755,9 +740,14 @@ resistance to venous return to be independent of blood volume. With the limb arm
 active, a 500 mL bleed rotates the model's venous return curve slightly. The
 slope ratio was 0.897 against a floor of 0.90 on 2026-10-02, and 0.907 on
 2026-10-04 after the hydrostatic fix below — within a hair of the floor either
-way. Maas built his curves from inspiratory holds, itself an imperfect method,
-so this is recorded as a minor disagreement. The test passes, with the floor
-unchanged.
+way, and judged minor.
+
+**Then the calf change made it a real disagreement.** Giving the calf veins
+Halliwill's measured stiffening point (see *The legs pool too little blood*) moves
+the ratio to **0.775**. Measured both ways: the calf change alone gives 0.855, and
+the limb reflex adds the rest. The calf value is a measured human curve and is not
+reverted to pass a different test. Carried as a strict `xfail`, with the mechanism
+not yet identified.
 
 **The gain was not lowered to clear it.** Halving it would push the limb
 venoconstriction peak below the range Samueloff measured, which would mean
@@ -767,36 +757,45 @@ than 20 minutes after his volume change, so the obvious reading was that this
 test measures inside the 133 s transient — but moving the measurement window to
 30, 90, 170 and 270 s after the bleed did not recover the invariance.
 
-**It may get worse.** The model's legs are under-filled — see the regional blood
-volume gap above — and this arm recruits a *fraction* of leg unstressed volume, so
-giving the legs their missing volume may enlarge the rotation.
+
 
 ### Head-down tilt passed for the wrong reason
 
-Found and fixed 2026-10-04. **Gravity was doing net work on a closed
-circulation.** Ten flow paths left out their height term, so with the heart
-stopped at 45° head-up, blood kept moving: 2.2 mL in 20 s, driven by a phantom
-pressure of up to 19 mmHg in the foot. Head-down, the same error pushed blood
-toward the heart.
+Found and fixed 2026-10-04. **Two errors were cancelling each other.**
 
-The fix puts the height term on every flow, and splits the inferior vena cava
-into three segments so each tributary joins at its own height. The heights were
-set from anatomy before any tilt result was seen. With the heart stopped, blood
-now stays still: drift 0.1 mL, every segment within 0.02 mmHg. Resting
-haemodynamics move by about 1 % or less.
+**The first: gravity was doing net work on a closed circulation.** Ten flow paths
+left out their height term, so with the heart stopped at 45° head-up blood kept
+moving: 2.2 mL in 20 s, driven by a phantom pressure of up to 19 mmHg in the foot.
+Head-down, the same error pushed blood toward the heart. The fix puts the height
+term on every flow, and splits the inferior vena cava into three segments so each
+tributary joins at its own height. The heights were set from anatomy before any
+tilt result was seen. With the heart stopped, blood now stays still: drift 0.1 mL,
+every segment within 0.02 mmHg.
 
-**The cost: head-down tilt no longer raises cardiac output.** At −15° it falls
-0.12 L/min where Likhvantsev's pooled studies rise 0.33. A passive leg raise in
-a 1200 mL bleed gives −1.5 % instead of the ≥ +10 % of a responder. **So the
-earlier head-down agreement came from the error itself.** Both tests are carried
-as strict `xfail`s with the measured gap, and nothing was tuned to bring them back.
+**Fixing it made head-down tilt LOWER cardiac output** (−0.12 L/min at −15°,
+against Likhvantsev's pooled +0.33). The released leg blood was being held back in
+the gut and upper-body veins by the second error.
 
-The leading explanation is that the legs hold too little blood (see *The legs
-pool too little blood* above), so tipping the patient head-down has too little
-to return. That is untested. Until it is resolved, **do not trust the model's
-Trendelenburg or leg-raise cardiac output.** Head-up results moved too: the fall
-in cardiac output at 45° is now 1.3 L/min instead of 2.0. All head-up tests still
-pass.
+**The second: a chest pressure that does not exist.** Since June the model added a
+pleural pressure rise in head-down tilt (+2.2 mmHg at −15°), on the reasoning that
+the abdominal contents push the diaphragm up. The value was fitted to make the CVP
+rise match, not measured. [Drummond & Martin 1978](https://doi.org/10.1093/bja/50.3.261)
+measured it with an oesophageal balloon in nine anaesthetised, paralysed patients:
+**−0.17 mmHg (95 % CI −0.56 to +0.23)**. It is now zero.
+
+**Result:** at −15° cardiac output rises 0.64 L/min and stroke volume 11.6 mL, both
+in the direction and of the order Likhvantsev pooled. The passive leg raise works
+again (a 1200 mL bleed gives +24 %, a responder). **The cost is CVP**, which now
+rises about 0.5 mmHg against a pooled +4.1. That stays a known gap until the
+meta-analysis's included studies have been read: some may have had gas in the
+abdomen, which does raise abdominal and chest pressure, and how the transducer was
+levelled during tilt is not reported. **The model does not yet have an
+intra-abdominal pressure**, so it cannot represent laparoscopy.
+
+**One new disagreement:** in Sejersen's awake volunteers, 20° head-down did not
+change stroke volume; the model now raises it by 16 mL. Awake subjects on the flat
+part of the Starling curve and anaesthetised patients may simply differ, but the
+model does not distinguish them.
 
 ### Intracranial pressure is flat above about 29° head-up
 
@@ -826,7 +825,7 @@ was predicted in advance of the run and is the project's strongest structural
 result rather than an embarrassment. Carried as a strict `overnight` xfail.
 
 ### CVP paradox in microgravity not fully reproduced
-Measured CVP decreases in orbit despite a cephalad fluid shift (Buckey 1996). Positional ITP coupling is now implemented (`positional_itp_mmhg()` in `gravity.py`), which partially explains the effect, but the full paradox requires changes in lung/chest-wall compliance under weightlessness that are not yet modelled.
+Measured CVP decreases in orbit despite a cephalad fluid shift (Buckey 1996). The full paradox requires changes in lung/chest-wall compliance under weightlessness that are not yet modelled.
 
 ---
 
@@ -842,7 +841,7 @@ Development was openly iterative. Each correction was driven by comparison with 
 | 4 | Init volumes set at P = 8–10 mmHg causing large transients | Recalculated Vinit at analytical steady-state (P ≈ 12–14 mmHg) | Analytical flow balance (no external reference) |
 | 5 | CO monitoring used aorta outflow R instead of valve R | Fixed — CO reported from LV valve resistance | Detected during validation sweep |
 | 6 | Compliance scale for split lb veins: too high → 45° MAP 22 mmHg | Systematic scale sweep (1.0–3.0×); chose 1.5× | Deranged Physiology validated range |
-| 7 | ΔCVP in Trendelenburg +0.4 vs literature +4.1 mmHg | Added positional ITP (`positional_itp_mmhg()`) — abdominal viscera compress diaphragm in HDT; applied to thoracic compartments and CVP reporting | Likhvantsev 2025 (CI 2.42–5.84 mmHg) |
+| 7 | ΔCVP in Trendelenburg +0.4 vs literature +4.1 mmHg | Added a fitted positional chest pressure. **Withdrawn 2026-10-04**: Drummond 1978 measured none at 15°, and the fitted value was what made head-down cardiac output fall once the gravity error (item 65) was fixed | Likhvantsev 2025; Drummond & Martin 1978 |
 | 8 | No fluid-responsiveness metric available | Added `_compute_ppv()` — per-beat pulse pressure variation from aortic waveform; PPV > 13% identifies fluid-responsive patient | Michard & Teboul 2000 (sens. 94%, spec. 96%) |
 | 9 | BP display showed only central aortic pressure with no peripheral reference | Added `brachial_sbp`/`brachial_dbp` (rolling 2-beat SBP/DBP on brachiocephalic compartment); UI dropdown switches between Aortic / Art. line / Brachial cuff; enables clinicians to compare simulated reading against their actual monitoring modality | Clinical convention: A-line and cuff readings differ from central aortic due to pulse pressure amplification |
 | 10 | Venous tone had **no effect at all** — `venous_tone_factor` and the baroreflex `v0_vein_factor` were assembled into a local variable in `_odes` that was never referenced. A +30% venoconstriction produced bit-for-bit identical output | Applied venous tone as a multiplier on venous unstressed volume (V0); unified the sign convention (<1 venoconstriction, >1 venodilation) and flipped the pressor factors accordingly; restricted it to the mobilizable reservoir (splanchnic + upper-body). Added two calibration-independent regression guards | Rothe 1983 (venous capacitance / MSFP); Gelman 2008 (venous return) — sympathetic venoconstriction recruits chiefly the splanchnic bed |

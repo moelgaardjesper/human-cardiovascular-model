@@ -53,29 +53,45 @@ def hydrostatic_delta_mmhg(
     return delta_pa * MMHG_PER_PA
 
 
-def positional_itp_mmhg(tilt_deg: float, k_mmhg: float = 8.5) -> float:
+# POSITIONAL INTRATHORACIC PRESSURE IN HEAD-DOWN TILT — SET TO ZERO 2026-10-04.
+#
+# Until then k = 8.5 added +2.2 mmHg of pleural pressure at -15 deg. That value
+# was FITTED, not measured: it was chosen to put the reported Trendelenburg CVP
+# rise inside Likhvantsev 2025's CI, at a time when a hydrostatic conservation
+# error (backlog item 65) was pushing blood toward the heart in head-down tilt.
+# The two errors cancelled. When item 65 was fixed, this term alone held back
+# venous return and head-down cardiac output went negative.
+#
+# THE MEASUREMENT. Drummond & Martin 1978 (PMID 147698, Br J Anaesth 50:261),
+# 9 anaesthetised, paralysed women, oesophageal balloon, static end-expiratory
+# pressure at FRC, supine -> 15 deg head-down WITHOUT pneumoperitoneum: change
+# -22 Pa, 95 % CI -75 to +30 Pa = **-0.17 mmHg (-0.56 to +0.23)**. Their own
+# words: changing position "did not cause a significant change". GRADE A for the
+# quantity, one small cohort.
+#
+# WHAT THIS COSTS. The reported CVP rise at -15 deg falls to about +0.5 mmHg
+# against Likhvantsev's pooled +4.1. That is carried as a strict xfail until the
+# meta-analysis's included studies are read: some may have had pneumoperitoneum,
+# which DOES raise abdominal pressure (Drummond: gastric 3.4 -> 6.4 mmHg), and
+# transducer levelling during tilt is unreported.
+#
+# The function is kept so that callers and the reporting path are unchanged and a
+# sourced value can replace this one. Pneumoperitoneum is a DIFFERENT mechanism
+# (intra-abdominal pressure) and must not be smuggled in through this constant.
+POSITIONAL_ITP_K_MMHG = 0.0
+
+
+def positional_itp_mmhg(tilt_deg: float, k_mmhg: float = POSITIONAL_ITP_K_MMHG) -> float:
     """
     ITP rise (mmHg) from body positioning — the DC (non-oscillatory) component.
 
-    In head-down tilt, abdominal viscera shift cranially and compress the
-    diaphragm, raising pleural pressure above the baseline set by respiratory
-    mechanics alone. This is additive to the respiratory ITP modelled in
-    respiration.py.
-
-    Only significant for head-down tilt (negative tilt_deg). Head-up tilt
-    shifts viscera away from the diaphragm; the opposing effect is negligible
-    and is set to zero here.
-
-    Calibration: k_mmhg = 8.5 places the Trendelenburg ΔCVP
-    (transmural +0.39 mmHg + positional +2.2 mmHg = +2.6 mmHg at −15°)
-    within the Likhvantsev 2025 meta-analysis CI [2.42–5.84 mmHg].
-    At −30°: positional contribution ≈ 4.3 mmHg (5.8 cmH₂O, consistent
-    with clinical measurements of ITP rise in steep Trendelenburg).
+    Zero by default since 2026-10-04: a human measurement found no pleural
+    pressure change on 15 deg head-down tilt. See POSITIONAL_ITP_K_MMHG.
 
     Parameters
     ----------
     tilt_deg : current tilt angle (degrees from horizontal; negative = HDT)
-    k_mmhg   : slope constant (mmHg per unit sin(tilt)); default 8.5
+    k_mmhg   : slope constant (mmHg per unit sin(tilt))
     """
     if tilt_deg >= 0.0:
         return 0.0

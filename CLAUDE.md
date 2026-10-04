@@ -53,7 +53,8 @@ model/
                     Limb veins use a nonlinear collapsible-tube law (p_stiffen)
   heart.py          Time-varying elastance (Suga-Sagawa), Frank-Starling scaling
   gravity.py        Hydrostatic pressure correction: ρgh·sin(α); smooth tilt profile;
-                    positional_itp_mmhg() — Trendelenburg intrathoracic pressure
+                    positional_itp_mmhg() — Trendelenburg intrathoracic pressure, zero since
+                    2026-10-04 (Drummond 1978 measured none; the old value was fitted)
   baroreflex.py     BaroreflexController — 4-step ABR+CPR, impulse response convolution
   respiration.py    Intrathoracic pressure (spontaneous / mechanical), RSA
   slow_dynamics.py  Minutes-to-hours mechanisms on a separate coarse clock:

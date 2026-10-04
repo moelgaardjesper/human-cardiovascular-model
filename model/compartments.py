@@ -1,13 +1,15 @@
 """
 Vascular compartment definitions for the lumped-parameter cardiovascular model.
 
-Based on the 23-compartment structure extended from:
+Based on the 25-compartment structure extended from:
   Heldt T et al. (2002) J Appl Physiol 92:1239-1254
   PMC9363491 — cardiovascular model for orthostatic stress / spaceflight
 
 The original single lower_body_vein compartment has been split into three
-anatomically-placed segments (thigh_vein, calf_vein, foot_vein) to correctly
-simulate the ~640 mL venous pooling observed on standing (Sjöstrand 1953).
+anatomically-placed segments (thigh_vein, calf_vein, foot_vein) to represent the
+distributed hydrostatic column. (The ~640 mL standing pooling usually quoted from
+Sjöstrand 1953 has NOT been read by this project; the model pools ~96 mL at 90 deg
+as of 2026-10-04. Treat the 640 as a direction, not a target.)
 """
 
 from dataclasses import dataclass, field
@@ -506,7 +508,7 @@ VENOUS_DRAINAGE_SCALE = 2.0      # documentation only; values are inlined below
 
 def default_compartments() -> list[Compartment]:
     """
-    Return the 23 baseline compartments in canonical index order.
+    Return the 25 baseline compartments in canonical index order.
 
     Parameters calibrated to reproduce resting haemodynamics:
       MAP ≈ 90 mmHg, CO ≈ 5 L/min, CVP ≈ 5 mmHg, HR = 70 bpm
@@ -556,7 +558,7 @@ def default_compartments() -> list[Compartment]:
         # pool ~200 mL into the upper body in head-down tilt and steal preload.
         Compartment("upper_body_vein",    12.00, 3.75,  764,  0.05,  850,
                     drain_resistance=0.100),  # 3  P0≈6 (R = arteriole + exchange segment)
-        Compartment("svc",                 8.00, 0.05,   70,  0.05,  123, drain_resistance=CAVOATRIAL_R),  # 4  P0≈4
+        Compartment("svc",                 8.00, 0.05,   70,  0.05,  120, drain_resistance=CAVOATRIAL_R),  # 4  P0≈4
         Compartment("abdominal_aorta",     0.40, 0.05,   60, -0.10,   91),  # 5  P0=88
         Compartment("renal_art",           0.08, 0.10,   20, -0.10,   26),  # 6  P0=80 (conduit; arteriole moved to renal_vein)
         # renal_vein / splanchnic_vein: `resistance` is the artery→vein exchange
@@ -565,7 +567,7 @@ def default_compartments() -> list[Compartment]:
         Compartment("renal_vein",          7.20, 4.50,   60, -0.10,  135,
                     drain_resistance=0.200),                                # 7  P0≈8
         Compartment("splanchnic_art",      0.19, 0.10,   50, -0.15,   65),  # 8  P0=83 (conduit; arteriole moved to splanchnic_vein)
-        Compartment("splanchnic_vein",    52.00, 3.60,  542, -0.08, 1064,
+        Compartment("splanchnic_vein",    52.00, 3.60,  542, -0.08, 1047,
                     drain_resistance=0.140),  # 9  P0≈11 (dominant mobilizable reservoir)
         Compartment("lower_body_art",      0.56, 0.30,   80, -0.50,  123),  # 10 P0=89 (conduit; arteriole moved to the leg exchange branches)
         # ---- Lower body venous: foot→calf→thigh→ivc (outflow resistance on each segment) ----
@@ -607,7 +609,20 @@ def default_compartments() -> list[Compartment]:
         #   equivalent parallel R = 2.80 ✓, plus the 0.30 conduit = 3.10 as before.
         Compartment("thigh_vein",          3.20, 9.033, 381, -0.20,  420, p_stiffen=12.0,
                     drain_resistance=0.600),  # 11
-        Compartment("calf_vein",           4.80, 6.950, 508, -0.55,  568, p_stiffen=11.0,
+        # CALF p_stiffen 11 -> 28 ON 2026-10-04, leg rebuild stage 2. GRADE A for
+        # the quantity: Halliwill, Minson & Joyner 1999 (PMID 10517791) measured
+        # calf venous pressure-volume curves in healthy supine humans; compliance
+        # halves at 29.5 / 27.6 / 28.0 mmHg in three groups (one lab, one method,
+        # so one route). This law halves at P = p_stiffen, so 28 matches it. The
+        # forms differ (hyperbolic here, linear there); matching the half-point
+        # is one defensible choice, not the only one.
+        # THE OLD 11 WAS NOT SOURCED: it was chosen so "upright -> pooling capped,
+        # no MAP collapse". Thigh (12) and foot (8) keep that unsourced value —
+        # Halliwill measured the calf only, and no thigh or foot curve has been
+        # read. GRADE E for those two, carried rather than guessed.
+        # init_volume 568 -> 589 re-derived from a settled run; the 21 mL came
+        # mostly from splanchnic_vein (1064 -> 1047), total blood volume unchanged.
+        Compartment("calf_vein",           4.80, 6.950, 508, -0.55,  589, p_stiffen=28.0,
                     drain_resistance=0.100),  # 12
         Compartment("foot_vein",           4.00, 9.263, 254, -0.85,  298, p_stiffen= 8.0,
                     drain_resistance=0.140),  # 13
@@ -691,14 +706,14 @@ def default_compartments() -> list[Compartment]:
         # order (dt * G / C stays near 0.1, so explicit Euler decays monotonically).
         # At ~30 mL/s it drops about 0.15 mmHg, so it barely moves the supine state.
         # NOT CALIBRATED to anything; a larger value would start to throttle venous
+        # return, which is a property of the cavo-atrial junction, not the IVC lumen.
         # INITIAL VOLUMES re-derived from a settled 90 s supine run (2026-10-04),
         # not proportioned from the old lumped 197 — item 16 was broken twice by
         # adjusting starting volumes instead of re-deriving them.
-        # return, which is a property of the cavo-atrial junction, not the IVC lumen.
         # `resistance` is not read by any flow for these two; it is set equal so the
         # two fields cannot silently diverge.
         Compartment("ivc_renal",           3.60, 0.005,  36, -0.10,   61, drain_resistance=0.005),  # 23
-        Compartment("ivc_infrarenal",      6.00, 0.005,  60, -0.20,  102, drain_resistance=0.005),  # 24
+        Compartment("ivc_infrarenal",      6.00, 0.005,  60, -0.20,  101, drain_resistance=0.005),  # 24
     ]
 
 

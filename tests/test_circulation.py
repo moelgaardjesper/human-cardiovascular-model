@@ -506,34 +506,43 @@ def test_microgravity_vs_upright(microgravity_175_75, upright45_175_75):
     assert 50 <= s_ug["map"] <= 120, f"MAP out of survivable range: {s_ug['map']:.1f}"
 
 
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason=(
-    "KNOWN GAP, PREDICTED BEFORE THE CHANGE. Leg rebuild stage 1 (2026-10-04) "
-    "closed the hydrostatic loop, so gravity no longer pumps blood round an "
-    "arrested circulation (section 32). The old head-down result depended on "
-    "that phantom pump. MEASURED 2026-10-04: dCO -0.124 L/min against a "
-    "pooled +0.33 (was +0.246 before stage 1). DO NOT TUNE IT BACK. Leading "
-    "hypothesis, untested: the legs hold too little blood (abdomen 44 per "
-    "cent of blood volume against Kiszka-Kanowitz 30), so head-down tilt has "
-    "too little to return. Backlog items 65 and 72; validation log 2026-10-04."
-))
 def test_trendelenburg_minus15_likhvantsev2025(supine_175_75, hdt15_175_75):
     """[PMID: 39500675 — Likhvantsev 2025 meta-analysis] Trendelenburg -15° vs supine.
 
     Pooled (n=333, 16 studies): dCVP +4.13 (CI 2.42-5.84), dCO +0.33,
     dSV +8.27 mL, dHR -1.65 bpm, dMAP positive direction.
+
+    HISTORY, 2026-10-04. Leg rebuild stage 1 removed a phantom gravitational
+    pump and this test failed (dCO -0.124). The cause was the positional
+    intrathoracic pressure, a FITTED +2.2 mmHg that had been cancelling the pump.
+    Drummond & Martin 1978 measured no pleural pressure change at 15 deg, so it
+    was set to zero, and cardiac output rises again for a physiological reason.
+    The CVP half of this study is split out below, where it is a known gap.
     """
     s_base, s_trend15 = supine_175_75, hdt15_175_75
-    dcvp = s_trend15["cvp"] - s_base["cvp"]
     dco  = s_trend15["co"]  - s_base["co"]
     dsv  = s_trend15["sv"]  - s_base["sv"]
     dmap = s_trend15["map"] - s_base["map"]
-
-    # With ITP positional coupling: transmural ΔCVP + positional ITP (~+2.2 mmHg
-    # at -15°) should place reported ΔCVP within the Likhvantsev CI [2.42-5.84].
-    assert 1.5 <= dcvp <= 7.0, f"ΔCVP {dcvp:+.2f} mmHg outside [1.5, 7.0] (lit CI 2.42-5.84)"
     assert dco  > 0, f"CO must increase at -15 deg: d={dco:+.3f} (lit +0.33)"
     assert dsv  > 0, f"SV must increase at -15 deg: d={dsv:+.1f} mL (lit +8.27)"
     assert dmap > -5, f"MAP dropped substantially at -15 deg: d={dmap:+.1f} mmHg"
+
+
+@pytest.mark.xfail(strict=True, raises=AssertionError, reason=(
+    "KNOWN GAP, 2026-10-04. The positional intrathoracic pressure that put this "
+    "inside the CI was fitted, and Drummond & Martin 1978 (PMID 147698) measured "
+    "no pleural pressure change at 15 deg head-down, so it is now zero. MEASURED: "
+    "dCVP +0.52 mmHg against a pooled +4.13 (CI 2.42-5.84). NOT YET EXPLAINED: "
+    "the meta-analysis's included studies have not been read. Some may have had "
+    "pneumoperitoneum, which raises abdominal pressure, and transducer levelling "
+    "during tilt is unreported. Do not restore a chest pressure to close this."
+))
+def test_trendelenburg_minus15_cvp_likhvantsev2025(supine_175_75, hdt15_175_75):
+    """[PMID: 39500675 — Likhvantsev 2025] The CVP half of the -15 deg comparison,
+    split from the test above on 2026-10-04 so the passing flow assertions are
+    not hidden behind a failing pressure one. The band is unchanged."""
+    dcvp = hdt15_175_75["cvp"] - supine_175_75["cvp"]
+    assert 1.5 <= dcvp <= 7.0, f"ΔCVP {dcvp:+.2f} mmHg outside [1.5, 7.0] (lit CI 2.42-5.84)"
 
 
 def test_hut30_dynamics_wieling1998(supine_175_75, hut30_175_75):
@@ -1666,6 +1675,17 @@ def _venous_return_curve(bleed_ml=0.0, sympathetic_outflow_scale=1.0, baroreflex
     return float(slope), float(-intercept / slope)
 
 
+@pytest.mark.xfail(strict=True, raises=AssertionError, reason=(
+    "KNOWN CONFLICT BETWEEN TWO HUMAN SOURCES, 2026-10-04. Halliwill 1999 "
+    "(PMID 10517791) moved the calf venous stiffening point 11 -> 28 mmHg, and "
+    "the venous return curve now rotates after a 500 mL bleed. MEASURED, every "
+    "combination: calf 11 / limb reflex off 1.045; calf 11 / on 0.915; calf 28 / "
+    "off 0.855; calf 28 / on 0.775 (floor 0.90). So the calf change alone breaks "
+    "it, and the Samueloff limb reflex adds to it. The calf value is NOT reverted: "
+    "it is a measured human curve, and reverting it to pass this would bend one "
+    "source to fit another (the 2026-10-02 decision for the limb reflex, same "
+    "kind of conflict). Mechanism not yet identified. The floor is unchanged."
+))
 def test_haemorrhage_shifts_venous_return_curve_without_rotating_it():
     """[PMID: 19237896 — Maas 2009] A moderate haemorrhage must lower Pmsf and
     leave the venous-return slope alone: resistance to venous return is a
@@ -1685,13 +1705,10 @@ def test_haemorrhage_shifts_venous_return_curve_without_rotating_it():
     a linear venous return curve is not expected to hold, in the model or in a
     patient. It is asserted at 500 mL for that reason, not to avoid the result.
 
-    MARGIN IS THIN, AND THAT IS A MINOR FINDING, NOT A DEFECT. The transient
-    limb venous arm (Samueloff, section 40) rotates the curve slightly. Ratio
-    0.897 on 2026-10-02 (a strict xfail), 0.907 on 2026-10-04 after leg
-    rebuild stage 1 closed the hydrostatic loop. Both sit within a hair of the
-    0.90 floor. Maas built his curves from inspiratory holds, an imperfect
-    method, so a 1 % miss either side is model-versus-method scatter
-    (Jesper, 2026-10-04). The floor is unchanged.
+    HISTORY. Ratio 0.897 on 2026-10-02 (limb reflex added), 0.907 after leg
+    rebuild stage 1 — a hair either side of the floor, judged minor (Jesper).
+    Then 0.775 after the calf stiffening change of 2026-10-04: no longer a
+    hair. See the xfail reason. The floor is unchanged.
     """
     base_slope, base_pmsf = _venous_return_curve(0.0)
     bled_slope, bled_pmsf = _venous_return_curve(500.0)
@@ -1969,14 +1986,6 @@ def _run_plr(tilt_deg, hem_ml=0, duration=30.0):
     return {k: float(np.mean(r[k][h:])) for k in ('map', 'co', 'hr', 'sv')}
 
 
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason=(
-    "KNOWN GAP, SAME CAUSE AS LIKHVANTSEV. The model does a leg raise as a "
-    "whole-body head-down tilt (backlog item 53), so it inherits the head-down "
-    "break from leg rebuild stage 1. MEASURED 2026-10-04: hypovolaemic PLR "
-    "dCO -1.5 per cent against the >= +10 per cent responder threshold (was a "
-    "responder before stage 1). The normovolaemic arm still passes. DO NOT "
-    "TUNE IT BACK. Validation log, 2026-10-04."
-))
 def test_plr_fluid_responsiveness_monnet2016():
     """[PMID: 26825952 — Monnet, Marik & Teboul 2016] Meta-analysis of 21 studies,
     991 patients: PLR-induced CO ≥+10% predicts positive response to volume
@@ -2855,6 +2864,14 @@ def test_male_patient_is_bit_for_bit_the_reference():
             f"male {chamber} factors must be exactly 1.0, got {f}")
 
 
+@pytest.mark.xfail(strict=True, raises=AssertionError, reason=(
+    "KNOWN GAP BY A HAIR, 2026-10-04. Female LVEDV 59.95 mL/m2 against a floor of "
+    "60.0 (Luu 65 +/- 11). The calf stiffening change (Halliwill 1999) lets the "
+    "legs hold ~20 mL more at rest, and preload fell by that much. The band 60-71 "
+    "is about +/- 0.45 SD of Luu and its tightness is not explained here; it is "
+    "NOT widened because the model moved. Question for Jesper: should it be "
+    "Luu's 1 SD, as the right-atrial band was made Gao's 1 SD?"
+))
 def test_female_chamber_volumes_match_luu_and_gao():
     """Female chamber volumes are smaller than male, and land in their sourced bands.
 
@@ -6517,4 +6534,131 @@ def test_reported_cvp_during_arrest_matches_the_bed_it_drains_item78():
         f"pressure the ODE is using. This is backlog item 78: the output monitor "
         f"advancing its cardiac phase while the ODE holds the heart flaccid, so "
         f"the reported trough belongs to an atrial contraction that never happened"
+    )
+
+
+# ===========================================================================
+# 42. WHERE THE BLOOD SITS — Kiszka-Kanowitz 2001 [PMID 11690706]
+#
+# A guard, not a new result. The abdomen held 44.4 % of blood volume until
+# `fd3fc65` (2026-09-11) moved 658 mL of unstressed volume out of the splanchnic
+# bed. Nothing asserted it, so the README kept reporting the old figure as the
+# model's largest open gap for three weeks. This test is the missing watcher.
+# ===========================================================================
+
+def test_abdominal_share_of_blood_volume_kiszka_kanowitz2001():
+    """[PMID 11690706 — Kiszka-Kanowitz 2001] Six healthy supine controls, age
+    45 +/- 6, whole-body 99mTc-albumin scintigraphy: abdominal blood volume
+    29.7 +/- 1.2 % of total, every subject between about 29 and 32 %.
+
+    Their abdominal region is defined by organ and vessel — "splanchnic organs,
+    kidneys, abdominal aorta, and large veins of the abdomen" — which is the
+    model's ABDOMINAL_COMPARTMENTS, IVC segments included.
+
+    BAND: mean +/- 3 SD (26.1-33.3). The SD comes from n = 6, so it is itself
+    uncertain by about a factor of two; a tighter band would be false precision.
+    Measured 2026-10-04: 31.1 %. Cycle-averaged over a settled supine run.
+    """
+    from model.circulation import ABDOMINAL_COMPARTMENTS
+    r = run_simulation(SimParams(), duration_s=120.0, dt=DT)
+    t = np.asarray(r["t"])
+    V = np.asarray(r["volumes"])[t >= 100.0].mean(axis=0)
+    share = 100.0 * sum(V[IDX[n]] for n in ABDOMINAL_COMPARTMENTS) / V.sum()
+    assert 26.1 <= share <= 33.3, (
+        f"abdominal share of blood volume {share:.1f} % against Kiszka-Kanowitz "
+        f"29.7 +/- 1.2 % (healthy supine controls, range ~29-32). Above the band "
+        f"is the distribution of portal hypertension, which is where the model "
+        f"sat (44.4 %) until 2026-09-11"
+    )
+
+
+# ===========================================================================
+# 43. WHERE THE CALF VEINS STIFFEN — Halliwill 1999 [PMID 10517791]
+# ===========================================================================
+
+def test_calf_venous_compliance_halves_where_halliwill_measured():
+    """[PMID 10517791 — Halliwill, Minson & Joyner 1999] Calf venous
+    pressure-volume curves in healthy supine humans, venous-collecting cuff:
+    compliance falls linearly with pressure and HALVES at 29.5 / 27.6 / 28.0
+    mmHg in three subject groups.
+
+    WHY THE HALF-POINT AND NOT THE ABSOLUTE COMPLIANCE. P-half is a pressure,
+    independent of how much tissue the strain gauge sat on; the absolute needs a
+    tissue volume that is uncertain by about a factor of two.
+
+    THROUGH THE CODE PATH: the compartment comes from `build_patient_params`
+    (the scaling once silently dropped `p_stiffen`), and compliance is taken by
+    numerically differentiating `_vascular_pressure`, the law the ODE uses. No
+    formula is restated here.
+
+    BAND 25-33 mmHg: the three group values, widened by the scatter between
+    them. Until 2026-10-04 the model's calf halved at 11 — unsourced, chosen to
+    cap upright pooling.
+    """
+    comps, _ = build_patient_params(175.0, 75.0, hr_bpm=70.0)
+    c = comps[IDX["calf_vein"]]
+
+    def compliance_at(p_target):
+        # invert P(V) by bisection, then dV/dP by central difference
+        def vol(p):
+            lo, hi = c.unstressed_volume, c.unstressed_volume + 2000.0
+            for _ in range(80):
+                mid = 0.5 * (lo + hi)
+                if _vascular_pressure(mid, c.unstressed_volume, c.compliance,
+                                      c.p_stiffen) < p:
+                    lo = mid
+                else:
+                    hi = mid
+            return 0.5 * (lo + hi)
+        return (vol(p_target + 0.05) - vol(p_target - 0.05)) / 0.1
+
+    c0 = compliance_at(0.1)
+    ps = np.arange(1.0, 80.0, 0.25)
+    cs = np.array([compliance_at(p) for p in ps])
+    below = np.nonzero(cs <= 0.5 * c0)[0]
+    assert below.size, "calf compliance never halves below 80 mmHg"
+    p_half = float(ps[below[0]])
+    assert 25.0 <= p_half <= 33.0, (
+        f"calf venous compliance halves at {p_half:.1f} mmHg; Halliwill 1999 "
+        f"measured 27.6-29.5 in healthy supine humans. Below the band the legs "
+        f"stiffen too early and pool too little when dependent"
+    )
+
+
+
+# ===========================================================================
+# 44. NO PLEURAL PRESSURE RISE IN PLAIN HEAD-DOWN TILT — Drummond 1978
+# ===========================================================================
+
+def test_head_down_tilt_does_not_raise_pleural_pressure_drummond1978():
+    """[PMID 147698 — Drummond & Martin 1978] Nine anaesthetised, paralysed
+    women, oesophageal balloon, static end-expiratory pressure at FRC: supine ->
+    15 deg head-down changed pleural pressure by -22 Pa, 95 % CI -75 to +30 Pa
+    (-0.56 to +0.23 mmHg). No pneumoperitoneum.
+
+    THROUGH THE CODE PATH. With ventilation off, the only external pressure on
+    the thorax is the positional term, and it is the gap between the
+    intraluminal and transmural aortic traces. Measured as a CHANGE from supine,
+    which is what the balloon measures reliably.
+
+    Guards against the fitted +2.2 mmHg coming back: that value is what made
+    head-down cardiac output fall once backlog item 65 was fixed.
+    """
+    def thoracic_external(tilt):
+        p = SimParams()
+        p.ventilation_mode = "none"
+        if tilt:
+            p.tilt_start_deg, p.tilt_end_deg = 0.0, tilt
+            p.tilt_onset_s, p.tilt_duration_s = 5.0, 5.0
+        r = run_simulation(p, duration_s=20.0, dt=DT)
+        t = np.asarray(r["t"])
+        m = t >= 15.0
+        return float(np.mean(np.asarray(r["aortic_intraluminal"])[m]
+                             - np.asarray(r["aortic_p"])[m]))
+
+    change = thoracic_external(-15.0) - thoracic_external(0.0)
+    assert -0.56 <= change <= 0.23, (
+        f"15 deg head-down changes the pressure around the thorax by "
+        f"{change:+.2f} mmHg; Drummond & Martin measured -0.17 (CI -0.56 to "
+        f"+0.23) without pneumoperitoneum"
     )

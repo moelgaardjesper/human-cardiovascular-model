@@ -870,19 +870,16 @@ def _odes(t: float, V: np.ndarray, params: SimParams, baro: BaroreflexController
     # 1. Respiratory ITP (oscillatory): cyclic pleural pressure from breathing.
     #    Applied only when ventilation_mode != 'none'.
     #
-    # 2. Positional ITP (DC): abdominal viscera shift cranially in head-down
-    #    tilt and compress the diaphragm, raising the pleural pressure baseline.
-    #    This is the mechanism behind the ~+4 mmHg clinical CVP rise in
-    #    Trendelenburg (Likhvantsev 2025) that transmural CVP alone cannot
-    #    reproduce. Implemented via positional_itp_mmhg() in gravity.py.
+    # 2. Positional ITP (DC): a pleural pressure rise in head-down tilt. ZERO
+    #    since 2026-10-04 — Drummond & Martin 1978 measured no change at 15 deg
+    #    (see POSITIONAL_ITP_K_MMHG in gravity.py). Kept as a hook.
     #
     # Combined effect on cross-boundary flows:
     #   Venous return:  Q_SVC/IVC → RA = (P_SVC/IVC − (P_RA_tm + ITP)) / R
     #     → ITP_resp negative (spontaneous insp.) → venous return ↑ ✓
     #     → ITP_resp positive (PPV insp.)          → venous return ↓ ✓
-    #     → ITP_pos positive (Trendelenburg)       → slightly offsets
-    #       hydrostatic venous-return benefit, matching clinical observation
-    #       that Trendelenburg ΔCO/ΔSV is modest (+0.33 L/min, +8 mL) ✓
+    #     → ITP_pos would offset the head-down venous-return benefit; it is
+    #       zero by default (see above)
     #   Intra-thoracic flows: ITP cancels between both thoracic sides ✓
     #
     # NOTE: an earlier version of this comment said the aorta was deliberately
