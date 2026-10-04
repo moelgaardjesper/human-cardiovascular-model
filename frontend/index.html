@@ -89,6 +89,24 @@
     .vital.warn  { border-color: var(--amber); }
     .vital.alert { border-color: var(--red);   }
 
+    /* CAVEATED OUTPUTS — a known limitation the reader must see AT THE NUMBER.
+       The limitations are documented in README.md, but a clinician reading a
+       tile is not reading the README. Native `title` is used deliberately: it
+       needs no script and no asset, so it survives the offline requirement. */
+    .vital.caveat .lbl::after {
+      content: "\00a0\25B2";          /* small triangle */
+      color: var(--amber);
+      font-size: 0.9em;
+    }
+    .vital.caveat { cursor: help; }
+    .vitals-note {
+      font-size: 0.62rem;
+      color: var(--muted);
+      padding: 4px 2px 0;
+      line-height: 1.5;
+    }
+    .vitals-note b { color: var(--amber); font-weight: 600; }
+
     .vital .v   { font-size: 1.6rem; font-weight: 700; line-height: 1; color: #c7d2fe; font-variant-numeric: tabular-nums; }
     .vital .u   { font-size: 0.6rem; color: var(--muted); margin-top: 1px; }
     .vital .lbl { font-size: 0.58rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); margin-top: 2px; }
@@ -311,10 +329,10 @@
     <span class="u">mmHg</span>
     <span class="lbl">MAP</span>
   </div>
-  <div class="vital" id="v_bp">
+  <div class="vital caveat" id="v_bp">
     <span class="v" id="s_bp">—/—</span>
     <span class="u">mmHg</span>
-    <select class="lbl" id="bp_source" onchange="onBpSourceChange()">
+    <select class="lbl" id="bp_source" onchange="onBpSourceChange()" title="Central and peripheral pulse pressure cannot both be right at once.&#10;&#10;Brachial pulse pressure should EXCEED central (measured 1.33 +/- 0.16); this model gives 0.88, because amplification needs wave travel, transit time and reflection and a lumped-compartment model has none of them.&#10;&#10;Switching source changes which end is wrong. Do not split the difference between these three readings.">
       <option value="aortic">Aortic</option>
       <option value="aline">Art. line</option>
       <option value="brachial">Brachial</option>
@@ -337,7 +355,7 @@
     <span class="lbl">CVP</span>
   </div>
   <div class="vital-sep"></div>
-  <div class="vital" id="v_cpp">
+  <div class="vital caveat" id="v_cpp" title="UNDERSTATED head-up by up to ~4 mmHg.&#10;&#10;Intracranial pressure is clamped above about 29 degrees head-up, so posture stops mattering exactly where the beach-chair question lives. Normal upright ICP is often negative; this model cannot go below 5.0 mmHg.&#10;&#10;Conservative against a 50 mmHg risk threshold, but DO NOT use it to rank two head-up postures against each other.">
     <span class="v" id="s_cpp">—</span>
     <span class="u">mmHg</span>
     <span class="lbl">CPP</span>
@@ -347,7 +365,7 @@
     <span class="u">mmHg</span>
     <span class="lbl">CoPP</span>
   </div>
-  <div class="vital" id="v_buckberg">
+  <div class="vital caveat" id="v_buckberg" title="DIRECTION ONLY — do not use the absolute value clinically.&#10;&#10;The fall with heart rate is reproduced and is the part the model supports. The LEVEL is biased HIGH by three independent defects that all push the same way: brachial diastolic ~18 mmHg too high, systolic ~8 too low, and systole fixed at 45% of the cardiac cycle at every rate.&#10;&#10;This index warns about subendocardial ischaemia, so a value that reads too safe is wrong in the direction that matters.">
     <span class="v" id="s_buckberg">—</span>
     <span class="u">DPTI/SPTI</span>
     <span class="lbl">Buckberg</span>
@@ -358,6 +376,12 @@
     <span class="u"></span>
     <span class="lbl">Tilt</span>
   </div>
+</div>
+<div class="vitals-note">
+  <b>&#9650;</b> marks an output with a known limitation &mdash; hover it for the detail.
+  <b>Buckberg</b> is direction-only and its level reads too safe; <b>CPP</b> is understated
+  head-up and cannot rank two head-up postures; <b>pulse pressure</b> cannot be right at the
+  central and peripheral ends at once. Full list in <code>README.md</code> under Limitations.
 </div>
 
 <!-- ── Main layout ──────────────────────────────────── -->

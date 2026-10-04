@@ -674,15 +674,74 @@ between the arterial and venous compartments where the arterioles physically sit
 resistance must act on `ARTERIOLAR_SEGMENTS`; `drain_resistance` is a separate, postcapillary
 quantity and must not be scaled by an arteriolar factor.
 
-### The baroreflex has no age dependence
+### The baroreflex ages — resolved 2026-10-03, and the level is still open
 
-Reflex gain is identical at 25 and at 85. `BaroreflexController` takes no patient
-argument of any kind — age reaches only arterial compliance and the two
-ventricles. Human baroreflex sensitivity falls steeply with age, so this is an
-absent mechanism rather than a modelling choice. The heart-rate gains are
-calibrated against a cohort of median age ~33 and applied unchanged to the
-55-year-old reference patient, so **every reflex magnitude the model reports is a
-younger person's reflex.** The direction of the error is known; its size is not.
+**This section used to say the reflex had no age dependence of any kind, that
+gain was identical at 25 and 85, and that "every reflex magnitude the model
+reports is a younger person's reflex". The first two are no longer true.**
+
+Reflex end-organ responsiveness now falls with age from a measured human
+relation — Gribbin, Pickering, Sleight & Peto
+([Circ Res 1971;29:424–431](https://pubmed.ncbi.nlm.nih.gov/5155836/), n = 81,
+aged 19–66, phenylephrine method):
+
+    log₁₀ baroreflex sensitivity = 2.47 − (0.0164 × age) − (0.0086 × MAP)  ms/mmHg
+
+applied as the age **ratio** `10^(−0.0164·Δage)`, which is a 5.1-fold fall across
+25 to 68. Two previously-failing comparisons against
+[White 1997](https://pubmed.ncbi.nlm.nih.gov/9404222/) now pass: the age
+difference in orthostatic tachycardia, and the age difference in the diastolic
+response to tilt. Neither was fitted — the law is a sourced slope, and those two
+tests assert a *difference*, so they test the slope rather than the level.
+
+**An earlier version of this law was fitted to White's two endpoints instead, and
+it is worth recording what that cost.** The fit gave a 2.41-fold decline across
+25–68; Gribbin measures 5.07-fold. **The fitted law was half as steep as reality
+and reproduced both endpoints anyway.** An endpoint fit can be comfortably wrong
+about the mechanism it stands in for.
+
+**WHAT IS STILL OPEN: THE LEVEL, NOT THE SLOPE.** The relation fixes the ratio
+between any two ages but not which age the model's existing gains already
+represent. That anchor is set at 27 from Schäfers' cohort, where the model
+reproduces all three reported bands. **Its provenance argues for 33** — the
+heart-rate gains come from Fritsch 1989, median age ~33 — and the difference is
+worth a factor of about 1.2. So the model's reflex may still be slightly too
+brisk for its nominal age; the direction is known and the size is bounded, which
+is better than before but not settled.
+
+**Consequence worth stating plainly: the 55-year-old reference patient now runs
+at 0.35 of the reflex responsiveness it had before this change.** Resting
+haemodynamics barely move (MAP +2 mmHg), but every reflex-mediated magnitude at
+that age is smaller than previously published figures from this model.
+
+### Limb veins now constrict transiently, and it costs agreement with Maas
+
+Added 2026-10-02 from [Samueloff, Browse & Shepherd
+1966](https://pubmed.ncbi.nlm.nih.gov/5903943/) (human, 10 adults): limb capacity
+vessels constrict on orthostatic stress, peak at 27 s and are **back at baseline
+by 133 s** while the resistance vessels of the same limb stay constricted for the
+whole stimulus. The model previously gave its leg veins no venomotor response at
+all. It now has one, with the time course reproduced.
+
+**It breaks a validated invariance and that is published here rather than
+smoothed over.** [Maas 2009](https://pubmed.ncbi.nlm.nih.gov/19237896/) found
+resistance to venous return to be independent of blood volume. With the limb arm
+active, a 500 mL bleed rotates the model's venous return curve by 10 % — just
+outside the ±10 % band — and that test is now carried as a strict `xfail` with the
+measured gap recorded.
+
+**The gain was not lowered to clear it.** Halving it would push the limb
+venoconstriction peak below the range Samueloff measured, which would mean
+breaking the source the mechanism is calibrated to in order to pass a different
+test. **A plausible explanation was also tested and refuted:** Maas measured more
+than 20 minutes after his volume change, so the obvious reading was that this
+test measures inside the 133 s transient — but moving the measurement window to
+30, 90, 170 and 270 s after the bleed did not recover the invariance.
+
+**Expect this to get worse before it gets better.** The model's legs are
+under-filled — see the regional blood volume gap above — and this arm recruits a
+*fraction* of leg unstressed volume, so giving the legs their missing volume will
+make the rotation larger, not smaller.
 
 ### Intracranial pressure is flat above about 29° head-up
 

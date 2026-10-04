@@ -1653,6 +1653,39 @@ def _venous_return_curve(bleed_ml=0.0, sympathetic_outflow_scale=1.0, baroreflex
     return float(slope), float(-intercept / slope)
 
 
+@pytest.mark.xfail(strict=True, raises=AssertionError, reason=(
+    "KNOWN DISAGREEMENT BETWEEN TWO HUMAN SOURCES, AND THE MODEL CANNOT SATISFY "
+    "BOTH. Opened 2026-10-02 when the transient LIMB venous arm landed "
+    "(Samueloff 1966, PMID 5903943 — section 40). "
+    "MEASURED 2026-10-02 by sweeping the limb gain, so the cause is not in "
+    "doubt: slope ratio 1.055 at limb gain 0 (passes), 0.905 at 0.09, and "
+    "**0.897 at the calibrated 0.18** against a floor of 0.90. The miss is three "
+    "thousandths and it is still a miss. "
+    "THE GAIN CANNOT BE LOWERED TO CLEAR IT. At 0.09 the limb venoconstriction "
+    "peak falls to about 2.2 mmHg, BELOW Samueloff's measured foot range of "
+    "3.5-5.0 — that would break the source the arm is calibrated to in order to "
+    "pass a different test, which is the move this project forbids. "
+    "MY FIRST EXPLANATION WAS REFUTED, recorded so it is not re-tried. Maas "
+    "measured >20 min after his volume change and quotes Rothe that reflex "
+    "venoconstriction appears within 7-10 s and contaminates anything later, so "
+    "the obvious reading was that this test measures INSIDE the 133 s limb "
+    "transient. Moving the window did NOT recover it: ratio 0.897 / 0.884 / "
+    "0.852 / 0.881 at 30 / 90 / 170 / 270 s after the bleed, worst in the "
+    "middle. **The rotation is not a timing artefact.** "
+    "WHAT THE LIMB ARM DOES TO THE OTHER HALF OF THIS TEST, which still passes: "
+    "it blunts the haemorrhage-induced fall in Pmsf from 7.47 to 4.82 mmHg by "
+    "recruiting leg blood centrally. That is the venous reserve working, and it "
+    "is a testable clinical claim — see docs/serendipity.md entry 7. "
+    "WHY IT IS CARRIED RATHER THAN SUPPRESSED (Jesper's call, 2026-10-02): the "
+    "conflict is probably REAL and the leg rebuild will not dissolve it. The "
+    "model's legs are UNDER-filled — the README's regional-distribution gap puts "
+    "about 500 mL that belongs in the limbs in the abdomen instead — and since "
+    "this arm recruits a FRACTION of leg unstressed volume, giving the legs "
+    "their missing volume makes the rotation LARGER, not smaller. "
+    "THE ASSERTION BELOW IS UNCHANGED. Only the bookkeeping is marked, so this "
+    "flips to a hard failure the day the model agrees with Maas again. "
+    "Full record in docs/validation_log.md, 2026-10-02."
+))
 def test_haemorrhage_shifts_venous_return_curve_without_rotating_it():
     """[PMID: 19237896 — Maas 2009] A moderate haemorrhage must lower Pmsf and
     leave the venous-return slope alone: resistance to venous return is a
@@ -4316,6 +4349,31 @@ def test_ventricular_pressures_form_a_valid_pv_loop():
 # will be right to. **No paper may present any of them as out-of-sample.**
 # The next blind phase needs different studies.
 #
+# **TWO OF THESE STOPPED BEING XFAILS ON 2026-10-02 — backlog item 51 closed.**
+# `test_orthostatic_tachycardia_is_blunted_with_age_white1997` and
+# `test_orthostatic_vasoconstriction_is_blunted_with_age_white1997` were strict
+# xfails recording that the baroreflex had no age dependence of any kind. They
+# are live passing tests now because the reflex ages, from a MEASURED relation
+# and not a fit:
+#
+#     Gribbin, Pickering, Sleight & Peto (1971) Circ Res 29:424-431, HUMAN n=81
+#     log10 BRS = 2.47 − (0.0164 × age) − (0.0086 × MAP)  msec/mmHg
+#
+# applied as the age RATIO 10^(−0.0164·dage) in `aging.baroreflex_age_factors`.
+#
+# **AN EARLIER FITTED LAW WAS DISCARDED WHEN THAT PAPER ARRIVED, and the
+# comparison is the reason this note exists.** Fitting the decline to White's
+# two endpoints gave a 2.41x fall across 25-68; Gribbin MEASURES 5.07x. **The fit
+# was half as steep as reality and it reproduced both endpoints anyway.** An
+# endpoint fit can be comfortably wrong about the mechanism it is standing in
+# for — which is the argument for holding out for a sourced relation.
+#
+# ITEM 67 IS NOT CLOSED BY THIS AND IS A DIFFERENT DEFECT.
+# `test_brachial_diastolic_pressure_by_age_white1997` still fails: supine
+# brachial DBP 81.02 against a measured 62.7 +/- 6.4. That is an ABSOLUTE level
+# set by pulse-pressure amplification, which a lumped model cannot produce. The
+# age law neither helps nor harms it, which is the right outcome.
+#
 # WHY THEY ALL LAND AT ONCE, rather than one at a time as each is fixed.
 # This project's most-repeated process failure is optimising the loosest
 # constraint — twice on record, most recently as *"the constraint list has to
@@ -4421,32 +4479,6 @@ def white1997_arms():
             for age in (25.0, 68.0) for sex in ("male", "female")}
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    "KNOWN GAP — THE BAROREFLEX HAS NO AGE DEPENDENCE OF ANY KIND. "
-    "BaroreflexController.__init__ takes map_set, pp_set, cvp_set, dt, "
-    "history_len, cp_hr_enabled and cp_hr_ref_cvp — no age, no body size, no "
-    "sex — and patient.py never touches a gain. Age reaches exactly two places: "
-    "aging.arterial_compliance_factor and aging.chamber_age_factors. So an "
-    "age-invariant reflex produces an age-invariant reflex response. "
-    "MEASURED 2026-09-25 on this scenario: the model's age difference in the 5-minute tilt tachycardia is +0.15 bpm (age 25 +23.38, age 68 +23.53, mean of the male and female runs) against a measured -11.4 +/- 8.8 (1 SD). Registration 006 measured +0.1 bpm on the same scenario before any of these results were seen.  "
-    "PREDICTED IN ADVANCE AND CONFIRMED BLIND. preregistration/006 registered "
-    "a zero age difference before these results were seen, as direct "
-    "out-of-sample evidence for backlog item 51, which until then rested only "
-    "on reading the code. It failed exactly as registered. "
-    "ONE CONFOUND, NAMED: 60 degrees is outside the model's validated tilt "
-    "range of -30 to +45, where leg venous return collapses. That affects both "
-    "age arms equally, so it cannot manufacture an age difference — but it "
-    "does mean the ABSOLUTE tachycardia here is not clean. The age DIFFERENCE "
-    "is the assertion; the absolute is not asserted. "
-    "DO NOT CLOSE THIS BY SCALING THE LUMPED GAIN WITHOUT READING BACKLOG ITEM "
-    "70 FIRST. The older subjects reached their smaller response with MORE "
-    "noradrenaline, not less (267 +/- 15 against 183 +/- 23 pg/mL at rest, "
-    "P < 0.05), so the age law belongs on end-organ responsiveness and not on "
-    "sympathetic outflow. A single gain reproduces the haemodynamics either "
-    "way and encodes the wrong mechanism. "
-    "strict=True so it flips to a FAILURE the day the reflex ages. "
-    "Full tables in docs/reference_values.md under PMID 9404222."
-))
 def test_orthostatic_tachycardia_is_blunted_with_age_white1997(white1997_arms):
     """[PMID 9404222 — White 1997] Orthostatic tachycardia falls with age.
 
@@ -4477,30 +4509,6 @@ def test_orthostatic_tachycardia_is_blunted_with_age_white1997(white1997_arms):
     )
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    "KNOWN GAP — THE SAME AGE-BLIND REFLEX, MEASURED IN THE VASCULAR EFFECTOR "
-    "RATHER THAN THE CHRONOTROPIC ONE. Registration 006 scored heart rate "
-    "because heart rate is what it registered; the paper's full Table 1, "
-    "transcribed 2026-09-24, shows the diastolic response separates the age "
-    "groups just as sharply and in a way heart rate cannot explain. "
-    "MEASURED 2026-09-25, males: the model's age difference in the diastolic tilt response is +3.71 mmHg (age 25 -26.53, age 68 -22.82) against a measured -9.5 +/- 8.8. Wrong sign and wrong size. NOTE BOTH MODEL VALUES ARE LARGE AND NEGATIVE where the subjects' were +7.0 and -2.5 — the model's diastolic pressure collapses at 60 degrees in both age groups, so the LEVEL of each response is contaminated by the out-of-range tilt and only the DIFFERENCE is asserted.  "
-    "THIS IS WHY BACKLOG ITEM 51 IS TWO GAPS AND NOT ONE. An age law written "
-    "on heart-rate gain alone would close the test above, turn the suite "
-    "green, and leave this one failing — which is the point of writing both. "
-    "SYSTOLIC PRESSURE IS FLAT IN BOTH GROUPS AT ALL EIGHT TIME POINTS, so the "
-    "whole mean-pressure response is diastolic. That is why this test reads "
-    "the diastolic and not the mean. "
-    "MALES ONLY, AND THAT IS SOURCED. The paper states that no age-related "
-    "change in diastolic blood pressure in response to tilt was observed in "
-    "female subjects, and that the age-related rise in noradrenaline was "
-    "restricted to the older male subgroup. Table 1 combines the sexes, so its "
-    "age difference is carried by 8 men per group and DILUTED by 8 women in "
-    "whom the effect is absent. Testing the combined value would test a "
-    "half-strength signal. Backlog item 71 holds the sex-by-age interaction, "
-    "which the model cannot express at all today. "
-    "strict=True so it flips to a FAILURE the day the vascular arm ages. "
-    "Full tables in docs/reference_values.md under PMID 9404222."
-))
 def test_orthostatic_vasoconstriction_is_blunted_with_age_white1997(white1997_arms):
     """[PMID 9404222 — White 1997] The diastolic response to tilt falls with age.
 
@@ -6277,8 +6285,9 @@ def test_withdrawing_tone_makes_phenylephrine_more_venoactive():
     )
 
 
+
 # ===========================================================================
-# 40. THE VENOUS REFLEX ARM DOES NOT ADAPT — Samueloff 1966 (backlog item 79)
+# 40. TWO VENOUS BEDS, TWO TIME COURSES — Samueloff 1966 (backlog item 79)
 #
 # [S1] Samueloff SL, Browse NL, Shepherd JT (1966). Response of capacity vessels
 #      in human limbs to head-up tilt and suction on lower body.
@@ -6289,161 +6298,248 @@ def test_withdrawing_tone_makes_phenylephrine_more_venoactive():
 #      "occluded limb": a cuff at 250-300 mmHg arrests the circulation to a hand,
 #      foot or forearm segment and a catheter reads venous pressure there. The
 #      VOLUME IS FIXED, so with P = (V - V0)/C any pressure change measures a
-#      change in UNSTRESSED VOLUME — the quantity `v0_vein_factor` multiplies.
+#      change in UNSTRESSED VOLUME — the quantity these factors multiply.
 #      Contrast [A1] in section 15, which reports DISTENSIBILITY (a slope) and is
-#      therefore blind to a V0 shift. The two papers constrain DIFFERENT arms and
-#      are not interchangeable.
+#      therefore blind to a V0 shift. **The two papers constrain DIFFERENT arms.**
 #
-#      RESULT, 70 deg head-up tilt held 4 min (8 subjects, 30 experiments):
-#        venous pressure rise   peak 7.9 mmHg (4.0-14.2), AT 27 s
-#        duration of response   133 s (62-240) — i.e. BACK TO BASELINE
-#        forearm blood flow     3.6 -> 2.5 mL/100 mL/min, SUSTAINED all 4 min
+#      70 deg head-up tilt held 4 min — forearm and hand, 8 subjects, 30 runs:
+#        peak 7.9 mmHg (4.0-14.2) AT 27 s; whole response over by 133 s (62-240)
+#        forearm blood flow 3.6 -> 2.5 mL/100 mL/min, SUSTAINED all 4 min
+#      Foot veins, 1 subject, 3 tilts:
+#        peaks 3.5, 4.5, 5.0 mmHg; durations 110, 98, 70 s
 #
 #      **CAPACITY VESSELS ADAPT. RESISTANCE VESSELS DO NOT.** Four controls make
-#      the transience a result rather than an artefact: a deep breath in the SAME
-#      occlusion still gives 8-18 mmHg (efferent limb intact, and repeated
-#      breaths SUSTAIN the rise); exercise venoconstriction is sustained in a
-#      similarly occluded forearm; it survives breath-holding; and SLOW tilting
-#      produces NO venous response while tachycardia and resistance-vessel
-#      constriction still occur normally.
+#      the transience a result and not an artefact: a deep breath in the SAME
+#      occlusion still gives 8-18 mmHg and repeated breaths SUSTAIN the rise;
+#      exercise venoconstriction is sustained in a similarly occluded forearm; it
+#      survives breath-holding; and SLOW tilting gives NO venous response while
+#      tachycardia and resistance-vessel constriction still occur normally.
 #
-#      The authors: "the systemic arterial blood pressure can be maintained in
-#      the erect position without the active participation of the capacity
-#      vessels in the limbs."
+# [S2] Brown GE Jr, Wood EH, Lampert EH (1949). J Appl Physiol 2:117-132, cited
+#      by [S1]. Under tetraethylammonium — ganglionic blockade — the volume
+#      ultimately displaced to the legs on tilting was NOT increased; only the
+#      RATE of filling rose. **So a limb venous arm must change how fast the legs
+#      fill and NOT where the blood ends up.**
+#
+# WHAT THE MODEL NOW DOES, AND WHY THE TEST IS SHAPED THIS WAY. One sympathetic
+# drive feeds two venous effectors with different dynamics: the mobilizable
+# reservoir (splanchnic + upper body) sustains its response, and
+# TRANSIENT_VENOUS_BEDS (thigh, calf, foot) carry a high-passed arm that fades.
+# **Asserting BOTH is what makes this honest** — a model that simply had no limb
+# arm would satisfy the fade and fail the liveness check, and one that adapted
+# everything would fail the splanchnic claim.
+#
+# **GRADE C, AND THE LIMIT IS A BED TRANSFER.** The time course is anchored on
+# forearm and hand (n = 8) and only cross-checked against the foot (n = 1, 3
+# tilts). The magnitude is foot-only, n = 1. Applying it to the legs rests on
+# [S1] and Pang 2001 treating limb veins as one class, which is an argument from
+# class membership rather than a measurement of the leg. Stated at the constant.
 # ===========================================================================
 
 
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason=(
-    "KNOWN STRUCTURAL GAP — THE VENOUS REFLEX ARM CANNOT ADAPT, AND THE ARTERIAL "
-    "ARM SHOULD NOT. Backlog item 79, opened 2026-10-01 from [S1] (PMID 5903943, "
-    "HUMAN). MEASURED 2026-10-01 at 70 deg head-up tilt, reflexes on, tilt "
-    "reached by 15 s: THE VENOUS ARM IS MONOTONIC — it never turns around. As "
-    "this test runs it, venoconstriction is 4.65 % of V0 at 27 s and 5.75 % at "
-    "133 s, with the maximum at the END of the observation window. [S1] measures "
-    "a peak AT 27 s and a return to baseline BY 133 s, so at the moment the human "
-    "response is over the model is at its own maximum and still climbing. "
-    "A longer probe to 240 s of tilt gave the same shape: 1.40 % at 15 s, 4.69 % "
-    "at 27 s, 5.87 % at 60 s, 6.31 % at 133 s, 6.62 % at 240 s and rising. (The "
-    "two runs differ slightly because this test tilts at 30 s and the probe at "
-    "60 s, so less settling precedes the tilt.) "
-    "THE ARTERIAL ARM IS CORRECT and this test asserts that too, so it cannot be "
-    "satisfied by breaking both: svr_factor is +65.4 % at 133 s here (+69.3 % in "
-    "the longer probe) and sustained, matching the sustained halving of forearm "
-    "flow [S1] reports. "
-    "THE MAGNITUDE IS ROUGHLY RIGHT, WHICH IS WHY THIS IS A DYNAMICS GAP AND NOT "
-    "A CALIBRATION ONE. 6.62 % of upper_body_vein's 764 mL V0 is 50.6 mL, which "
-    "over its 12 mL/mmHg compliance is about 4.2 mmHg at fixed volume, inside "
-    "[S1]'s 4.0-14.2 range. The model gets the SIZE plausible and the TIME COURSE "
-    "wrong. (That conversion is an estimate: a forearm is a small part of a lumped "
-    "upper-body compartment.) "
-    "WHY IT CANNOT BE TUNED AWAY: every effector is driven from ONE filtered "
-    "pressure error, so a maintained error gives a maintained response in every "
-    "arm at once. Expressing this needs PER-EFFECTOR adaptation, which does not "
-    "exist. slow_dynamics.py lists baroreflex resetting as planned; this is a "
-    "faster and effector-selective version of the same idea. "
-    "NOTE ON THE ANGLE: [S1]'s protocol is 70 deg, outside the model's validated "
-    "-30 to +45 range, so only the SHAPE is asserted here and no magnitude is. "
-    "The shape claim is structural and angle-independent — there is no adaptation "
-    "at any angle."
-))
-@pytest.mark.filterwarnings("ignore::RuntimeWarning")
-def test_venous_reflex_arm_adapts_while_the_arterial_arm_sustains_samueloff1966():
-    """[S1] The venous arm must fade; the arterial arm must not.
+def _tilt70_reflex_trace(duration_s=300.0, onset_s=60.0):
+    """Sample both venous arms and the SVR arm through a sustained 70 deg tilt.
 
-    Asserts the SHAPE of two time courses, not their magnitudes, so no
-    calibration can satisfy or break it. Three claims:
-      1. the venous arm PEAKS EARLY — by about 27 s, per [S1]
-      2. the venous arm has LARGELY FADED by 133 s, per [S1]
-      3. the arterial arm is STILL ENGAGED at 133 s, per [S1]
-
-    Claim 3 is what makes this honest. A model that simply had no venous arm
-    would pass 1 and 2 and fail 3, and a model that lost both arms would fail 3
-    as well. **The test can only pass by DISSOCIATING the two**, which is the
-    finding [S1] reports.
+    [S1]'s protocol: reached in 10-15 s, held 4 min. 70 deg is OUTSIDE the
+    model's validated -30 to +45 range, so only SHAPE is asserted from it and no
+    absolute haemodynamic value.
     """
     import model.baroreflex as B
 
-    STRIDE = 100                      # sample at 100 ms; the time constant is 133 s
+    stride = 100                       # 100 ms; the time constants are 20-40 s
     rec, n = [], [0]
     _orig = B.BaroreflexController.update
 
     def spy(self, mm, pp, cvp):
         _orig(self, mm, pp, cvp)
         n[0] += 1
-        if n[0] % STRIDE == 0:
-            rec.append((self.v0_vein_factor, self.svr_factor))
+        if n[0] % stride == 0:
+            rec.append((self.v0_vein_limb_factor, self.v0_vein_factor,
+                        self.svr_factor))
 
     B.BaroreflexController.update = spy
     try:
         p = SimParams()
-        p.tilt_onset_s = 30.0
-        p.tilt_duration_s = 15.0      # [S1] reached the position in 10-15 s
+        p.tilt_onset_s = onset_s
+        p.tilt_duration_s = 15.0
         p.tilt_start_deg = 0.0
         p.tilt_end_deg = 70.0
-        run_simulation(p, duration_s=190.0, dt=DT)
+        run_simulation(p, duration_s=duration_s, dt=DT)
     finally:
         B.BaroreflexController.update = _orig
 
     a = np.array(rec)
-    t = np.arange(len(a)) * DT * STRIDE
+    t = np.arange(len(a)) * DT * stride
+    return t, a, onset_s
+
+
+def test_limb_venous_arm_is_transient_and_splanchnic_is_not_samueloff1966():
+    """[S1] The limb arm must fade; the splanchnic and arterial arms must not.
+
+    Five claims, and the ORDER matters — each failure message should name the
+    thing that actually broke:
+      1. the limb arm is LIVE at all (a mechanism-liveness guard)
+      2. its peak comes EARLY, by about 27 s
+      3. it has largely FADED by 133 s
+      4. the SPLANCHNIC arm has NOT faded — the dissociation
+      5. the ARTERIAL arm is still engaged
+    """
+    t, a, onset = _tilt70_reflex_trace()
+
+    base = (t >= onset - 10.0) & (t < onset - 1.0)
+    limb_base = float(a[base, 0].mean())
+    svr_base = float(a[base, 2].mean())
 
     def at(sec, col):
-        w = (t >= 30.0 + sec - 0.5) & (t <= 30.0 + sec + 0.5)
+        w = (t >= onset + sec - 0.5) & (t <= onset + sec + 0.5)
         assert w.any(), f"no samples near t-tilt = {sec} s"
         return float(a[w, col].mean())
 
-    base = (t >= 20.0) & (t < 29.0)
-    v0_base = float(a[base, 0].mean())
-    svr_base = float(a[base, 1].mean())
+    # The limb arm is a HIGH-PASS, so with a settled drive it must sit at exactly
+    # 1.0 and leave the resting operating point alone.
+    assert abs(limb_base - 1.0) < 1e-9, (
+        f"the limb venous arm is {limb_base:.9f} at rest, not 1.0. It is a "
+        f"high-pass of the sympathetic drive, so once that drive has settled its "
+        f"tracker must have caught up exactly. A non-unity resting value means "
+        f"the legs carry a standing venoconstriction nothing asked for"
+    )
 
-    def venoconstriction(sec):
-        return (v0_base - at(sec, 0)) / v0_base
+    post = t >= onset + 15.0                      # tilt fully established
+    limb = 1.0 - a[post, 0]
+    peak_i = int(np.argmax(limb))
+    peak = float(limb[peak_i])
+    peak_s = float(t[post][peak_i]) - onset
+    late = 1.0 - at(133.0, 0)
 
-    late = venoconstriction(133.0)
-    svr_late = (at(133.0, 1) - svr_base) / svr_base
+    # 1. THE ARM IS LIVE. Calibration-independent: any real constriction passes.
+    assert peak > 0.01, (
+        f"the limb venous arm peaks at only {peak * 100:.2f}% of V0. [S1] measured "
+        f"a real transient venoconstriction in human limb veins on tilting "
+        f"(forearm 7.9 mmHg, foot 3.5-5.0). If this is ~0 the arm is not wired "
+        f"through to TRANSIENT_VENOUS_BEDS"
+    )
 
-    # The MAXIMUM over the whole tilt, and when it occurs. Taken from the series
-    # rather than from a named instant, because the point at issue is whether the
-    # arm turns around at all — reading two fixed times cannot tell you that.
-    post = t >= 45.0                           # tilt fully established
-    v_post = (v0_base - a[post, 0]) / v0_base
-    peak_i = int(np.argmax(v_post))
-    peak = float(v_post[peak_i])
-    peak_s = float(t[post][peak_i]) - 30.0     # seconds after tilt onset
+    # 2. ITS PEAK COMES EARLY. [S1]: maximum at 27 s, range 14-60.
+    assert peak_s < 60.0, (
+        f"the limb arm peaks {peak_s:.0f} s after tilt onset. [S1] measured the "
+        f"maximum at 27 s (range 14-60). A late peak means the washout is too "
+        f"slow relative to the 20 s drive filter"
+    )
 
-    # 3. THE ARTERIAL ARM MUST STILL BE ENGAGED. Asserted FIRST so a failure here
-    #    is not mistaken for the venous finding. [S1] measured forearm flow
-    #    3.6 -> 2.5 sustained across the whole 4 min.
+    # 3. AND IT HAS LARGELY FADED BY 133 s. [S1]: mean duration 133 s (62-240),
+    #    i.e. back to baseline. Threshold generous at a third of peak, because
+    #    the residual here tracks the model's own slow drift in sympathetic drive
+    #    rather than the washout — measured 28 % of peak on 2026-10-01.
+    assert late < 0.33 * peak, (
+        f"the limb arm is still {late * 100:.2f}% of V0 at 133 s against a peak "
+        f"of {peak * 100:.2f}% — {100.0 * late / peak:.0f}% of maximum. [S1] found "
+        f"the whole limb response over by 133 s"
+    )
+
+    # 4. THE SPLANCHNIC ARM MUST NOT HAVE FADED. This is the dissociation, and
+    #    [S1] does not measure the splanchnic bed — sustained recruitment there is
+    #    what orthostatic venous return depends on, so adapting it would be
+    #    applying a limb result to a bed nobody measured.
+    sus_27, sus_133 = 1.0 - at(27.0, 1), 1.0 - at(133.0, 1)
+    assert sus_133 > sus_27, (
+        f"the SPLANCHNIC venous arm faded too: {sus_27 * 100:.2f}% at 27 s to "
+        f"{sus_133 * 100:.2f}% at 133 s. Only TRANSIENT_VENOUS_BEDS may adapt. "
+        f"[S1] measured LIMB veins; the splanchnic time course is unmeasured and "
+        f"sustained recruitment there is what defends venous return"
+    )
+
+    # 5. THE ARTERIAL ARM MUST STILL BE ENGAGED. [S1]: forearm flow 3.6 -> 2.5,
+    #    sustained for the whole 4 min.
+    svr_late = (at(133.0, 2) - svr_base) / svr_base
     assert svr_late > 0.10, (
         f"the arterial arm has only {svr_late * 100:.1f}% of resistance added at "
-        f"133 s of sustained tilt. [S1] found resistance-vessel constriction "
-        f"SUSTAINED for the whole 4 min (forearm flow 3.6 -> 2.5 mL/100 mL/min). "
-        f"If this fails, the dissociation this test looks for is absent because "
-        f"BOTH arms are gone — which is a different defect"
+        f"133 s. [S1] found resistance-vessel constriction SUSTAINED for the whole "
+        f"4 min, which is the half of the dissociation that must NOT adapt"
     )
 
-    # 2. THE VENOUS ARM MUST HAVE LARGELY FADED BY 133 s — the headline, and
-    #    asserted before the peak-timing claim so THIS is the message a reader
-    #    sees. [S1]: the complete response lasts 133 s (range 62-240), i.e. it is
-    #    back at baseline by then. Threshold deliberately generous — a third of
-    #    peak still present counts as faded.
-    assert late < 0.33 * peak, (
-        f"venoconstriction is {late * 100:.2f}% of V0 at 133 s against a peak of "
-        f"{peak * 100:.2f}% — {100.0 * late / peak if peak else float('nan'):.0f}% "
-        f"of maximum still present. [S1] found the whole response over by 133 s "
-        f"(mean duration, range 62-240) while the arterial arm stayed engaged "
-        f"(here +{svr_late * 100:.1f}%). The venous arm follows the same filtered "
-        f"pressure error as every other effector, so it cannot fade while the "
-        f"error persists"
+
+def test_limb_venous_arm_changes_filling_rate_not_final_volume_brown1949():
+    """[S2] The transient must not move where the blood ends up.
+
+    Brown 1949 found ganglionic blockade did not change the volume ultimately
+    displaced to the legs on tilting, only the RATE of filling. Because the limb
+    arm is a high-pass it returns to 1.0 while the tilt continues, so the settled
+    leg unstressed volume is the tabulated one and the endpoint cannot move.
+
+    **This asserts the consequence rather than assuming it**, and it is the
+    guard that stops anyone turning this arm into a sustained one: a sustained
+    limb arm would recruit leg blood permanently, which is exactly what
+    registration 007 and backlog items 9 and 64 establish the model cannot do.
+    """
+    t, a, onset = _tilt70_reflex_trace()
+    tail = t >= onset + 230.0
+    assert tail.any(), "trace too short to read the settled tilt"
+    residual = 1.0 - float(a[tail, 0].mean())
+    assert abs(residual) < 0.02, (
+        f"the limb venous arm still holds {residual * 100:.2f}% of V0 after "
+        f"230 s of sustained tilt. [S2] found the volume ultimately displaced to "
+        f"the legs UNCHANGED by ganglionic blockade — only the rate of filling "
+        f"moved — so this arm must wash out and leave the endpoint alone"
     )
 
-    # 1. AND ITS MAXIMUM MUST COME EARLY. [S1]: maximum at 27 s, range 14-60.
-    #    Checked from the argmax of the series, so "still rising at the end of the
-    #    run" fails it. This is the NEXT gate once the fade above is fixed: a
-    #    response that decays but peaks three minutes late is still wrong.
-    assert peak_s < 60.0, (
-        f"venoconstriction peaks {peak_s:.0f} s after tilt onset, at "
-        f"{peak * 100:.2f}% of V0. [S1] measured the maximum at 27 s (range "
-        f"14-60). A peak at the end of the observation window means the arm is "
-        f"still growing and has no adaptation at all"
+
+# ===========================================================================
+# 41. REPORTED PRESSURE MUST DESCRIBE THE HEART THE ODE IS INTEGRATING
+#     Backlog item 78, fixed 2026-10-01.
+#
+# THE DEFECT. `_odes` pins the cardiac phase during a circulatory arrest, so the
+# heart is flaccid and the ODE's RA pressure settles at 9.638 mmHg — equal to the
+# venous bed it drains, as zero flow requires. The output monitor kept its OWN
+# cardiac phase running, recomputed atrial elastance across a full cycle, and
+# `p_cvp_edi = min(_cvp_win)` reported the TROUGH: 7.772 mmHg, 1.87 low.
+# **The reported CVP was the trough of an atrial contraction the ODE was not
+# performing.** Same shape as the 2026-09-04 `hr_eff` bug — two parallel
+# computations of one quantity, and the reported one drifted.
+#
+# WHY THE GUARD IS AN INVARIANT AND NOT A NUMBER. A sustained pressure gradient
+# across a resistance with ZERO net flow is impossible. At the arrest plateau
+# every compartment volume is stable (verified out to 299 s), so flow IS zero and
+# the IVC must read what the right atrium reads. That contradiction is what
+# located the defect, and asserting it cannot be satisfied by retuning anything.
+# ===========================================================================
+
+
+def test_reported_cvp_during_arrest_matches_the_bed_it_drains_item78():
+    """At the arrest plateau, reported CVP must equal the IVC pressure.
+
+    Calibration-independent. The IVC drains directly into the right atrium
+    through a resistance, so at zero flow the two pressures must be equal
+    whatever the model is calibrated to. Before the item 78 fix this gap was
+    1.87 mmHg, with reported CVP reading the trough of a phantom atrial beat.
+    """
+    from model.compartments import default_compartments, IDX
+    from model.circulation import _vascular_pressure
+
+    comp = default_compartments()
+    p = SimParams()
+    p.baroreflex_enabled = False
+    p.ventilation_mode = "none"
+    p.slow_dynamics_enabled = False
+    p.arrest_start_s = 40.0
+    p.arrest_duration_s = 40.0
+    r = run_simulation(p, duration_s=80.0, dt=DT)
+
+    t = np.asarray(r["t"])
+    w = (t >= 74.0) & (t <= 79.0)              # plateau, 34-39 s into the arrest
+    assert w.any(), "no samples in the arrest plateau window"
+
+    cvp = float(np.mean(np.asarray(r["cvp"])[w]))
+    c_ivc = comp[IDX["ivc"]]
+    v_ivc = float(np.mean(np.asarray(r["volumes"])[w, IDX["ivc"]]))
+    p_ivc = _vascular_pressure(v_ivc, c_ivc.unstressed_volume,
+                               c_ivc.compliance, c_ivc.p_stiffen)
+
+    assert abs(cvp - p_ivc) < 0.5, (
+        f"at the arrest plateau reported CVP is {cvp:.3f} mmHg while the IVC it "
+        f"drains sits at {p_ivc:.3f} — a gap of {abs(cvp - p_ivc):.3f}. Flow is "
+        f"zero here (volumes are stable), and a sustained gradient across a "
+        f"resistance at zero flow is impossible, so one of the two is not the "
+        f"pressure the ODE is using. This is backlog item 78: the output monitor "
+        f"advancing its cardiac phase while the ODE holds the heart flaccid, so "
+        f"the reported trough belongs to an atrial contraction that never happened"
     )
