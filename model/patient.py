@@ -27,7 +27,7 @@ does NOT, once both are in the model.]
 from dataclasses import replace
 
 from .aging import (REFERENCE_AGE_YEARS, arterial_compliance_factor,
-                    chamber_age_factors)
+                    chamber_age_factors, baroreflex_age_factors)
 
 import numpy as np
 from .compartments import default_compartments, Compartment, ARTERIOLAR_SEGMENTS
@@ -171,6 +171,11 @@ def apply_cardiac(params, cardiac: dict) -> None:
     base_min = {"lv": LV_EMIN, "rv": RV_EMIN, "la": LA_EMIN, "ra": RA_EMIN}
     if "hr_bpm" in cardiac:
         params.hr_bpm = cardiac["hr_bpm"]
+    # Reflex end-organ responsiveness by age — backlog item 51. Applied here
+    # and nowhere else, per this function's own rule: a hand-written field list
+    # elsewhere is what silently dropped `p_stiffen` for months.
+    if "reflex_responsiveness" in cardiac:
+        params.reflex_responsiveness = cardiac["reflex_responsiveness"]
     for tag in ("lv", "rv", "la", "ra"):
         setattr(params, f"{tag}_emax",
                 base_max[tag] * cardiac.get(f"{tag}_emax_factor", 1.0))
@@ -294,6 +299,12 @@ def scale_compartments(
     cardiac = {
         "hr_bpm": hr_bpm if hr_bpm is not None else 70.0,
         "sex": sex,
+        # THE BAROREFLEX AGES — backlog item 51. End-organ responsiveness, not
+        # outflow: White 1997 found the older subjects reach a SMALLER response
+        # with MORE noradrenaline. Exactly 1.0 for every effector at the
+        # reference age, so the reference patient is untouched and only a
+        # patient of a different age moves. See aging.baroreflex_age_factors.
+        "reflex_responsiveness": baroreflex_age_factors(age_years),
     }
     # E_min is divided by the volume factor so the chamber holds its scaled
     # volume at an UNCHANGED filling pressure (EDV = V0 + P/E_min); E_max carries

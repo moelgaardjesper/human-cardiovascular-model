@@ -269,3 +269,222 @@ def chamber_age_factors(age_years: float,
 # Until then this module serves interpretation only, which is what item 25a
 # actually needed: knowing that a target measured at 44 is not the same target
 # at 55.
+
+
+# ---------------------------------------------------------------------------
+# THE BAROREFLEX AGES — backlog item 51
+# ---------------------------------------------------------------------------
+# **WHAT AGEING DOES TO THE REFLEX, AND THE MECHANISM IS MEASURED.**
+# White 1997 (PMID 9404222), 16 young (25 +/- 3) against 16 older (68 +/- 7),
+# 60 deg head-up tilt for 30 min, in one lab with one protocol:
+#
+#   | at 5 min of tilt        | young | older |
+#   | dHR, bpm                | +15.0 | +3.6  |
+#   | dDBP, mmHg (MALES)      | +7.0  | -2.5  |
+#   | resting noradrenaline   | 183   | 267   |
+#   | NA rise over 30 min     | +173  | +194  |
+#
+# **THE OLDER SUBJECTS HAVE MORE SYMPATHETIC DRIVE AND LESS EFFECT FROM IT.**
+# So the age law belongs on END-ORGAN RESPONSIVENESS — the stage backlog item 70
+# built — and NOT on outflow. A single lumped gain reproduces the haemodynamics
+# either way and encodes the wrong mechanism. **Do not rename these factors to
+# anything implying that sympathetic activation falls with age: it rises.**
+#
+# **ALL FIVE EFFECTORS AGE TOGETHER, and that is sourced too.** White found
+# LF/HF unchanged between the groups at every time point, with total power
+# falling in BOTH bands. The ageing reflex is globally quieter, not shifted
+# toward sympathetic dominance, so vagal and sympathetic responsiveness move
+# together and the vascular effectors move with them.
+#
+# **GRADE C, AND THE REASON IS THE PROVENANCE OF THE TABLE ITSELF.** Every other
+# relation in this module is a measured quantity interpolated by `at_age`. This
+# one is NOT: end-organ responsiveness is a MODEL quantity and White measures an
+# ENDPOINT, so the table below is FITTED — the responsiveness pair that puts the
+# model's age DIFFERENCE inside one SD of White's. It is one study, one lab, and
+# a fit rather than a measurement.
+#   **WANTED: a measured baroreflex-sensitivity-by-age relation in humans**
+#   (ms/mmHg by decade, sequence method or neck chamber). That would replace the
+#   fit with a sourced RATIO and put this on the same footing as
+#   `arterial_compliance_factor`.
+#
+# **WHAT THIS DOES NOT FIX, stated so nobody reads more into it.**
+# Responsiveness 1.0 is, by construction, the reflex Fritsch 1989 measured in a
+# cohort of median age ~33 — the gains in `baroreflex.py` came from there.
+# Normalising this law at REFERENCE_AGE_YEARS therefore asserts that Fritsch's
+# 33-year-old gain IS a 55-year-old's, and it is not. Correcting THAT means
+# re-levelling the whole reflex downward, which moves the haemorrhage, tilt, PLR,
+# PPV and drug tests together. It is a separate and larger change, deliberately
+# not smuggled in here.
+#
+# WHY THE TABLE IS CLAMPED RATHER THAN EXTRAPOLATED. `at_age` holds the end
+# values outside 25-68, so a 20-year-old gets the age-25 factor and an
+# 85-year-old the age-68 one. Baroreflex sensitivity does keep falling past 68,
+# so the old end is CONSERVATIVE — it understates the deficit in the very old.
+# Extrapolating a two-point fit would be worse.
+# SUPERSEDED 2026-10-02 BY GRIBBIN 1971, WHICH MEASURES THIS DIRECTLY. The fit
+# below is kept only as the record of what the model needed before a source
+# existed, and because the comparison is informative: the fitted decline is
+# 2.41x across 25-68 and the MEASURED one is 5.07x. **The fit was half as steep
+# as reality.** See `_GRIBBIN_LOG10_PER_YEAR` below for what is actually used.
+#
+# FITTED 2026-10-02 by a JOINT solve against BOTH of White's endpoints at once —
+# the age difference in tilt tachycardia AND in the diastolic response — under
+# the constraint that the law passes through 1.0 at REFERENCE_AGE_YEARS. One
+# knob, two independent quantities, neither of them fitted alone:
+#
+#   | endpoint                | model  | White  | error    |
+#   | ΔHR(68) − ΔHR(25)       | −13.40 | −11.4  | −0.23 SD |
+#   | ΔDBP(68) − ΔDBP(25), M  |  −6.94 |  −9.5  | +0.29 SD |
+#
+# The ratio across the 43 years is **2.41**, which is the order human baroreflex
+# sensitivity is reported to fall over that span — so the law is not merely
+# arithmetically convenient. **The RATIO is the claim here, not the two levels.**
+#
+# DERIVED FROM MEASURED POINTS, NOT EXTRAPOLATED. Both values sit inside a
+# responsiveness sweep run at 0.6, 0.8, 1.0, 1.2, 1.4 (and 1.774 at age 25) in
+# the real model, so the solve interpolates and never extends the curve. At the
+# fitted young value nothing clips: svr_factor 1.667 against its 1.8 ceiling,
+# hr_delta 34.8 against 45, 0.0 % of samples at any bound. **Check that again if
+# these numbers move** — a clipped young arm compresses the age difference and
+# silently invalidates the fit.
+#
+# THE AGE OFFSET THIS HAD TO OVERCOME. At EQUAL responsiveness the model already
+# shows an age difference of **+3.8 mmHg** in the diastolic tilt response, and it
+# points the WRONG WAY (older defending better). It comes from
+# `arterial_compliance_factor`, not from the reflex: a stiffer artery turns the
+# same stroke volume into a wider pulse pressure. So the reflex law has to spend
+# 3.8 mmHg before it reaches zero. **Do NOT "fix" the compliance term to help
+# this** — it is validated against McEniery at three decades.
+WHITE_REFLEX_RESPONSIVENESS = ((25.0, 1.690), (68.0, 0.701))
+
+# The effectors this law acts on. Keys must match
+# baroreflex.DEFAULT_REFLEX_RESPONSIVENESS exactly, so a key added there and not
+# here is caught by a test rather than silently left age-blind.
+REFLEX_EFFECTORS = ("svr", "venous", "emax", "hr_sympathetic", "hr_vagal")
+
+
+# ---------------------------------------------------------------------------
+# GRIBBIN 1971 — THE MEASURED RELATION, AND IT REPLACES THE FIT ABOVE
+# ---------------------------------------------------------------------------
+# Gribbin, Pickering, Sleight & Peto (1971) Circ Res 29:424-431. HUMAN, n = 81
+# (61 M, 20 F), aged 19-66, supine, brachial artery catheter, phenylephrine
+# (Oxford) method. Age and MAP were UNCORRELATED in the cohort, which is what
+# lets the two be separated:
+#
+#     log10 BRS = 2.47 − (0.0164 × age) − (0.0086 × MAP)   msec/mmHg
+#     SE on the age coefficient ±0.0019; the authors state ±10 %.
+#
+# At constant MAP the pressure term cancels and the AGE RATIO is
+#     BRS(a2)/BRS(a1) = 10^(−0.0164 × (a2 − a1))
+# which is a SOURCED RATIO — the same shape `arterial_compliance_factor` takes
+# from Franklin. **Across 25 to 68 that is 0.197, a 5.07x fall.**
+_GRIBBIN_LOG10_PER_YEAR = 0.0164
+
+# **THE SLOPE IS SOURCED. THE ANCHOR IS NOT, AND THE TWO MUST NOT BE CONFUSED.**
+# Gribbin gives the RATIO between any two ages. He does not say which age the
+# gains in `baroreflex.py` already represent, and that is what the anchor sets.
+# **Everything Gribbin contributes is anchor-independent; only the LEVEL moves.**
+#
+# WHAT THE ANCHOR CANNOT BE. REFERENCE_AGE_YEARS (55) would need r(25) = 3.105,
+# and measured at that value on White's 60 deg tilt `hr_delta` sits at **45.00
+# with 100 % of samples against its +45 ceiling** — the reflex is pinned and the
+# relation cannot be expressed at all. So the module's own convention is ruled
+# out by measurement, not by preference.
+#
+# **TWO CANDIDATES REMAINED, AND THEY ARE DIFFERENT KINDS OF CLAIM.**
+#   PROVENANCE says 33: the heart-rate gains were calibrated against Fritsch
+#   1989, median age ~33, and section 28 of the suite drives the controller
+#   DIRECTLY with default responsiveness, so that calibration pins r = 1.0 to
+#   that cohort. Fritsch is open-loop — pressure held fixed — which is the
+#   cleaner measurement.
+#   BEHAVIOUR says ~25: two independent human cohorts, Schaefers (27) and the
+#   LBNP series (22), both match at r = 1.0 and both OVER-respond above it.
+#
+# MEASURED 2026-10-02 on the decisive subset:
+#   anchor 33 -> 3 failures (Schaefers dHR -20.2 and dMAP +21.5, LBNP dHR +10.3)
+#   anchor 25 -> 1 marginal failure (Schaefers dTPR +634 against a floor of 650)
+#
+# **ANCHORED AT 27 — Schaefers' own cohort (Jesper, 2026-10-03).**
+# Setting an UNSOURCED level from a study that measured the relevant population
+# is calibration, not fitting. The rule this project enforces is narrower than it
+# first looks: do not bend a parameter that has its OWN measurement to hit a
+# downstream endpoint, and do not claim a study validates what it was used to
+# set. The anchor has no independent measurement, so pinning it from data is
+# exactly what should happen — and the blind phase is closed, so these studies
+# are development targets by design.
+#
+# **THE AGE LAW REMAINS FALSIFIABLE AFTER THIS, which is why it is safe.**
+# White's two age tests assert a DIFFERENCE between 25 and 68, so they test
+# Gribbin's SLOPE and are anchor-independent. Using Schaefers to set the level
+# does not make the law untestable; it only means Schaefers is no longer one of
+# the things testing it.
+#
+# **AND THE TWO YOUNG COHORTS DO NOT ACTUALLY DISAGREE — measured 2026-10-03, and
+# this corrected an earlier reading.** It looked as though Schaefers (27) and the
+# LBNP series (22) implied different anchors, five years apart. They do not:
+#
+#   | anchor | Schaefers 27            | LBNP 22        |
+#   |   33   | FAILS dHR and dMAP      | FAILS r = 1.45 |
+#   |   25   | FAILS dTPR (r = 0.927)  | passes r= 1.12 |
+#   |   27   | **PASSES all three**    | **passes 1.20**|
+#
+# **Schaefers pins r(27) TIGHTLY** — it fails below at 0.927 and above at 1.254 —
+# **while LBNP is permissive up to about 1.20.** One is a point constraint and the
+# other is a range, so a loose constraint was mistaken for a competing estimate.
+# Anchor 27 satisfies both; anchor 25 satisfies only one.
+_BRS_CALIBRATION_AGE = 27.0
+
+
+def baroreflex_responsiveness_factor(
+        age_years: float,
+        reference_age: float = _BRS_CALIBRATION_AGE) -> float:
+    """End-organ reflex responsiveness at `age_years`, from Gribbin's slope.
+
+    1.0 at `_BRS_CALIBRATION_AGE` — the age at which the underlying gains were
+    MEASURED — and NOT at REFERENCE_AGE_YEARS. That is the one place this module
+    deliberately breaks its own convention; see the note above for why the clip
+    leaves no choice.
+
+    A RATIO, which is what transfers: Gribbin's absolute is msec/mmHg and the
+    model's gain is bpm/mmHg, and converting between them needs the baseline
+    pulse interval. He found no correlation between resting pulse interval and
+    age, so the conversion factor is the same at both ends and the ratio carries
+    over unchanged. **The absolute does not.**
+
+    NOT EXTRAPOLATED BEYOND SENSE. Gribbin's cohort is 19-66; the relation is
+    clamped to that span, so a 15-year-old gets the age-19 value and a
+    90-year-old the age-66 one. Sensitivity does keep falling past 66, so the old
+    end is CONSERVATIVE — it understates the deficit in the very old.
+    """
+    a = min(max(float(age_years), 19.0), 66.0)
+    ref = min(max(float(reference_age), 19.0), 66.0)
+    return 10.0 ** (-_GRIBBIN_LOG10_PER_YEAR * (a - ref))
+
+
+def baroreflex_age_factors(age_years: float,
+                           reference_age: float = _BRS_CALIBRATION_AGE) -> dict:
+    """Per-effector responsiveness for `BaroreflexController(responsiveness=...)`.
+
+    **EVERY EFFECTOR GETS THE SAME FACTOR, AND THAT IS PART SOURCED AND PART
+    EXTRAPOLATION. Both halves are stated because they are not equally strong.**
+
+    SOURCED, for the two heart-rate limbs. Gribbin measures the cardiac vagal
+    arm, and White 1997 found LF/HF unchanged between the age groups with total
+    power falling in BOTH bands — the ageing reflex is globally quieter, not
+    shifted toward sympathetic dominance. So vagal and sympathetic chronotropic
+    responsiveness move together, and they move with Gribbin's slope.
+
+    EXTRAPOLATION, for `svr`, `venous` and `emax`. **Gribbin measured pulse
+    interval against pressure. He did not measure the vasomotor arm at all**, so
+    applying his slope there assumes the two arms age alike. White supports the
+    DIRECTION — his diastolic tilt response falls from +7.0 to −2.5 mmHg across
+    the same ages — but not the rate. The check that this is not absurd is that
+    the resulting model lands White's diastolic endpoint within one SD; it is a
+    consistency check, not an independent measurement.
+
+    **WANTED: an age relation for the VASOMOTOR baroreflex** (muscle sympathetic
+    nerve activity per mmHg, or forearm vascular resistance per mmHg, by decade).
+    That would let the two arms age at their own rates instead of one.
+    """
+    f = baroreflex_responsiveness_factor(age_years, reference_age)
+    return {k: f for k in REFLEX_EFFECTORS}
