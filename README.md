@@ -528,8 +528,8 @@ standing, walking, or tilted beyond 45°. Under anaesthesia it is inactive, so i
 does not affect the model's main clinical range.
 
 ### Validated tilt range: −30° to +45°, except head-down CVP
-**Changed 2026-10-04.** Head-down cardiac output and stroke volume agree with the literature again,
-for a physiological reason. Head-down CVP does not — it rises about 0.5 mmHg at −15° against a
+**Changed 2026-10-04.** Head-down cardiac output and stroke volume rise again, for a physiological
+reason, though possibly too much at 30° and beyond. Head-down CVP does not — it rises about 0.5 mmHg at −15° against a
 pooled +4.1 — see *Head-down tilt passed for the wrong reason*.
 
 Beyond +45°, the lumped venous compartments cannot fully represent the distributed hydrostatic column without active venous return. Steep upright angles will show appropriate haemodynamic stress but overestimate cardiovascular collapse relative to a conscious patient. Cerebral perfusion at the +45° edge is now defended (CPP 65 mmHg on 2026-10-04, up from ~40 before the 2026-08-26 venous rework) — the residual limit on steeper angles is the absent skeletal-muscle pump, not the venous scale.
@@ -784,12 +784,15 @@ measured it with an oesophageal balloon in nine anaesthetised, paralysed patient
 **−0.17 mmHg (95 % CI −0.56 to +0.23)**. It is now zero.
 
 **Result:** at −15° cardiac output rises 0.64 L/min and stroke volume 11.6 mL, both
-in the direction and of the order Likhvantsev pooled. The passive leg raise works
+in the direction and of the order Likhvantsev pooled. **But the pooled trials mostly
+tilted 30–45°, and there the model may now overshoot:** at −30° it gives +24.6 mL
+against +6 (Grønlykke, 30°, after cardiac surgery) and +12.9 (Falabella, 45°). The
+cohorts differ, so this is a direction to check, not yet a measured defect. The passive leg raise works
 again (a 1200 mL bleed gives +24 %, a responder). **The cost is CVP**, which now
-rises about 0.5 mmHg against a pooled +4.1. That stays a known gap until the
-meta-analysis's included studies have been read: some may have had gas in the
-abdomen, which does raise abdominal and chest pressure, and how the transducer was
-levelled during tilt is not reported. **The model does not yet have an
+rises about 0.5 mmHg against a pooled +4.1. That stays a known gap. The pooled CVP comes from seven trials that disagree
+strongly with each other (I² 88 %), mostly ventilated patients at about 30°, many
+after cardiac surgery. The meta-analysis excluded studies combining tilt with gas
+in the abdomen, so pneumoperitoneum does not explain it. **The model does not yet have an
 intra-abdominal pressure**, so it cannot represent laparoscopy.
 
 **One new disagreement:** in Sejersen's awake volunteers, 20° head-down did not

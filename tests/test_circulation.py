@@ -532,10 +532,11 @@ def test_trendelenburg_minus15_likhvantsev2025(supine_175_75, hdt15_175_75):
     "KNOWN GAP, 2026-10-04. The positional intrathoracic pressure that put this "
     "inside the CI was fitted, and Drummond & Martin 1978 (PMID 147698) measured "
     "no pleural pressure change at 15 deg head-down, so it is now zero. MEASURED: "
-    "dCVP +0.52 mmHg against a pooled +4.13 (CI 2.42-5.84). NOT YET EXPLAINED: "
-    "the meta-analysis's included studies have not been read. Some may have had "
-    "pneumoperitoneum, which raises abdominal pressure, and transducer levelling "
-    "during tilt is unreported. Do not restore a chest pressure to close this."
+    "dCVP +0.52 mmHg against a pooled +4.13 (CI 2.42-5.84). NOT YET EXPLAINED. "
+    "Read 2026-10-05: the pool is 7 trials with I2 88 %, mostly ventilated "
+    "patients at about 30 deg, many after cardiac surgery; pneumoperitoneum was "
+    "an exclusion criterion. So the target is weak (grade C) and the angle here "
+    "(-15) does not match it. Do not restore a chest pressure to close this."
 ))
 def test_trendelenburg_minus15_cvp_likhvantsev2025(supine_175_75, hdt15_175_75):
     """[PMID: 39500675 — Likhvantsev 2025] The CVP half of the -15 deg comparison,
