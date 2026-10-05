@@ -534,8 +534,34 @@ pooled +4.1 — see *Head-down tilt passed for the wrong reason*.
 
 Beyond +45°, the lumped venous compartments cannot fully represent the distributed hydrostatic column without active venous return. Steep upright angles will show appropriate haemodynamic stress but overestimate cardiovascular collapse relative to a conscious patient. Cerebral perfusion at the +45° edge is now defended (CPP 65 mmHg on 2026-10-04, up from ~40 before the 2026-08-26 venous rework) — the residual limit on steeper angles is the absent skeletal-muscle pump, not the venous scale.
 
-### Frank-Starling plateau approximation
-Implemented as a hard cap on E_max above EDV = 130 mL. Correctly prevents SV increase in the fully normovolemic patient but overestimates the response when the patient input MAP is below the baroreflex setpoint (interpreted as mild hypovolemia by `patient.py`).
+### The resting heart is not on a Starling plateau
+
+**This section used to say the Starling cap "correctly prevents SV increase in the fully
+normovolemic patient". Measured on 2026-10-05, it does not.** In
+[Sejersen 2022](https://doi.org/10.14814/phy2.15216) the same healthy men were tilted
+20° head-down, sat up to 45°, and had their legs raised from sitting. Their resting hearts
+were on the flat top of the Starling curve: head-down tilt left stroke volume unchanged.
+The model, in the same cohort:
+
+| step (10 min each) | model ΔSV | Sejersen ΔSV |
+|---|---|---|
+| 20° head-down from flat | +22 mL | −1 to −2 |
+| sitting up, back 45°, legs flat | −29 mL | −2 to −4 |
+| leg raise from sitting up | +42 mL | +9 |
+
+Every direction is right and every size is 4–5× too large. The same overshoot shows against
+Likhvantsev at 30°. **Until it is fixed, the model overstates how much a normovolaemic patient
+gains or loses from any change in filling** — posture, a fluid bolus, or a small bleed. The cause
+is in the heart, not the veins. Carried as a strict `xfail`.
+
+### The legs now move independently of the trunk
+
+Since 2026-10-05 the legs pivot at the hip, so a passive leg raise is a leg raise rather than a
+whole-body head-down tilt (backlog item 53). Whole-body tilt is unchanged to the last bit. Two
+limits: the hip position is a placeholder pending an anthropometric source, and the leg
+compartments' heights look compressed against anatomy. The Monnet fluid-responsiveness test
+still uses the old whole-body tilt as its leg raise; moving it to a true leg raise waits for
+the sourced geometry.
 
 ### Single-compartment splanchnic and upper-body veins
 Currently single lumped compartments. Each therefore has one height, so the hydrostatic

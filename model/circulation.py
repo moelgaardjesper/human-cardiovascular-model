@@ -43,7 +43,8 @@ from .heart import (
     RA_EMAX, RA_EMIN, LA_EMAX, LA_EMIN,
     atrial_phase_offset,
 )
-from .gravity import hydrostatic_delta_mmhg, GravityEnvironment, smooth_tilt_profile, positional_itp_mmhg
+from .gravity import (hydrostatic_delta_mmhg, GravityEnvironment, smooth_tilt_profile,
+                      positional_itp_mmhg, articulated_hydrostatic_delta_mmhg)
 from .baroreflex import (BaroreflexController,
                          VENOUS_RESTING_TONE as B_VENOUS_RESTING_TONE)
 from .pharmacology import (combined_drug_factors, NEUTRAL_FACTORS,
@@ -275,6 +276,23 @@ ABDOMINAL_COMPARTMENTS = (
 )
 _ABDOMINAL_IDX = tuple(IDX[name] for name in ABDOMINAL_COMPARTMENTS)
 
+# ---------------------------------------------------------------------------
+# THE LEGS, which pivot at the hip — backlog item 53 (2026-10-05)
+# ---------------------------------------------------------------------------
+# Membership is anatomy: the leg arteries and the three leg vein segments. The
+# infrarenal IVC is abdominal and moves with the trunk.
+LEG_COMPARTMENTS = ("lower_body_art", "thigh_vein", "calf_vein", "foot_vein")
+_LEG_NAMES = frozenset(LEG_COMPARTMENTS)
+
+# WHERE THE HIP IS. PLACEHOLDER, GRADE E, chosen without a source: the pivot is
+# taken at the height of `ivc_infrarenal` (the iliac confluence), so it scales
+# with the patient's stature through the same route as every other height.
+# Known weakness: `thigh_vein` sits at that same height, so raising the legs
+# barely lifts the thigh. The leg heights themselves look compressed against
+# anatomy and are awaiting an anthropometric source (validation log
+# 2026-10-05). Replace both together, from that source.
+HIP_PIVOT_COMPARTMENT = "ivc_infrarenal"
+
 
 # ---------------------------------------------------------------------------
 # Simulation parameters dataclass
@@ -309,6 +327,14 @@ class SimParams:
         self.tilt_end_deg    = 0.0
         self.tilt_onset_s    = 0.0
         self.tilt_duration_s = 5.0
+        # Hip flexion: legs relative to the trunk, degrees, positive = legs
+        # raised off a flat table. Shares the tilt's onset and ramp. Zero leaves
+        # every result bit-for-bit as before (backlog item 53).
+        #   leg raise from flat:        trunk 0,      flexion 0 -> 45
+        #   semi-recumbent:             trunk 0 -> 45, flexion 0 -> 45 (legs stay flat)
+        #   leg raise from semi-recumb: trunk 45 -> 0, flexion 45 (constant)
+        self.hip_flexion_start_deg = 0.0
+        self.hip_flexion_end_deg   = 0.0
         self.gravity         = GravityEnvironment.EARTH  # m/s²
 
         # Drug effects (merged multiplicative factors)
@@ -563,7 +589,8 @@ def perturbation_times(params, duration_s: float) -> list[float]:
 
     # Posture. tilt_duration_s is the ramp, so the onset and the end of the ramp
     # are different events; a tilt that does not change angle is not an event.
-    if params.tilt_end_deg != params.tilt_start_deg:
+    if params.tilt_end_deg != params.tilt_start_deg or \
+            params.hip_flexion_end_deg != params.hip_flexion_start_deg:
         _add(params.tilt_onset_s)
         _add(params.tilt_onset_s + params.tilt_duration_s)
 
@@ -928,8 +955,19 @@ def _odes(t: float, V: np.ndarray, params: SimParams, baro: BaroreflexController
         for _ai in _ABDOMINAL_IDX:
             P[_ai] += p_abd
 
+    flexion = smooth_tilt_profile(
+        t, params.hip_flexion_start_deg, params.hip_flexion_end_deg,
+        params.tilt_onset_s, params.tilt_duration_s,
+    )
+    hip_h = comp[IDX[HIP_PIVOT_COMPARTMENT]].height_m
+
     def hdp(idx_name: str) -> float:
-        """Hydrostatic delta (mmHg) for this compartment at current tilt."""
+        """Hydrostatic delta (mmHg) for this compartment at current posture.
+        Leg compartments pivot at the hip (item 53); with zero flexion this is
+        exactly the single-angle tilt."""
+        if idx_name in _LEG_NAMES:
+            return articulated_hydrostatic_delta_mmhg(
+                comp[IDX[idx_name]].height_m, tilt, flexion, hip_h, g)
         return hydrostatic_delta_mmhg(comp[IDX[idx_name]].height_m, tilt, g)
 
     # -----------------------------------------------------------------------
@@ -1621,7 +1659,13 @@ def run_simulation(
         c_bc  = comp[i["brachiocephalic"]]
         p_lba = _vascular_pressure(V[i["lower_body_art"]], c_lba.unstressed_volume, c_lba.compliance)
         p_bc  = _vascular_pressure(V[i["brachiocephalic"]], c_bc.unstressed_volume, c_bc.compliance)
-        _p_ankle = p_lba - hydrostatic_delta_mmhg(c_lba.height_m, tilt_now, params.gravity)
+        _flex_now = smooth_tilt_profile(
+            t, params.hip_flexion_start_deg, params.hip_flexion_end_deg,
+            params.tilt_onset_s, params.tilt_duration_s,
+        )
+        _p_ankle = p_lba - articulated_hydrostatic_delta_mmhg(
+            c_lba.height_m, tilt_now, _flex_now,
+            comp[i[HIP_PIVOT_COMPARTMENT]].height_m, params.gravity)
         _p_brach = p_bc  - hydrostatic_delta_mmhg(c_bc.height_m,  tilt_now, params.gravity)
         ankle_p_ts[_oi]    += _p_ankle
         brachial_p_ts[_oi] += _p_brach

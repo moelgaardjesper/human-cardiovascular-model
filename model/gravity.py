@@ -81,6 +81,43 @@ def hydrostatic_delta_mmhg(
 POSITIONAL_ITP_K_MMHG = 0.0
 
 
+# ---------------------------------------------------------------------------
+# ARTICULATED LEGS — backlog item 53, leg rebuild stage 3 (2026-10-05)
+# ---------------------------------------------------------------------------
+# Until now ONE angle tilted the whole body, so a passive leg raise could only be
+# modelled as whole-body head-down tilt — a different manoeuvre (Sejersen 2022,
+# PMID 35854636: in the same men, 20 deg HDT left SV unchanged while a leg raise
+# from semi-recumbent raised it 9 mL).
+#
+# GEOMETRY. Each compartment's `height_m` is its position along the body axis
+# from the heart (negative = footward). The trunk rotates by `trunk_deg` (the
+# existing tilt). The legs pivot at the hip, flexed by `hip_flexion_deg`
+# relative to the trunk (positive = legs raised off a flat table). A leg point
+# at axial position h, with the hip at h_hip, sits vertically at
+#     h_hip * sin(trunk) + (h - h_hip) * sin(trunk - flexion)
+# With zero flexion this is h * sin(trunk), the old formula — and the code
+# takes the old path exactly in that case, so every existing tilt result is
+# bit-for-bit unchanged.
+#   semi-recumbent (trunk 45, flexion 45)  -> legs horizontal at hip height
+#   leg raise from it (trunk 0, flexion 45) -> legs 45 deg up from a flat trunk
+def articulated_hydrostatic_delta_mmhg(
+    height_m: float,
+    trunk_deg: float,
+    hip_flexion_deg: float,
+    hip_height_m: float,
+    g: float = GravityEnvironment.EARTH,
+) -> float:
+    """Hydrostatic delta (mmHg) for a LEG compartment, legs pivoting at the hip.
+
+    Identical to `hydrostatic_delta_mmhg(height_m, trunk_deg, g)` when
+    `hip_flexion_deg` is zero (that branch is taken explicitly)."""
+    if hip_flexion_deg == 0.0:
+        return hydrostatic_delta_mmhg(height_m, trunk_deg, g)
+    vertical = (hip_height_m * np.sin(np.radians(trunk_deg))
+                + (height_m - hip_height_m) * np.sin(np.radians(trunk_deg - hip_flexion_deg)))
+    return BLOOD_DENSITY * g * vertical * MMHG_PER_PA
+
+
 def positional_itp_mmhg(tilt_deg: float, k_mmhg: float = POSITIONAL_ITP_K_MMHG) -> float:
     """
     ITP rise (mmHg) from body positioning — the DC (non-oscillatory) component.

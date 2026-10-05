@@ -6663,3 +6663,122 @@ def test_head_down_tilt_does_not_raise_pleural_pressure_drummond1978():
         f"{change:+.2f} mmHg; Drummond & Martin measured -0.17 (CI -0.56 to "
         f"+0.23) without pneumoperitoneum"
     )
+
+
+# ===========================================================================
+# 45. THE LEGS PIVOT AT THE HIP — backlog item 53, leg rebuild stage 3
+#
+# Before 2026-10-05 one angle tilted the whole body, so a passive leg raise was
+# a whole-body head-down tilt by construction. These guard the articulation
+# itself; the physiology targets (Sejersen 2022) are separate.
+# ===========================================================================
+
+def test_gravity_does_no_net_work_with_the_legs_articulated():
+    """Section 32's conservation law must survive articulation: stop the heart
+    with the trunk tilted and the legs flexed at a different angle, and the
+    blood must stop moving. Every flow still carries hdp(up) - hdp(down), so the
+    loop telescopes whatever the geometry — this proves it through the run."""
+    p = SimParams()
+    p.baroreflex_enabled    = False
+    p.ventilation_mode      = 'none'
+    p.slow_dynamics_enabled = False
+    p.tilt_start_deg, p.tilt_end_deg = 0.0, 30.0
+    p.hip_flexion_start_deg, p.hip_flexion_end_deg = 0.0, 75.0   # legs 45 deg up
+    p.tilt_onset_s, p.tilt_duration_s = 20.0, 5.0
+    p.arrest_start_s, p.arrest_duration_s = 40.0, 200.0
+    r = run_simulation(p, duration_s=240.0, dt=DT)
+    V = np.asarray(r["volumes"])
+    t = np.asarray(r["t"])
+    late = V[t >= 215.0]
+    drift = float(np.abs(late[-1] - late[0]).max())
+    assert drift < 0.5, (
+        f"volumes still moving {drift:.3f} mL over the last 20 s of arrest with "
+        f"the trunk at 30 deg and the legs raised — articulation broke the "
+        f"closed hydrostatic loop")
+
+
+def test_leg_raise_empties_the_legs():
+    """A leg raise from flat must move blood OUT of the leg compartments with the
+    trunk left horizontal. Before item 53 the only way to lift the legs was to
+    tip the head down too. Direction only; 20 mL is a floor against an inert
+    mechanism, not a target."""
+    from model.circulation import LEG_COMPARTMENTS
+    def run(flex):
+        p = SimParams()
+        p.hip_flexion_start_deg, p.hip_flexion_end_deg = 0.0, flex
+        p.tilt_onset_s, p.tilt_duration_s = 10.0, 5.0
+        r = run_simulation(p, duration_s=40.0, dt=DT)
+        t = np.asarray(r["t"])
+        V = np.asarray(r["volumes"])[t >= 30.0].mean(axis=0)
+        return float(sum(V[IDX[n]] for n in LEG_COMPARTMENTS))
+    flat, raised = run(0.0), run(45.0)
+    assert raised < flat - 20.0, (
+        f"raising the legs 45 deg moved {flat - raised:.1f} mL out of the legs; "
+        f"the articulation is not reaching the leg compartments")
+
+
+# ---------------------------------------------------------------------------
+# Sejersen 2022 [PMID 35854636] — whole-body HDT vs a true leg raise, same men.
+# Shared fixture: three arms in the cohort (177 cm, 80 kg, male, 39 y, awake).
+# Steps are 120 s after a 240 s settle; the paper used 10 min and reports the
+# response as sustained over that time (their Fig 2).
+# ---------------------------------------------------------------------------
+
+@pytest.fixture(scope="module")
+def sejersen_arms():
+    def arm(trunk0, trunk1, flex0, flex1):
+        comps, card = build_patient_params(177.0, 80.0, hr_bpm=62.0, sex="male",
+                                           age_years=39.0)
+        p = SimParams(compartments=comps)
+        apply_cardiac(p, card)
+        p.tilt_start_deg, p.tilt_end_deg = trunk0, trunk1
+        p.hip_flexion_start_deg, p.hip_flexion_end_deg = flex0, flex1
+        p.tilt_onset_s, p.tilt_duration_s = 240.0, 10.0
+        r = run_simulation(p, duration_s=370.0, dt=DT)
+        t = np.asarray(r["t"])
+        sv = np.asarray(r["sv"])
+        before = float(np.mean(sv[(t >= 210.0) & (t < 240.0)]))
+        after = float(np.mean(sv[t >= 340.0]))
+        return after - before
+    return {
+        "hdt":  arm(0.0, -20.0, 0.0, 0.0),     # supine -> 20 deg head-down
+        "semi": arm(0.0, 45.0, 0.0, 45.0),     # supine -> back 45 up, legs flat
+        "plr":  arm(45.0, 0.0, 45.0, 45.0),    # semi-recumbent -> trunk flat, legs 45 up
+    }
+
+
+def test_leg_raise_and_head_down_tilt_differ_sejersen2022(sejersen_arms):
+    """[PMID 35854636 — Sejersen 2022] Directions and ordering, which are what
+    articulation (item 53) makes possible at all: sitting up lowers stroke
+    volume, the leg raise from sitting up restores it, and the leg raise gains
+    more than whole-body head-down tilt. Before item 53 the model could not
+    pose the question."""
+    d = sejersen_arms
+    assert d["semi"] < 0, f"semi-recumbent dSV {d['semi']:+.1f} mL; must fall"
+    assert d["plr"] > 0, f"leg raise from semi-recumbent dSV {d['plr']:+.1f} mL; must rise"
+    assert d["plr"] > d["hdt"], (
+        f"leg raise dSV {d['plr']:+.1f} not above head-down dSV {d['hdt']:+.1f} mL; "
+        f"Sejersen: +9 against -1 to -2 in the same men")
+
+
+@pytest.mark.xfail(strict=True, raises=AssertionError, reason=(
+    "KNOWN GAP, 2026-10-05: THE RESTING HEART IS NOT ON A STARLING PLATEAU. "
+    "Sejersen's healthy men sit on the flat top of the curve: HDT left SV "
+    "unchanged and sitting up lowered it only 2-4 mL. The model responds to "
+    "every change in filling, 4-5x too strongly. MEASURED with 10-min steps "
+    "(validation log 2026-10-05): HDT +22.0, semi-recumbent -28.9, leg raise "
+    "+42.4 mL against about -1.5, -3, +9. All directions right (test above). "
+    "Not a geometry problem — the same overshoot appears against Likhvantsev at "
+    "30 deg. The README's claim that the Starling cap 'correctly prevents SV "
+    "increase in the normovolaemic patient' is refuted by this. Do not close by "
+    "weakening the legs: the cause is in the heart."
+))
+def test_leg_raise_and_head_down_magnitudes_sejersen2022(sejersen_arms):
+    """[PMID 35854636] The sizes. Bands are loose, chosen from what the paper
+    reports (HDT and semi-recumbent changes not significant; PLR +9 mL,
+    significant; SV SD about 16 mL between subjects): HDT within +/- 8 mL,
+    semi-recumbent no worse than -10, leg raise +3 to +20."""
+    d = sejersen_arms
+    assert abs(d["hdt"]) <= 8.0, f"HDT dSV {d['hdt']:+.1f} mL; Sejersen -1 to -2"
+    assert d["semi"] >= -10.0, f"semi-recumbent dSV {d['semi']:+.1f} mL; Sejersen -2 to -4"
+    assert 3.0 <= d["plr"] <= 20.0, f"leg raise dSV {d['plr']:+.1f} mL; Sejersen +9"
