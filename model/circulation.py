@@ -33,7 +33,7 @@ import numpy as np
 from scipy.integrate import solve_ivp
 
 from .compartments import (
-    default_compartments, IDX,
+    HIP_HEIGHT_M, default_compartments, IDX,
     TRICUSPID_R, PULMONIC_R, MITRAL_R, AORTIC_R,
     orifice_k, VALVE_DP_REG,
 )
@@ -284,14 +284,9 @@ _ABDOMINAL_IDX = tuple(IDX[name] for name in ABDOMINAL_COMPARTMENTS)
 LEG_COMPARTMENTS = ("lower_body_art", "thigh_vein", "calf_vein", "foot_vein")
 _LEG_NAMES = frozenset(LEG_COMPARTMENTS)
 
-# WHERE THE HIP IS. PLACEHOLDER, GRADE E, chosen without a source: the pivot is
-# taken at the height of `ivc_infrarenal` (the iliac confluence), so it scales
-# with the patient's stature through the same route as every other height.
-# Known weakness: `thigh_vein` sits at that same height, so raising the legs
-# barely lifts the thigh. The leg heights themselves look compressed against
-# anatomy and are awaiting an anthropometric source (validation log
-# 2026-10-05). Replace both together, from that source.
-HIP_PIVOT_COMPARTMENT = "ivc_infrarenal"
+# WHERE THE HIP IS: `SimParams.hip_height_m`, default HIP_HEIGHT_M from
+# compartments.py (Winter Fig 4.1, greater trochanter at 0.530H). Scaled with
+# stature by build_patient_params, like every compartment height.
 
 
 # ---------------------------------------------------------------------------
@@ -335,6 +330,9 @@ class SimParams:
         #   leg raise from semi-recumb: trunk 45 -> 0, flexion 45 (constant)
         self.hip_flexion_start_deg = 0.0
         self.hip_flexion_end_deg   = 0.0
+        # Hip pivot, metres from the heart along the body axis (negative =
+        # footward). Scaled with stature via apply_cardiac.
+        self.hip_height_m          = HIP_HEIGHT_M
         self.gravity         = GravityEnvironment.EARTH  # m/s²
 
         # Drug effects (merged multiplicative factors)
@@ -959,7 +957,7 @@ def _odes(t: float, V: np.ndarray, params: SimParams, baro: BaroreflexController
         t, params.hip_flexion_start_deg, params.hip_flexion_end_deg,
         params.tilt_onset_s, params.tilt_duration_s,
     )
-    hip_h = comp[IDX[HIP_PIVOT_COMPARTMENT]].height_m
+    hip_h = params.hip_height_m
 
     def hdp(idx_name: str) -> float:
         """Hydrostatic delta (mmHg) for this compartment at current posture.
@@ -1665,7 +1663,7 @@ def run_simulation(
         )
         _p_ankle = p_lba - articulated_hydrostatic_delta_mmhg(
             c_lba.height_m, tilt_now, _flex_now,
-            comp[i[HIP_PIVOT_COMPARTMENT]].height_m, params.gravity)
+            params.hip_height_m, params.gravity)
         _p_brach = p_bc  - hydrostatic_delta_mmhg(c_bc.height_m,  tilt_now, params.gravity)
         ankle_p_ts[_oi]    += _p_ankle
         brachial_p_ts[_oi] += _p_brach

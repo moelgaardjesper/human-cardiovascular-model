@@ -506,6 +506,32 @@ VENOUS_DRAINAGE_SCALE = 2.0      # documentation only; values are inlined below
 # ---------------------------------------------------------------------------
 
 
+# ---------------------------------------------------------------------------
+# LEG GEOMETRY — FROM ANATOMY, 2026-10-05 (leg rebuild stage 3, item 53)
+# ---------------------------------------------------------------------------
+# Joint heights: Winter 2009, Fig 4.1 (after Drillis & Contini 1966), as a
+# fraction of standing height H — hip (greater trochanter) 0.530H, knee 0.285H,
+# ankle 0.039H. Segment centres of mass: Winter Table 4.1 (Dempster, cadaveric)
+# — thigh and shank 0.433 of segment length from the proximal joint, whole leg
+# 0.447. GRADE C for the anatomy.
+#
+# THE HEART IS NOT IN WINTER'S FIGURE. The right atrium is placed at 0.720H, the
+# figure's chest level — an ASSUMPTION, GRADE D, pending a source for the
+# phlebostatic axis. Every leg height below moves with it, one for one.
+#
+# Below the heart, at H = 1.75 m (REF_HEIGHT_CM):
+#   hip pivot        0.190H = 0.333 m   (HIP_HEIGHT_M)
+#   thigh_vein       thigh CoM          0.296H = 0.52 m
+#   lower_body_art   whole-leg CoM      0.410H = 0.72 m
+#   calf_vein        shank CoM          0.542H = 0.95 m
+#   foot_vein        ~half ankle height ~0.70H = 1.23 m
+# A MASS centroid stands in for the BLOOD centroid of each compartment — a
+# GRADE D proxy. The previous values (0.20 / 0.50 / 0.55 / 0.85) had no source
+# and were 1.4-2.6x too short. Supine nothing changes: every hydrostatic term is
+# zero at zero tilt.
+HIP_HEIGHT_M = -0.333
+
+
 def default_compartments() -> list[Compartment]:
     """
     Return the 25 baseline compartments in canonical index order.
@@ -522,15 +548,8 @@ def default_compartments() -> list[Compartment]:
       Cardiac (elastance model): V_init = V0 + P₀/E_min
 
     The lower body venous return is modelled as three serial segments:
-      foot_vein → calf_vein → thigh_vein → ivc
-    Anatomical heights reproduce correct hydrostatic column at 90° upright
-    (IVC reference h=−0.15 m), giving substantially more pooling than the
-    old single-compartment approximation (Sjöstrand 1953).
-    Hydrostatic columns at 90° upright:
-      thigh (h=−0.20): ΔP= 3.9 mmHg
-      calf  (h=−0.55): ΔP=31.2 mmHg
-      foot  (h=−0.85): ΔP=54.6 mmHg
-    Pooling ΔV ∝ C × ΔP_hydrostatic per segment.
+      foot_vein → calf_vein → thigh_vein → ivc_infrarenal
+    Leg heights are anatomical since 2026-10-05; see LEG GEOMETRY above.
     """
     return [
         # idx  name                    C(mL/mmHg)  R(mmHg·s/mL)   V0(mL)  h(m)   init_vol(mL)
@@ -569,7 +588,10 @@ def default_compartments() -> list[Compartment]:
         Compartment("splanchnic_art",      0.19, 0.10,   50, -0.15,   65),  # 8  P0=83 (conduit; arteriole moved to splanchnic_vein)
         Compartment("splanchnic_vein",    52.00, 3.60,  542, -0.08, 1047,
                     drain_resistance=0.140),  # 9  P0≈11 (dominant mobilizable reservoir)
-        Compartment("lower_body_art",      0.56, 0.30,   80, -0.50,  123),  # 10 P0=89 (conduit; arteriole moved to the leg exchange branches)
+        # LEG HEIGHTS FROM ANATOMY, 2026-10-05 (leg rebuild stage 3) — see the
+        # LEG GEOMETRY note above default_compartments. Was -0.50 / -0.20 / -0.55
+        # / -0.85, unsourced and compressed 1.4-2.6x against anatomy.
+        Compartment("lower_body_art",      0.56, 0.30,   80, -0.72,  123),  # 10 P0=89 (conduit; arteriole moved to the leg exchange branches)
         # ---- Lower body venous: foot→calf→thigh→ivc (outflow resistance on each segment) ----
         # Compliances reproduce the ~640 mL venous pooling on standing documented by
         # Sjöstrand (1953, DOI: 10.1152/physrev.1953.33.2.202).
@@ -607,7 +629,7 @@ def default_compartments() -> list[Compartment]:
         # lower_body_art's inflow, split 30/40/30 across the three segments:
         #   2.80/0.30 = 9.33,  2.80/0.40 = 7.00,  2.80/0.30 = 9.33
         #   equivalent parallel R = 2.80 ✓, plus the 0.30 conduit = 3.10 as before.
-        Compartment("thigh_vein",          3.20, 9.033, 381, -0.20,  420, p_stiffen=12.0,
+        Compartment("thigh_vein",          3.20, 9.033, 381, -0.52,  420, p_stiffen=12.0,
                     drain_resistance=0.600),  # 11
         # CALF p_stiffen 11 -> 28 ON 2026-10-04, leg rebuild stage 2. GRADE A for
         # the quantity: Halliwill, Minson & Joyner 1999 (PMID 10517791) measured
@@ -622,9 +644,9 @@ def default_compartments() -> list[Compartment]:
         # read. GRADE E for those two, carried rather than guessed.
         # init_volume 568 -> 589 re-derived from a settled run; the 21 mL came
         # mostly from splanchnic_vein (1064 -> 1047), total blood volume unchanged.
-        Compartment("calf_vein",           4.80, 6.950, 508, -0.55,  589, p_stiffen=28.0,
+        Compartment("calf_vein",           4.80, 6.950, 508, -0.95,  589, p_stiffen=28.0,
                     drain_resistance=0.100),  # 12
-        Compartment("foot_vein",           4.00, 9.263, 254, -0.85,  298, p_stiffen= 8.0,
+        Compartment("foot_vein",           4.00, 9.263, 254, -1.23,  298, p_stiffen= 8.0,
                     drain_resistance=0.140),  # 13
         # ---- The IVC, now THREE segments — backlog items 65 and 72 (2026-10-04) ----
         # `ivc` below is the SUPRA-HEPATIC segment only. The other two are appended

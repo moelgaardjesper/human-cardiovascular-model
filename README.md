@@ -229,7 +229,7 @@ The mechanism works in both directions. On 2026-08-26 two xfails fired as XPASS 
 | 13 | Vasopressin dose-response: MAP monotonically↑, CO maintained | [Patel 2002](https://doi.org/10.1097/00000542-200203000-00011) — n=13 septic shock | MAP rises with dose (0→2→4 U/hr); CO maintained; NE requirement ↓79% | MAP monotonically↑; CO maintained ±20% at 2 U/hr | ✓ |
 | 14 | NE vs phenylephrine on spinal baseline: NE preserves CO better | [Ngan Kee 2015](https://doi.org/10.1097/ALN.0000000000000601) — n=104, C-section spinal | NE CO 102.7% vs phenyl 93.8% (p=0.004); NE HR > phenyl HR (reflex bradycardia) | **NE CO 5.50 vs phenyl 5.14 ✓**; NE HR 66.7 vs phenyl 60.1 ✓ (reflex bradycardia on phenylephrine). Re-measured 2026-09-26 after phenylephrine's pressor ceiling was recalibrated; the noradrenaline values had already drifted from the 5.66 / 64.7 previously shown here | ✓ |
 | 15 | Epinephrine: CO monotonically↑ with dose; MAP_high > MAP_low (α dominance) | [Freyschuss 1986](https://doi.org/10.1042/cs0700199) — n=11 healthy, stepwise IV ADR | Concentration-dependent ↑SV and ↑CO; marked ↓vascular resistance at low dose | CO monotonically↑; MAP_high > MAP_low | ✓ |
-| 16 | PLR: CO ≥+10% identifies fluid-responsive patient (preload-dependent) | [Monnet, Marik & Teboul 2016](https://doi.org/10.1007/s00134-015-4134-1) — meta-analysis 21 studies, 991 patients | PLR-induced CO ≥+10% threshold: sens 0.85, spec 0.91, AUC 0.95 | Normovolaemic: ΔCO +9.6 % (< 10 %, non-responder — by a narrow margin) ✓; hypovolaemic 1200 mL: ΔCO +24.1 % (responder) ✓. Re-measured 2026-10-04 | ✓ |
+| 16 | PLR: CO ≥+10% identifies fluid-responsive patient (preload-dependent) | [Monnet, Marik & Teboul 2016](https://doi.org/10.1007/s00134-015-4134-1) — meta-analysis 21 studies, 991 patients | PLR-induced CO ≥+10% threshold: sens 0.85, spec 0.91, AUC 0.95 | Normovolaemic: ΔCO **+17.0 % ✗** since the anatomical leg heights (2026-10-06; was +9.6 %); hypovolaemic 1200 mL: responder ✓ | ✓ hypovolaemic; **normovolaemic a known gap** |
 
 ### A note on row 10 — the coronary metric is biased in the unsafe direction
 
@@ -507,7 +507,8 @@ against Sjöstrand's 640 mL, and presented the absent calf muscle pump as the
 cause. Both were wrong.**
 
 Re-measured, supine to 90° head-up, the leg arteries and the thigh, calf and foot
-veins together take up **96 mL** (67 mL before the calf change below). The
+veins together take up **164 mL** since the legs were given their anatomical heights
+on 2026-10-06 (96 mL before that, 67 mL before the calf change below). The
 baroreflex and the slow dynamics move this by under 10 mL, so the shortfall is
 mechanical. Sjöstrand's 640 mL for a standing person is widely quoted, but this
 project has not read that paper, so it is a direction, not a target.
@@ -557,11 +558,19 @@ is in the heart, not the veins. Carried as a strict `xfail`.
 ### The legs now move independently of the trunk
 
 Since 2026-10-05 the legs pivot at the hip, so a passive leg raise is a leg raise rather than a
-whole-body head-down tilt (backlog item 53). Whole-body tilt is unchanged to the last bit. Two
-limits: the hip position is a placeholder pending an anthropometric source, and the leg
-compartments' heights look compressed against anatomy. The Monnet fluid-responsiveness test
-still uses the old whole-body tilt as its leg raise; moving it to a true leg raise waits for
-the sourced geometry.
+whole-body head-down tilt (backlog item 53). Since 2026-10-06 the hip, thigh, calf and foot sit at
+anatomical heights — joint positions from Winter 2009 (after Drillis & Contini), segment centres of
+mass from Dempster's cadaver data. The old heights had no source and were 1.4–2.6× too short.
+**One assumption remains: the heart's height**, placed at chest level (0.72 of stature) without a
+source; moving it ±7 cm changes leg pooling by about ±7 %.
+
+**Longer legs made the heart's missing plateau more visible.** They return more blood in head-down
+tilt and leg raising, and a heart without a Starling plateau passes all of it on: the Monnet
+normovolaemic patient now gains +17 % (threshold < 10 %), carried as a strict `xfail`.
+
+**The validation table above predates the leg heights.** Its tilt rows were measured on
+2026-10-04/05 and will be re-measured once the heart's diastolic curve is in, since that change
+moves them all again.
 
 ### Single-compartment splanchnic and upper-body veins
 Currently single lumped compartments. Each therefore has one height, so the hydrostatic

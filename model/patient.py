@@ -176,6 +176,8 @@ def apply_cardiac(params, cardiac: dict) -> None:
     # elsewhere is what silently dropped `p_stiffen` for months.
     if "reflex_responsiveness" in cardiac:
         params.reflex_responsiveness = cardiac["reflex_responsiveness"]
+    if "hip_height_m" in cardiac:
+        params.hip_height_m = cardiac["hip_height_m"]
     for tag in ("lv", "rv", "la", "ra"):
         setattr(params, f"{tag}_emax",
                 base_max[tag] * cardiac.get(f"{tag}_emax_factor", 1.0))
@@ -296,8 +298,11 @@ def scale_compartments(
             # resistance deliberately unscaled here; tiers 1-3 below adjust it
         ))
 
+    from .compartments import HIP_HEIGHT_M
     cardiac = {
         "hr_bpm": hr_bpm if hr_bpm is not None else 70.0,
+        # The hip pivot scales with stature exactly as every height_m does.
+        "hip_height_m": HIP_HEIGHT_M * height_scale,
         "sex": sex,
         # THE BAROREFLEX AGES — backlog item 51. End-organ responsiveness, not
         # outflow: White 1997 found the older subjects reach a SMALLER response

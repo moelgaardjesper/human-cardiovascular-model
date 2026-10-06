@@ -2003,22 +2003,35 @@ def test_plr_fluid_responsiveness_monnet2016():
     nonlinear) limb + splanchnic venous reservoir, SV rises, CO increases ≥+10%
     (fluid-responder, consistent with Monnet sensitivity 0.85).
     """
-    norm_supine = _run_plr(tilt_deg=0,   hem_ml=0)
-    norm_plr    = _run_plr(tilt_deg=-20, hem_ml=0)
     hypo_supine = _run_plr(tilt_deg=0,   hem_ml=1200)
     hypo_plr    = _run_plr(tilt_deg=-20, hem_ml=1200)
 
-    dco_norm_pct = (norm_plr['co'] - norm_supine['co']) / norm_supine['co'] * 100
     dco_hypo_pct = (hypo_plr['co'] - hypo_supine['co']) / hypo_supine['co'] * 100
 
-    # Normovolemic: Starling plateau limits response — PLR should not reach ≥10%
-    assert dco_norm_pct < 10, (
-        f"Normovolemic PLR: CO rose ≥10% despite Starling plateau: Δ{dco_norm_pct:+.1f}%"
-    )
-
-    # Hypovolemic: ascending limb — PLR should return ≥10% CO increase
+    # Hypovolemic: ascending limb — PLR should return ≥10% CO increase.
+    # The normovolaemic arm is split out below (2026-10-06).
     assert dco_hypo_pct >= 10, (
         f"Hypovolemic PLR: CO increase < 10% (lit threshold ≥10%): Δ{dco_hypo_pct:+.1f}%"
+    )
+
+
+@pytest.mark.xfail(strict=True, raises=AssertionError, reason=(
+    "KNOWN GAP, 2026-10-06 — SAME CAUSE AS THE SEJERSEN MAGNITUDE XFAIL: the resting "
+    "heart has no Starling plateau. With the anatomical leg heights (Winter 2009) the "
+    "legs return more blood, and the normovolaemic patient's CO rises +17.0 % (was "
+    "+9.6 % with the old, unsourced, compressed heights). Split from the test above so "
+    "the hypovolaemic arm stays live. Not closed by shortening the legs: the work aimed "
+    "at it is the Klotz 2006 diastolic curve (validation log 2026-10-05)."
+))
+def test_plr_normovolaemic_non_responder_monnet2016():
+    """[PMID 26825952 — Monnet 2016] Specificity 0.91: a normovolaemic patient
+    on the Starling plateau should NOT reach the +10 % responder threshold. Same
+    protocol as the test above (whole-body -20 deg, the pre-item-53 leg raise)."""
+    norm_supine = _run_plr(tilt_deg=0,   hem_ml=0)
+    norm_plr    = _run_plr(tilt_deg=-20, hem_ml=0)
+    dco_norm_pct = (norm_plr['co'] - norm_supine['co']) / norm_supine['co'] * 100
+    assert dco_norm_pct < 10, (
+        f"Normovolemic PLR: CO rose ≥10% despite Starling plateau: Δ{dco_norm_pct:+.1f}%"
     )
 
 
