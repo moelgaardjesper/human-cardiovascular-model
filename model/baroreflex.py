@@ -277,7 +277,13 @@ CP_HR_RESERVE_BPM       = 40.0   # saturating reserve each way
 # measurement, and it should become patient-specific once `build_patient_params`
 # can supply a resting filling pressure — logged as backlog item 39. Whether
 # `CVP_SETPOINT` itself is right belongs with item 37.
-CP_HR_REFERENCE_CVP_MMHG = 4.7
+#
+# UPDATED 4.7 -> 4.27 ON 2026-10-06, BY THIS NOTE'S OWN DEFINITION: the settled
+# CVP of the default patient with this arm at rest (fixed point). 4.7 had gone
+# slightly stale (the settled CVP was 4.31 before the change). With the Klotz LV
+# curve (heart.py) the resting CVP is 4.27. Still a modelling choice, item 39.
+# (A Klotz RV briefly gave 2.56; that RV curve was withdrawn the same day.)
+CP_HR_REFERENCE_CVP_MMHG = 4.27
 
 
 # ---------------------------------------------------------------------------

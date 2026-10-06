@@ -108,10 +108,82 @@ def frank_starling_emax(
 
 
 # ---------------------------------------------------------------------------
+# VENTRICULAR DIASTOLE — THE KLOTZ CURVE (2026-10-06)
+# ---------------------------------------------------------------------------
+# Until 2026-10-06 both ventricles filled along a STRAIGHT line, P = E_min·(V - V0)
+# (LV E_min 0.055, RV 0.04 mmHg/mL), equally stiff at every volume. A straight
+# line cannot make a Starling plateau: every extra mmHg of filling pressure buys
+# the same extra volume, and the elastance heart ejects it. Sejersen 2022
+# (PMID 35854636) measured the plateau in healthy men — 20 deg head-down left SV
+# unchanged — and the model gained 22-29 mL (validation log 2026-10-05).
+#
+# THE SOURCE. Klotz et al. 2006 (PMID 16428349): end-diastolic P-V relations of
+# 80 human hearts (normal, ischaemic, dilated, post-LVAD) collapse onto ONE curve
+# once volume is normalised, EDP = An·EDVn^Bn, EDVn = (V - V0)/(V30 - V0), with
+# V0 the volume at ~0 mmHg and V30 at 30 mmHg. Validated in 36 living patients
+# (RMSE ~3 mmHg). GRADE A for the SHAPE. An = 28.2, Bn = 2.79 are the values
+# their single-beat placement equations (Eq 5, Eq 8) were derived with; the
+# all-80 fit is 27.8 +/- 0.3 and 2.76 +/- 0.05.
+#
+# PLACEMENT, from ONE sourced end-diastolic point per ventricle (Klotz Eq 8, 5):
+#     V0  = EDV·(0.6 - 0.006·EDP)          V30 = V0 + (EDV - V0)/(EDP/An)^(1/Bn)
+# Klotz's hearts were outside the body, so EDP here is TRANSMURAL. The catheter
+# sources are intraluminal at end-expiration; the model's spontaneous-breathing
+# pleural pressure at end-expiration is -1.47 mmHg, added back.
+#   LV  EDV Luu male 74 mL/m2 x BSA 1.909 (175 cm / 75 kg) = 141.3 mL
+#       EDP Chemla 2004 PAOP 11 mmHg (wedge as the LVEDP surrogate, GRADE C)
+#           + 1.47 = 12.47 transmural
+#   RV  EDV Luu male 86 mL/m2 x 1.909 = 164.2 mL
+#       EDP Richter 2021 RVEDP 4 [3-5] mmHg + 1.47 = 5.47 transmural
+# LEFT VENTRICLE ONLY. The RV was tried on the same curve (Jesper's assumption,
+# 2026-10-06) and it FAILED: below its V0 (~95 mL) the curve gives no wall
+# pressure, the RV ejects down to ~77 mL, so early in every diastole the right
+# atrium drained into an unresisting chamber and RA pressure fell to 0.9 mmHg
+# (Richter 2-6). Five tests broke on it and recovered when the RV went back to
+# its straight line (venoconstriction, a 500 mL bleed, sympathetic block, RA
+# pressure, tilt tachycardia; validation log 2026-10-06). Klotz measured left
+# ventricles; the shape does not transfer to the thin-walled RV. A human RV
+# EDPVR source is WANTED.
+#
+# NOT MODELLED: the pericardium (Klotz's hearts had none; it limits filling of
+# both ventricles together at high volumes) — the leading candidate for the
+# head-down over-response that remains.
+#
+# A SEPARATE DIASTOLIC REFERENCE VOLUME. Klotz's V0 is ~55 % of EDV (~74 mL);
+# the chamber's `unstressed_volume` (LV 10 mL) is the SYSTOLIC (ESPVR) intercept
+# and stays the reference for contraction. Ventricular pressure is
+#     P = e(t)·Emax·(V - V0_systolic) + (1 - e(t))·P_klotz(V)
+# with e(t) the same activation curve as before.
+KLOTZ_AN = 28.2
+KLOTZ_BN = 2.79
+_BSA_REF = (175.0 * 75.0 / 3600.0) ** 0.5           # Mosteller, REF patient
+_PLEURAL_END_EXPIRATION = -1.47                       # mmHg, model, spontaneous
+
+
+def klotz_placement(edv: float, edp: float) -> tuple[float, float]:
+    """(V0, V30) of the Klotz EDPVR through one end-diastolic point (Eq 8, 5).
+    `edp` must be transmural."""
+    v0 = edv * (0.6 - 0.006 * edp)
+    v30 = v0 + (edv - v0) / (edp / KLOTZ_AN) ** (1.0 / KLOTZ_BN)
+    return v0, v30
+
+
+def klotz_diastolic_pressure(vol: float, v0: float, v30: float) -> float:
+    """Passive (transmural) ventricular pressure on the Klotz curve."""
+    x = (vol - v0) / (v30 - v0)
+    return KLOTZ_AN * x ** KLOTZ_BN if x > 0.0 else 0.0
+
+
+LV_V0_DIA, LV_V30 = klotz_placement(74.0 * _BSA_REF, 11.0 - _PLEURAL_END_EXPIRATION)
+
+
+# ---------------------------------------------------------------------------
 # Default cardiac elastance parameters (healthy male, Heldt 2002)
 # ---------------------------------------------------------------------------
 LV_EMAX = 3.00   # mmHg/mL  left ventricle peak systolic elastance
-LV_EMIN = 0.055   # mmHg/mL  left ventricle diastolic elastance
+# LV_EMIN (0.055) — the straight-line LV diastolic stiffness — was REMOVED on
+# 2026-10-06, replaced by the Klotz curve above. Removed rather than left
+# unused, so nothing can keep reading a stiffness the ODE ignores.
 # RV_EMAX was 1.15 (Heldt 2002) until 2026-09-09. Replaced with a HUMAN
 # MEASUREMENT: Richter MJ et al. 2021 (PMID 33655769,
 # DOI 10.1152/ajplung.00583.2020) measured right-ventricular end-systolic
@@ -134,8 +206,10 @@ LV_EMIN = 0.055   # mmHg/mL  left ventricle diastolic elastance
 # the direction of this change is safe even though the cohort is not ideal. A
 # healthy-volunteer RV Ees is on the WANTED list in docs/reference_values.md.
 RV_EMAX = 0.72   # mmHg/mL  right ventricle peak systolic elastance
-# The RV is highly compliant in diastole (thin wall). Measured: P_rv_dia = 1.68 mmHg
-# at RV Vmin 80 mL, which is what lets the RA sit low enough to be a plausible CVP.
+# The RV is highly compliant in diastole (thin wall). STILL A STRAIGHT LINE: the
+# Klotz curve was tried here on 2026-10-06 and failed (see VENTRICULAR DIASTOLE).
+# 0.04 sits between the values implied by Richter's RVEDP 4 and Hoff's RAP with
+# Petersen's CMR RVEDV (0.031-0.053; reference_values.md) — a BOUND, GRADE C.
 RV_EMIN = 0.04   # mmHg/mL  right ventricle diastolic elastance
 # RA_EMAX 0.30 -> 0.45 (2026-08-26), derived from Gao 2022's RA emptying fraction.
 # E_max/E_min is the RATIO that sets emptying fraction, which is why it is derivable even

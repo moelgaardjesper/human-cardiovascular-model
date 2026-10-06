@@ -166,9 +166,14 @@ def apply_cardiac(params, cardiac: dict) -> None:
     Anything added to the cardiac dict is applied here and nowhere else.
     """
     from .heart import LV_EMAX, RV_EMAX, LA_EMAX, RA_EMAX
-    from .heart import LV_EMIN, RV_EMIN, LA_EMIN, RA_EMIN
+    from .heart import LA_EMIN, RA_EMIN, RV_EMIN, LV_V0_DIA, LV_V30
     base_max = {"lv": LV_EMAX, "rv": RV_EMAX, "la": LA_EMAX, "ra": RA_EMAX}
-    base_min = {"lv": LV_EMIN, "rv": RV_EMIN, "la": LA_EMIN, "ra": RA_EMIN}
+    base_min = {"rv": RV_EMIN, "la": LA_EMIN, "ra": RA_EMIN}
+    # LV diastole (Klotz curve): both reference volumes scale with the chamber,
+    # so a bigger heart fills to a bigger volume at the same pressure.
+    k = cardiac.get("lv_dia_volume_factor", 1.0)
+    params.lv_v0_dia = LV_V0_DIA * k
+    params.lv_v30 = LV_V30 * k
     if "hr_bpm" in cardiac:
         params.hr_bpm = cardiac["hr_bpm"]
     # Reflex end-organ responsiveness by age — backlog item 51. Applied here
@@ -181,8 +186,9 @@ def apply_cardiac(params, cardiac: dict) -> None:
     for tag in ("lv", "rv", "la", "ra"):
         setattr(params, f"{tag}_emax",
                 base_max[tag] * cardiac.get(f"{tag}_emax_factor", 1.0))
-        setattr(params, f"{tag}_emin",
-                base_min[tag] * cardiac.get(f"{tag}_emin_factor", 1.0))
+        if tag in base_min:
+            setattr(params, f"{tag}_emin",
+                    base_min[tag] * cardiac.get(f"{tag}_emin_factor", 1.0))
 
 
 def bsa_mosteller(height_cm: float, weight_kg: float) -> float:
@@ -325,7 +331,12 @@ def scale_compartments(
         vol  = f.get("volume", 1.0) * a.get("volume", 1.0)
         emax = f.get("emax", 1.0) * a.get("emax", 1.0)
         cardiac[f"{tag}_emax_factor"] = emax
-        cardiac[f"{tag}_emin_factor"] = 1.0 / vol
+        if tag != "lv":              # the LV uses the Klotz curve instead
+            cardiac[f"{tag}_emin_factor"] = 1.0 / vol
+        else:
+            # LV: the Klotz reference volumes scale with the chamber's own volume
+            # (blood-volume scale x sex x age), as its unstressed volume does.
+            cardiac["lv_dia_volume_factor"] = bv_scale * vol
 
     # Tier 1: scale SVR from MAP if cardiac output not available
     if map_mmhg is not None:

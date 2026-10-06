@@ -45,7 +45,7 @@ from model.pharmacology import combined_drug_factors, NEUTRAL_FACTORS
 from model.perfusion import (
     cerebral_perfusion_pressure, coronary_perfusion_pressure, buckberg_index
 )
-from model.heart import RA_EMIN, LV_EMIN
+from model.heart import RA_EMIN, klotz_diastolic_pressure
 from model.respiration import respiratory_sinus_arrhythmia
 
 live_bp = Blueprint("live", __name__)
@@ -349,7 +349,7 @@ class LiveSimulator:
                 # Pressure monitoring (mirrors run_simulation monitoring loop)
                 p_ao  = (self.V[i["aorta"]] - ao_v0) / ao_c
                 p_ra  = max(0.0, RA_EMIN * (self.V[i["right_atrium"]] - ra_v0))
-                p_lvedp = max(0.0, LV_EMIN * (self.V[i["left_ventricle"]] - lv_v0))
+                p_lvedp = klotz_diastolic_pressure(self.V[i["left_ventricle"]], params.lv_v0_dia, params.lv_v30)
 
                 self._cvp_win.append(p_ra)
                 self._map_win.append(p_ao)

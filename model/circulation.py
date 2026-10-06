@@ -39,7 +39,8 @@ from .compartments import (
 )
 from .heart import (
     elastance_from_phase, frank_starling_emax,
-    LV_EMAX, LV_EMIN, RV_EMAX, RV_EMIN,
+    LV_EMAX, RV_EMAX, RV_EMIN, LV_V0_DIA, LV_V30,
+    klotz_diastolic_pressure, _normalised_activation,
     RA_EMAX, RA_EMIN, LA_EMAX, LA_EMIN,
     atrial_phase_offset,
 )
@@ -309,7 +310,10 @@ class SimParams:
 
         # Cardiac elastance parameters (multiplicative factors applied after patient scaling)
         self.lv_emax = LV_EMAX
-        self.lv_emin = LV_EMIN
+        # Ventricular diastole: the Klotz curve (heart.py). Volumes in mL;
+        # scaled with chamber size by apply_cardiac.
+        self.lv_v0_dia = LV_V0_DIA
+        self.lv_v30    = LV_V30
         self.rv_emax = RV_EMAX
         self.rv_emin = RV_EMIN
         self.la_emax = LA_EMAX
@@ -741,7 +745,9 @@ def _odes(t: float, V: np.ndarray, params: SimParams, baro: BaroreflexController
     # cardiac phase (see docstring above for why not (t % T)/T).
     # -----------------------------------------------------------------------
     t_n_v = cardiac_phase % 1.0
-    E_lv = elastance_from_phase(t_n_v, lv_emax_eff, params.lv_emin)
+    # LV: systolic elastance line blended with the Klotz diastolic curve by the
+    # activation e(t) — see heart.py, VENTRICULAR DIASTOLE. RV: straight line.
+    e_v = _normalised_activation(t_n_v)
     E_rv = elastance_from_phase(t_n_v, rv_emax_eff, params.rv_emin)
 
     # Atria fire one PR interval before the ventricles. The offset is derived
@@ -874,7 +880,9 @@ def _odes(t: float, V: np.ndarray, params: SimParams, baro: BaroreflexController
         P[idx] = _vascular_pressure(V[idx], v0, compliance, c.p_stiffen)
 
     # Cardiac chambers (time-varying elastance)
-    P[i["left_ventricle"]]  = _cardiac_pressure(V[i["left_ventricle"]],  comp[i["left_ventricle"]].unstressed_volume,  E_lv)
+    P[i["left_ventricle"]] = max(0.0,
+        e_v * lv_emax_eff * (V[i["left_ventricle"]] - comp[i["left_ventricle"]].unstressed_volume)
+        + (1.0 - e_v) * klotz_diastolic_pressure(V[i["left_ventricle"]], params.lv_v0_dia, params.lv_v30))
     P[i["right_ventricle"]] = _cardiac_pressure(V[i["right_ventricle"]], comp[i["right_ventricle"]].unstressed_volume, E_rv)
     P[i["left_atrium"]]     = _cardiac_pressure(V[i["left_atrium"]],     comp[i["left_atrium"]].unstressed_volume,     E_la)
     P[i["right_atrium"]]    = _cardiac_pressure(V[i["right_atrium"]],    comp[i["right_atrium"]].unstressed_volume,    E_ra)
@@ -1313,7 +1321,6 @@ def run_simulation(
     """
     from .perfusion import (cerebral_perfusion_pressure,
                             coronary_perfusion_pressure, buckberg_index)
-    from .heart import LV_EMIN as _LV_EMIN
 
     comp = params.compartments
     V0   = np.array([c.init_volume for c in comp], dtype=float)
@@ -1636,9 +1643,8 @@ def run_simulation(
         p_dbp = min(_dbp_win)
         p_sbp = max(_sbp_win)
 
-        # LVEDP: LV diastolic elastance × stressed volume (same method as CVP)
-        lv_v0  = comp[i["left_ventricle"]].unstressed_volume
-        p_lvedp = max(0.0, params.lv_emin * (V[i["left_ventricle"]] - lv_v0))
+        # LVEDP: the passive (Klotz) pressure at the current LV volume
+        p_lvedp = klotz_diastolic_pressure(V[i["left_ventricle"]], params.lv_v0_dia, params.lv_v30)
 
         # Current tilt for perfusion calculations
         tilt_now = smooth_tilt_profile(

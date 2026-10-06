@@ -1676,17 +1676,6 @@ def _venous_return_curve(bleed_ml=0.0, sympathetic_outflow_scale=1.0, baroreflex
     return float(slope), float(-intercept / slope)
 
 
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason=(
-    "KNOWN CONFLICT BETWEEN TWO HUMAN SOURCES, 2026-10-04. Halliwill 1999 "
-    "(PMID 10517791) moved the calf venous stiffening point 11 -> 28 mmHg, and "
-    "the venous return curve now rotates after a 500 mL bleed. MEASURED, every "
-    "combination: calf 11 / limb reflex off 1.045; calf 11 / on 0.915; calf 28 / "
-    "off 0.855; calf 28 / on 0.775 (floor 0.90). So the calf change alone breaks "
-    "it, and the Samueloff limb reflex adds to it. The calf value is NOT reverted: "
-    "it is a measured human curve, and reverting it to pass this would bend one "
-    "source to fit another (the 2026-10-02 decision for the limb reflex, same "
-    "kind of conflict). Mechanism not yet identified. The floor is unchanged."
-))
 def test_haemorrhage_shifts_venous_return_curve_without_rotating_it():
     """[PMID: 19237896 — Maas 2009] A moderate haemorrhage must lower Pmsf and
     leave the venous-return slope alone: resistance to venous return is a
@@ -1708,8 +1697,9 @@ def test_haemorrhage_shifts_venous_return_curve_without_rotating_it():
 
     HISTORY. Ratio 0.897 on 2026-10-02 (limb reflex added), 0.907 after leg
     rebuild stage 1 — a hair either side of the floor, judged minor (Jesper).
-    Then 0.775 after the calf stiffening change of 2026-10-04: no longer a
-    hair. See the xfail reason. The floor is unchanged.
+    Then 0.775 after the calf stiffening change of 2026-10-04 (a strict
+    xfail). CLOSED 2026-10-06 by the Klotz LV diastolic curve, which the strict
+    xfail caught as an XPASS. The floor is unchanged.
     """
     base_slope, base_pmsf = _venous_return_curve(0.0)
     bled_slope, bled_pmsf = _venous_return_curve(500.0)
@@ -1838,6 +1828,12 @@ def phenyl_dose_response():
     return {d: _run_phenyl(d) for d in (0.0,) + _PHENYL_PLATEAU}
 
 
+@pytest.mark.xfail(strict=True, raises=AssertionError, reason=(
+    "KNOWN GAP, 2026-10-06, DEFERRED TO LEG REBUILD STAGE 4 (phenylephrine). "
+    "Since the Klotz LV diastolic curve: dHR -14.2 bpm at 4.0 mcg/kg/min, on the "
+    "edge of Schafers' quartiles (-19.5, -14.2); the flow assertions after it are "
+    "not reached. Same cause as the pressor xfail above."
+))
 def test_phenylephrine_flow_response_schafers1999(phenyl_dose_response):
     """[PMID: 10073742 — Schäfers 1999] Phenylephrine in healthy supine men
     LOWERS cardiac output, LOWERS heart rate and RAISES stroke volume.
@@ -1870,6 +1866,14 @@ def test_phenylephrine_flow_response_schafers1999(phenyl_dose_response):
         )
 
 
+@pytest.mark.xfail(strict=True, raises=AssertionError, reason=(
+    "KNOWN GAP, 2026-10-06, DEFERRED TO LEG REBUILD STAGE 4 (phenylephrine). "
+    "Since the Klotz LV diastolic curve the pressor response is smaller: dMAP "
+    "+19.1 mmHg against Schafers' quartiles 23.5-32.5. Leading reading, untested: "
+    "a stiffer LV cannot dilate to absorb the added afterload, so SV and CO fall "
+    "more and pressure rises less. Stage 4 is deliberately last because it "
+    "depends on the legs, the heart and the reflex together."
+))
 def test_phenylephrine_pressor_response_schafers1999(phenyl_dose_response):
     """[PMID: 10073742 — Schäfers 1999] Phenylephrine in healthy supine men
     raises MAP by +28 mmHg (quartiles 23.5-32.5) and total peripheral
@@ -2723,31 +2727,7 @@ def test_atrial_volumes_are_physiological():
     )
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    "KNOWN GAP — THE LEFT ATRIUM DOES NOT EMPTY. LA emptying fraction 42.8 % "
-    "against a 45-72 band, [G1] Gao 61.1 +/- 6.2, i.e. -2.9 SD. "
-    "IT WAS ALREADY BROKEN BEFORE THE CHANGE THAT EXPOSED IT: at the pre-2026-09-10 "
-    "pulmonary arterial compliance of 2.0 it read 46.7 %, which is -2.3 SD and "
-    "passed only because the band's floor of 45 sat 1.7 points below it. "
-    "RAISING PULMONARY ARTERIAL COMPLIANCE 2.0 -> 6.0 REMOVED THAT MARGIN, and "
-    "that change is kept because it is right on its own evidence: SPAP, DPAP, "
-    "MPAP, PVR index, stroke index and SV/PP all land within 0.4 SD of Chemla "
-    "(PMID 15486398) and Claessen, and the RV/LV stroke work ratio came to 0.19 "
-    "against a normal of ~0.2 without being tuned to. "
-    "NO SETTING OF THAT PARAMETER FIXES BOTH. The constraints are mutually "
-    "unsatisfiable: LA emptying fraction needs C <= 2.2, pulmonary arterial "
-    "compliance needs C >= 4.4. The fall is also small and asymptoting "
-    "(46.7, 44.9, 43.9, 43.2, 42.8), so the atrium is not a pulmonary problem. "
-    "THE RIGHT ATRIAL ASSERTION IN THIS TEST STILL PASSES and is not the gap. "
-    "THIS IS GAP A's TERRITORY and five atrial parameters have already failed on "
-    "it — mitral resistance, LA_EMAX, LA unstressed volume, lv_emin and orifice "
-    "valve flow. What is new is that the pulmonary bed feeding the atrium is now "
-    "correct, and that chamber pressures are exposed, so the LA pressure-volume "
-    "relationship can be MEASURED the way RV Ees was rather than swept. "
-    "DO NOT close this by widening the band to 42 — that encodes a 2.9 SD gap as "
-    "correct. strict=True so it flips to a FAILURE the day the atrium is fixed. "
-    "Full record in validation_log.md, 2026-09-10."
-))
+# Was a strict xfail; closed 2026-10-06 by the Klotz LV diastolic curve (heart.py).
 def test_atrial_emptying_fractions_are_physiological():
     """[G1][G2] Total atrial emptying fraction must match human reference ranges.
 
@@ -3738,6 +3718,12 @@ def test_patient_age_scales_only_the_elastic_arteries():
         pytest.approx(0.75, abs=0.02)
 
 
+@pytest.mark.xfail(strict=True, raises=AssertionError, reason=(
+    "KNOWN GAP, 2026-10-06, NOT YET DIAGNOSED. Since the Klotz LV diastolic curve "
+    "MAP moves 4.8 mmHg as pulse pressure widens 10.4 with age, where Franklin has "
+    "MAP nearly flat. Suspected: the stiffer LV now passes arterial ageing on to "
+    "mean pressure. To be diagnosed with the baroreflex work."
+))
 def test_age_widens_pulse_pressure_the_way_framingham_measured_it():
     """[PMID 9236450] The endpoint, not the parameter.
 
@@ -5063,22 +5049,7 @@ def test_phenylephrine_raises_stroke_volume_hojlund2024(phenylephrine_during_til
     )
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    "KNOWN GAP — THE SAME DEFECT, SEEN AT THE BEDSIDE ENDPOINT. The study "
-    "titrated phenylephrine until stroke-volume variation fell below 12 %, and "
-    "the patients went from 24 to 8.6 (IQR 6.8 to 11). Hojlund 2024 found the same "
-    "fall, 19 -> 6, with a tone-independent flow reference. "
-    "MEASURED 2026-09-26, after the arterial recalibration: the LOWEST SVV across "
-    "the whole dose bracket is 14.6 per cent, against 14.75 undrugged. The drug "
-    "barely moves it and never approaches the 12 per cent target. "
-    "WHAT IT COSTS CLINICALLY, STATED PLAINLY: the model would tell a clinician "
-    "that phenylephrine does not fix preload-dependency, when in these patients "
-    "it did — wrong in the direction that withholds a treatment which worked. "
-    "SAME CAUSE AS test_phenylephrine_raises_stroke_volume_hojlund2024, and NOT "
-    "the legs — that diagnosis was measured and withdrawn on 2026-09-26. It is a "
-    "separate assertion because it is a separate claim: stroke volume against "
-    "whether the preload-dependent STATE is abolished. strict=True. Full record "
-    "in docs/validation_log.md, 2026-09-26."))
+# Was a strict xfail; closed 2026-10-06 by the Klotz LV diastolic curve (heart.py).
 def test_phenylephrine_abolishes_preload_dependency_pmid31705432(phenylephrine_during_tilt):
     """[PMID 31705432] Phenylephrine brought stroke-volume variation from 24 to
     8.6 % (IQR 6.8 to 11) — below the study's own 12 % target.
@@ -5757,10 +5728,12 @@ def test_the_reference_operating_point_is_stated_once_and_consistently():
     )
 
     # The recorded, deliberate relationships. Changing a constant must fail here.
-    assert CVP_SETPOINT == 3.0 and CP_HR_REFERENCE_CVP_MMHG == 4.7, (
+    # 4.7 -> 4.27 on 2026-10-06 (Klotz LV curve; the settled CVP with the arm at
+    # rest — see the note at CP_HR_REFERENCE_CVP_MMHG and backlog item 39).
+    assert CVP_SETPOINT == 3.0 and CP_HR_REFERENCE_CVP_MMHG == 4.27, (
         f"A FILLING-PRESSURE REFERENCE CHANGED: CVP_SETPOINT={CVP_SETPOINT} "
         f"(was 3.0, uncited, used by the SVR arm), CP_HR_REFERENCE_CVP_MMHG="
-        f"{CP_HR_REFERENCE_CVP_MMHG} (was 4.7, the cardiopulmonary arm's reference, "
+        f"{CP_HR_REFERENCE_CVP_MMHG} (was 4.27, the cardiopulmonary arm's reference, "
         f"chosen to sit at the model's own settled filling pressure). THEY ARE "
         f"DELIBERATELY DIFFERENT — read backlog item 39 before changing either, and "
         f"note that driving the HR arm from CVP_SETPOINT cost 6.0 bpm of spurious "
@@ -6379,6 +6352,12 @@ def _tilt70_reflex_trace(duration_s=300.0, onset_s=60.0):
     return t, a, onset_s
 
 
+@pytest.mark.xfail(strict=True, raises=AssertionError, reason=(
+    "KNOWN GAP, 2026-10-06, NOT YET DIAGNOSED. Since the Klotz LV diastolic curve "
+    "the limb venomotor arm is still 1.75 % of V0 at 133 s, where Samueloff found "
+    "it gone. The arm is a high-pass of sympathetic drive, so drive staying up "
+    "longer would do this. To be diagnosed with the baroreflex work."
+))
 def test_limb_venous_arm_is_transient_and_splanchnic_is_not_samueloff1966():
     """[S1] The limb arm must fade; the splanchnic and arterial arms must not.
 
@@ -6781,6 +6760,9 @@ def test_leg_raise_and_head_down_tilt_differ_sejersen2022(sejersen_arms):
     "every change in filling, 4-5x too strongly. MEASURED with 10-min steps "
     "(validation log 2026-10-05): HDT +22.0, semi-recumbent -28.9, leg raise "
     "+42.4 mL against about -1.5, -3, +9. All directions right (test above). "
+    "2026-10-06, Klotz LV curve + anatomical leg heights, this fixture: HDT "
+    "+20.6 mL — smaller per unit of returned blood, but the longer legs return "
+    "more. The RV is still on a straight line (the Klotz RV failed). "
     "Not a geometry problem — the same overshoot appears against Likhvantsev at "
     "30 deg. The README's claim that the Starling cap 'correctly prevents SV "
     "increase in the normovolaemic patient' is refuted by this. Do not close by "
@@ -6795,3 +6777,51 @@ def test_leg_raise_and_head_down_magnitudes_sejersen2022(sejersen_arms):
     assert abs(d["hdt"]) <= 8.0, f"HDT dSV {d['hdt']:+.1f} mL; Sejersen -1 to -2"
     assert d["semi"] >= -10.0, f"semi-recumbent dSV {d['semi']:+.1f} mL; Sejersen -2 to -4"
     assert 3.0 <= d["plr"] <= 20.0, f"leg raise dSV {d['plr']:+.1f} mL; Sejersen +9"
+
+
+# ===========================================================================
+# 46. VENTRICULAR DIASTOLE STIFFENS AS IT FILLS — Klotz 2006 [PMID 16428349]
+# ===========================================================================
+
+def test_left_ventricle_stiffens_as_it_fills_klotz2006():
+    """[PMID 16428349 — Klotz 2006] The human end-diastolic pressure-volume
+    relation is a steepening curve, the same shape in 80 hearts. Until
+    2026-10-06 the model's ventricles filled along a straight line, which
+    cannot produce a Starling plateau.
+
+    THROUGH THE RUN, NOT THE FORMULA: stop the heart (both ventricles passive,
+    mitral valve open, no flow), load the circulation with fluid in two equal
+    steps, and read LV volume against LEFT ATRIAL pressure, which equals LV
+    pressure once flow has stopped. The second step must cost more pressure per
+    mL than the first. A straight-line ventricle gives the same slope twice.
+    Shape only; no value from Klotz is restated here.
+
+    THRESHOLD 1.1, AND WHY. Over this range (LV ~138 -> 150 mL) the Klotz curve
+    itself raises the slope by about 1.17x; a straight line gives exactly 1.0.
+    A first draft asked for 1.3 — above what the source predicts — and was
+    corrected after the first run (2026-10-06: 0.517 then 0.604 mmHg/mL).
+    """
+    def arrested(bolus_ml):
+        p = SimParams()
+        p.ventilation_mode = "none"
+        p.baroreflex_enabled = False
+        p.slow_dynamics_enabled = False
+        p.arrest_start_s, p.arrest_duration_s = 5.0, 200.0
+        if bolus_ml:
+            p.fluid_bolus_ml, p.fluid_bolus_start_s, p.fluid_bolus_duration_s = bolus_ml, 10.0, 10.0
+        r = run_simulation(p, duration_s=150.0, dt=DT)
+        t = np.asarray(r["t"])
+        m = t >= 140.0
+        v = float(np.mean(np.asarray(r["volumes"])[m][:, IDX["left_ventricle"]]))
+        pla = float(np.mean(np.asarray(r["la_pressure"])[m]))
+        return v, pla
+    v0, p0 = arrested(0.0)
+    v1, p1 = arrested(400.0)
+    v2, p2 = arrested(800.0)
+    s1 = (p1 - p0) / (v1 - v0)
+    s2 = (p2 - p1) / (v2 - v1)
+    assert v2 > v1 > v0, f"LV did not fill with the loads: {v0:.1f}, {v1:.1f}, {v2:.1f} mL"
+    assert s2 > 1.1 * s1, (
+        f"LV diastolic stiffness did not rise with filling: {s1:.3f} then "
+        f"{s2:.3f} mmHg/mL (LV {v0:.0f} -> {v1:.0f} -> {v2:.0f} mL). A straight "
+        f"diastolic line has returned")

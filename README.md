@@ -208,28 +208,28 @@ Every tier's raw output ships in `freeze/v1.0.0/`. The table below summarises th
 
 **On the two strict xfails.** They are known gaps carried deliberately, with the assertion left exactly as it was — only the pass/fail bookkeeping is marked. `strict=True` means each flips to a hard *failure* the day it starts passing, so a gap cannot close silently. This is a ratchet, not a way of hiding a number: **nothing here has been made to pass by widening a band to fit the model.**
 
-The two currently carried are `test_pulmonary_venous_pressure_equals_left_atrial` and `test_atrial_emptying_fractions_are_physiological` — both aspects of the left atrium, which is the model's other open structural gap (left atrial emptying fraction 42.8 % against 61.1 ± 6.2). The second is instructive about the ratchet's cost: it had been *passing* at 46.7 % only because the band's floor sat 1.7 points below it, and a well-sourced pulmonary change removed that margin. The change was kept and the test was marked, rather than the reverse.
+The two currently carried are `test_pulmonary_venous_pressure_equals_left_atrial` and `test_atrial_emptying_fractions_are_physiological` — both aspects of the left atrium, which is the model's other open structural gap (left atrial emptying fraction, 42.8 % against 61.1 ± 6.2 until it closed on 2026-10-06). The second is instructive about the ratchet's cost: it had been *passing* at 46.7 % only because the band's floor sat 1.7 points below it, and a well-sourced pulmonary change removed that margin. The change was kept and the test was marked, rather than the reverse.
 
 The mechanism works in both directions. On 2026-08-26 two xfails fired as XPASS and were removed as genuinely closed, and the PPV xfail described below has since closed the same way.
 
 | # | Scenario | Reference | Literature target | Model result | |
 |---|---|---|---|---|---|
-| 1 | Supine resting haemodynamics | [Sejersen 2022](https://doi.org/10.14814/phy2.15216) — 10 healthy males, 177 cm, 80 kg | MAP 83±8 mmHg, HR 62±8 bpm, SV 110±16 mL, CO 7±2 L/min | MAP 88.4, HR 63.9, CO 6.01, SV 93.9 (re-measured 2026-10-04) | ✓ |
-| 2 | 20° HDT in normovolemic subjects — MAP↑, CO maintained | [Sejersen 2022](https://doi.org/10.14814/phy2.15216) | ΔSV ≈ 0 (n.s.), ΔCO ≈ 0, ΔMAP +2 mmHg (n.s.) — heart on Starling plateau when supine | ΔMAP +6.3 mmHg, ΔCO +0.66 L/min, ΔSV +16.0 mL — **the model now fills the heart in head-down tilt where these awake subjects did not** (re-measured 2026-10-04; the test asserts direction only) | ✓ on direction; magnitude disagrees |
-| 3 | 6° HDT vs 20° upright: HR lower during HDT | [Verdini 2019](https://doi.org/10.1038/s41598-019-39360-6) — 17 males, 179 cm, 79 kg | HR_HDT < HR_upright (p < 0.001), MAP_HDT < MAP_upright | HR_HDT 68.0 vs HR_upright 72.0 bpm ✓; MAP_HDT 100.6 vs MAP_upright 91.3 — MAP order opposite to the study, not asserted (re-measured 2026-10-04) | ✓ on HR |
-| 4 | −15° Trendelenburg vs supine | [Likhvantsev 2025](https://doi.org/10.1053/j.jvca.2024.10.001) — meta-analysis, n=333, 16 studies | ΔCVP +4.13 mmHg (CI 2.42–5.84), ΔCO +0.33 L/min, ΔSV +8.27 mL, ΔHR −1.65 bpm | At −15°: ΔCO +0.64 L/min ✓, ΔSV +11.6 mL ✓, **ΔCVP +0.5 mmHg ✗**. At −30°: ΔCO +1.29, ΔSV +24.6, ΔCVP +1.1. Re-measured 2026-10-04, after the fitted chest pressure was withdrawn — see *Head-down tilt passed for the wrong reason* | ✓ on CO and SV; **CVP a known gap** |
-| 5 | −30° Trendelenburg: CVP↑, MAP maintained | [Sibbald 1979](https://pubmed.ncbi.nlm.nih.gov/467083/) — n=61 normotensive patients | Preload↑, CO slightly↑, SVR↓ ~5%, MAP unchanged | ΔCVP +1.1 mmHg, ΔMAP +12.1 mmHg, ΔCO +1.29 L/min — CVP and MAP pass as asserted, but the MAP and CO rises are larger than Sibbald's "unchanged" and "slightly up" (re-measured 2026-10-04) | ✓ as asserted |
-| 6 | 30° HUT dynamics: SV↓, CO↓, HR↑, MAP partially maintained | [Wieling 1998](https://doi.org/10.1042/cs0940347) — 6 healthy subjects | At 90° HUT: SV −39±9%, CO −26±10%, MAP +1±7 mmHg (maintained by baroreflex) | SV −22%, CO −16%, MAP −10.0 mmHg (30°, no muscle pump — see note below; re-measured 2026-10-04) | ✓ |
-| 7 | Graded HUT 0→20→30°: HR↑ and CO↓ monotonically | [Sarafian 2017](https://doi.org/10.3389/fphys.2016.00656) — 23 adults, graded tilt 0→60° | HR +41%, BP +10%, TPR +16% at 60°; monotonic increase with angle | HR 69.1→72.0→73.2 bpm, CO 5.88→5.21→4.95 L/min, monotonic (re-measured 2026-10-04) | ✓ |
-| 8 | Microgravity: CVP higher than upright Earth | [Buckey 1996](https://pubmed.ncbi.nlm.nih.gov/8853498/) | CVP supine 5–8 mmHg, drops to 2.5 mmHg in orbit; higher than upright standing | CVP µg 4.24 vs upright 45° 3.10 mmHg (re-measured 2026-10-04) | ✓ |
-| 9 | Cerebral perfusion pressure (CPP) decreases with upright posture | [Pohl & Cullen 2005](https://pubmed.ncbi.nlm.nih.gov/15983529/) | Beach-chair position: MAP drops 30–35 mmHg at brain level under GA; CPP risk < 50 mmHg | CPP supine 88 mmHg → 65 mmHg at 45° upright (re-measured 2026-10-04) | ✓ |
+| 1 | Supine resting haemodynamics | [Sejersen 2022](https://doi.org/10.14814/phy2.15216) — 10 healthy males, 177 cm, 80 kg | MAP 83±8 mmHg, HR 62±8 bpm, SV 110±16 mL, CO 7±2 L/min | MAP 88.5, HR 63.2, CO 5.97, SV 95.3 (re-measured 2026-10-06, after the leg heights and the Klotz LV curve) | ✓ |
+| 2 | 20° HDT in normovolemic subjects — MAP↑, CO maintained | [Sejersen 2022](https://doi.org/10.14814/phy2.15216) | ΔSV ≈ 0 (n.s.), ΔCO ≈ 0, ΔMAP +2 mmHg (n.s.) — heart on Starling plateau when supine | ΔMAP +6.1, ΔCO +0.74 L/min, ΔSV +15.0 mL — **the model still fills the heart in head-down tilt where these awake men did not** (re-measured 2026-10-06, after the leg heights and the Klotz LV curve) | ✓ on direction; magnitude disagrees |
+| 3 | 6° HDT vs 20° upright: HR lower during HDT | [Verdini 2019](https://doi.org/10.1038/s41598-019-39360-6) — 17 males, 179 cm, 79 kg | HR_HDT < HR_upright (p < 0.001), MAP_HDT < MAP_upright | HR_HDT 67.3 vs HR_upright 71.2 bpm ✓; MAP_HDT 101.0 vs MAP_upright 92.1 — MAP order opposite to the study, not asserted (re-measured 2026-10-06, after the leg heights and the Klotz LV curve) | ✓ on HR |
+| 4 | −15° Trendelenburg vs supine | [Likhvantsev 2025](https://doi.org/10.1053/j.jvca.2024.10.001) — meta-analysis, n=333, 16 studies | ΔCVP +4.13 mmHg (CI 2.42–5.84), ΔCO +0.33 L/min, ΔSV +8.27 mL, ΔHR −1.65 bpm | At −15°: ΔCO +0.55 ✓, ΔSV +10.5 ✓, **ΔCVP +0.6 ✗**. At −30°: ΔCO +0.91, ΔSV +21.9, ΔCVP +1.4 — larger than the 30° trials (re-measured 2026-10-06, after the leg heights and the Klotz LV curve) | ✓ on CO and SV; **CVP a known gap** |
+| 5 | −30° Trendelenburg: CVP↑, MAP maintained | [Sibbald 1979](https://pubmed.ncbi.nlm.nih.gov/467083/) — n=61 normotensive patients | Preload↑, CO slightly↑, SVR↓ ~5%, MAP unchanged | ΔCVP +1.4, ΔMAP +10.5, ΔCO +0.91 — passes as asserted; MAP and CO rises larger than Sibbald describes (re-measured 2026-10-06, after the leg heights and the Klotz LV curve) | ✓ as asserted |
+| 6 | 30° HUT dynamics: SV↓, CO↓, HR↑, MAP partially maintained | [Wieling 1998](https://doi.org/10.1042/cs0940347) — 6 healthy subjects | At 90° HUT: SV −39±9%, CO −26±10%, MAP +1±7 mmHg (maintained by baroreflex) | SV −20%, CO −16%, MAP −9.4 mmHg (30°, no muscle pump) (re-measured 2026-10-06, after the leg heights and the Klotz LV curve) | ✓ |
+| 7 | Graded HUT 0→20→30°: HR↑ and CO↓ monotonically | [Sarafian 2017](https://doi.org/10.3389/fphys.2016.00656) — 23 adults, graded tilt 0→60° | HR +41%, BP +10%, TPR +16% at 60°; monotonic increase with angle | HR 68.5→71.3→72.6 bpm, CO 5.94→5.36→4.96 L/min, monotonic (re-measured 2026-10-06, after the leg heights and the Klotz LV curve) | ✓ |
+| 8 | Microgravity: CVP higher than upright Earth | [Buckey 1996](https://pubmed.ncbi.nlm.nih.gov/8853498/) | CVP supine 5–8 mmHg, drops to 2.5 mmHg in orbit; higher than upright standing | CVP µg 4.26 vs upright 45° 2.95 mmHg (re-measured 2026-10-06, after the leg heights and the Klotz LV curve) | ✓ |
+| 9 | Cerebral perfusion pressure (CPP) decreases with upright posture | [Pohl & Cullen 2005](https://pubmed.ncbi.nlm.nih.gov/15983529/) | Beach-chair position: MAP drops 30–35 mmHg at brain level under GA; CPP risk < 50 mmHg | CPP supine 88 → 65 mmHg at 45° upright (re-measured 2026-10-06, after the leg heights and the Klotz LV curve) | ✓ |
 | 10 | Buckberg index falls with tachycardia (coronary ischaemia risk) | [Buckberg 1972/1978](https://pubmed.ncbi.nlm.nih.gov/4667030/) | DPTI/SPTI > 0.8 at rest; falls as diastolic time shortens with HR↑ | Buckberg **1.48** at rest → **0.49** at HR=160 bpm (re-measured 2026-09-22; this table previously read 1.12 → 0.44). **Direction reproduced. The MAGNITUDE is not validated and is biased high — see the note below the table.** | direction only |
 | 11 | PPV > 13% identifies fluid-responsive patient under mechanical ventilation | [Michard & Teboul 2000](https://doi.org/10.1164/ajrccm.162.1.9905119) — n=40 septic shock patients | PPV > 13% predicts ≥15% CO rise with fluid challenge (sens. 94%, spec. 96%) | Normovolaemic **PPV 10.6% (< 13 ✓)**; 1000 mL bleed PPV 28.2% (> 13 ✓); resuscitation lowers PPV 28.2 → 17.9 and raises CO +159% ✓ *(re-measured 2026-09-24; PPV is now computed per beat inside the ODE loop, so it no longer depends on output decimation — earlier figures used a different method and are not comparable)* | ✓ |
 | 12 | High spinal anaesthesia (≈T4): MAP↓, CO maintained, HR near-unchanged | [Malmqvist 1987](https://doi.org/10.1111/j.1399-6576.1987.tb02605.x) — n=30, average block T4–5 | MAP ↓≥30% at complete block; CO preserved; minor HR changes (baroreflex compensates) | MAP ↓>5%, CO maintained ±20%, MAP >45 mmHg | ✓ |
 | 13 | Vasopressin dose-response: MAP monotonically↑, CO maintained | [Patel 2002](https://doi.org/10.1097/00000542-200203000-00011) — n=13 septic shock | MAP rises with dose (0→2→4 U/hr); CO maintained; NE requirement ↓79% | MAP monotonically↑; CO maintained ±20% at 2 U/hr | ✓ |
 | 14 | NE vs phenylephrine on spinal baseline: NE preserves CO better | [Ngan Kee 2015](https://doi.org/10.1097/ALN.0000000000000601) — n=104, C-section spinal | NE CO 102.7% vs phenyl 93.8% (p=0.004); NE HR > phenyl HR (reflex bradycardia) | **NE CO 5.50 vs phenyl 5.14 ✓**; NE HR 66.7 vs phenyl 60.1 ✓ (reflex bradycardia on phenylephrine). Re-measured 2026-09-26 after phenylephrine's pressor ceiling was recalibrated; the noradrenaline values had already drifted from the 5.66 / 64.7 previously shown here | ✓ |
 | 15 | Epinephrine: CO monotonically↑ with dose; MAP_high > MAP_low (α dominance) | [Freyschuss 1986](https://doi.org/10.1042/cs0700199) — n=11 healthy, stepwise IV ADR | Concentration-dependent ↑SV and ↑CO; marked ↓vascular resistance at low dose | CO monotonically↑; MAP_high > MAP_low | ✓ |
-| 16 | PLR: CO ≥+10% identifies fluid-responsive patient (preload-dependent) | [Monnet, Marik & Teboul 2016](https://doi.org/10.1007/s00134-015-4134-1) — meta-analysis 21 studies, 991 patients | PLR-induced CO ≥+10% threshold: sens 0.85, spec 0.91, AUC 0.95 | Normovolaemic: ΔCO **+17.0 % ✗** since the anatomical leg heights (2026-10-06; was +9.6 %); hypovolaemic 1200 mL: responder ✓ | ✓ hypovolaemic; **normovolaemic a known gap** |
+| 16 | PLR: CO ≥+10% identifies fluid-responsive patient (preload-dependent) | [Monnet, Marik & Teboul 2016](https://doi.org/10.1007/s00134-015-4134-1) — meta-analysis 21 studies, 991 patients | PLR-induced CO ≥+10% threshold: sens 0.85, spec 0.91, AUC 0.95 | Normovolaemic: ΔCO **+10.7 % ✗** (just over the threshold); hypovolaemic 1200 mL: +37 % responder ✓ (re-measured 2026-10-06, after the leg heights and the Klotz LV curve) | ✓ hypovolaemic; **normovolaemic a known gap** |
 
 ### A note on row 10 — the coronary metric is biased in the unsafe direction
 
@@ -535,25 +535,37 @@ pooled +4.1 — see *Head-down tilt passed for the wrong reason*.
 
 Beyond +45°, the lumped venous compartments cannot fully represent the distributed hydrostatic column without active venous return. Steep upright angles will show appropriate haemodynamic stress but overestimate cardiovascular collapse relative to a conscious patient. Cerebral perfusion at the +45° edge is now defended (CPP 65 mmHg on 2026-10-04, up from ~40 before the 2026-08-26 venous rework) — the residual limit on steeper angles is the absent skeletal-muscle pump, not the venous scale.
 
-### The resting heart is not on a Starling plateau
+### The resting heart is not on a Starling plateau — partly fixed
 
 **This section used to say the Starling cap "correctly prevents SV increase in the fully
-normovolemic patient". Measured on 2026-10-05, it does not.** In
-[Sejersen 2022](https://doi.org/10.14814/phy2.15216) the same healthy men were tilted
-20° head-down, sat up to 45°, and had their legs raised from sitting. Their resting hearts
-were on the flat top of the Starling curve: head-down tilt left stroke volume unchanged.
-The model, in the same cohort:
+normovolemic patient". Measured on 2026-10-05, it did not.** In
+[Sejersen 2022](https://doi.org/10.14814/phy2.15216) the same healthy men were tilted 20°
+head-down, sat up to 45°, and had their legs raised from sitting. Their resting hearts were on the
+flat top of the Starling curve: head-down tilt left stroke volume unchanged. The model gained
+22–29 mL.
 
-| step (10 min each) | model ΔSV | Sejersen ΔSV |
-|---|---|---|
-| 20° head-down from flat | +22 mL | −1 to −2 |
-| sitting up, back 45°, legs flat | −29 mL | −2 to −4 |
-| leg raise from sitting up | +42 mL | +9 |
+**The cause was the heart's filling, not its pumping.** Both ventricles filled along a straight
+pressure-volume line, equally stiff at every volume, and a straight line cannot make a plateau. Since
+2026-10-06 the **left ventricle** fills along the curve
+[Klotz 2006](https://doi.org/10.1152/ajpheart.01240.2005) measured in 80 human hearts — soft when
+small, steeply stiffer near normal filling — placed at a normal end-diastolic volume (Luu) and
+filling pressure (Chemla). Effects measured with the full suite:
 
-Every direction is right and every size is 4–5× too large. The same overshoot shows against
-Likhvantsev at 30°. **Until it is fixed, the model overstates how much a normovolaemic patient
-gains or loses from any change in filling** — posture, a fluid bolus, or a small bleed. The cause
-is in the heart, not the veins. Carried as a strict `xfail`.
+- Sejersen 20° head-down: +20.6 mL (was +22 on the same short protocol); still a known gap.
+- Three long-standing gaps closed: **left atrial emptying** (an old structural gap), Maas's venous
+  return curve, and phenylephrine restoring preload-independence.
+- Two new gaps, both recorded: phenylephrine's pressure rise is smaller (+19 against Schäfers' +28),
+  and age-related arterial stiffening now moves mean pressure (Framingham).
+
+**The right ventricle was tried on the same curve and it failed.** Below about half its normal
+volume the curve gives the wall no tension, and the right ventricle empties further than that each
+beat — so the right atrium drained into it unresisted and right atrial pressure fell to about
+1 mmHg (measured 2–6). Five tests broke. The right ventricle stays on its old straight line until a
+measured right-ventricle curve is found.
+
+**Still open:** most of the head-down over-response remains. The candidates are the right
+ventricle's missing curve, the pericardium (Klotz's hearts had none), and a heart-rate reflex that
+slows the heart too much when filling rises.
 
 ### The legs now move independently of the trunk
 
@@ -568,9 +580,8 @@ source; moving it ±7 cm changes leg pooling by about ±7 %.
 tilt and leg raising, and a heart without a Starling plateau passes all of it on: the Monnet
 normovolaemic patient now gains +17 % (threshold < 10 %), carried as a strict `xfail`.
 
-**The validation table above predates the leg heights.** Its tilt rows were measured on
-2026-10-04/05 and will be re-measured once the heart's diastolic curve is in, since that change
-moves them all again.
+The validation table above was re-measured on 2026-10-06, after the leg heights and the heart's
+diastolic curve.
 
 ### Single-compartment splanchnic and upper-body veins
 Currently single lumped compartments. Each therefore has one height, so the hydrostatic
@@ -610,13 +621,11 @@ reflex drives each effector from one filtered pressure error, so a sustained err
 sustained venous response. Two arms of one reflex adapting on different timescales needs
 per-effector adaptation, which does not exist here.
 
-### The left atrium
-Left atrial emptying fraction is 42.8 % against 61.1 ± 6.2. The atrium is under-filled and stops
-emptying because the mitral gradient runs out. This is **not** atrial mechanics: left atrial peak
-pressure is imposed by the circulation — raising the atrium's unstressed volume from 15 to 45 mL
-left the pressure completely unchanged — so a stiffer or collapsible-tube atrial law would change
-the *volume* at which that pressure is reached, and the volume is already too low. Carried as a
-strict xfail.
+### The left atrium — emptying now inside its band
+Left atrial emptying fraction was 42.8 % against Gao's 61.1 ± 6.2, carried as a strict xfail after five
+atrial parameters failed to move it. **It closed on 2026-10-06 — through the ventricle, not the
+atrium.** With the Klotz curve the relaxed left ventricle is soft early in diastole, so the atrium
+empties into it more fully. It now sits just inside the 45–72 % band, still well below Gao's mean.
 
 ### The arterial fraction of blood volume has no source, and probably cannot have one
 The model puts 10.6 % of blood volume in the systemic arteries. The figure usually quoted is
