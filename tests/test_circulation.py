@@ -924,7 +924,12 @@ def test_severe_hemorrhage_decompensation(baseline_hem, hem_severe):
 def test_fluid_bolus_increases_sv_co_herrera2017(baseline_hem):
     """[15] Herrera 2017 — crystalloid bolus increases SV and CO, with HR
     unchanged or slightly reduced (improved filling reduces compensatory
-    tachycardia)."""
+    tachycardia).
+
+    COHORT CAVEAT, 2026-10-06 (Jesper): Herrera's subjects were in the THIRD
+    TRIMESTER — high output, aortocaval compression, fluid-responsive. This test
+    gives the bolus to a normovolaemic model adult, so it checks DIRECTION only;
+    its magnitudes are not comparable and none is asserted."""
     bolus = _run_hem_bolus(bolus_ml=600)
     dsv = pct(bolus['sv'], baseline_hem['sv'])
     dco = pct(bolus['co'], baseline_hem['co'])
@@ -4217,8 +4222,16 @@ def test_cardiopulmonary_hr_arm_is_live_and_signed():
         f"+25.3 (LBNP -80, n=20) and +38 (Vettorello 2016)"
     )
 
-    # Bidirectional: rising filling slows the heart (Herrera 2017, 500 mL bolus).
-    assert hr_at(REF + 3.0, True) < -1.0, "rising filling pressure did not slow the heart"
+    # NOT bidirectional — REVERSED 2026-10-06. This line used to assert that
+    # rising filling slows the heart, citing Herrera 2017's 500 mL bolus — a
+    # third-trimester cohort. In healthy volunteers with CVP measured and filling
+    # RAISED the heart does not slow: Norsk 1986 (PMID 3781950, CVP +5.9 mmHg),
+    # Shi 1993 (PMID 8342666), Goldsmith 1984 (PMID 6720976, HR slightly UP),
+    # Keller 1990, Goldsmith 1988, Millar 2013. Applied both ways the arm slowed
+    # the heart 8.8 bpm at -30 deg against Likhvantsev's -1.65. Abstract-level.
+    assert abs(hr_at(REF + 3.0, True)) < 0.5, (
+        f"rising filling pressure moved heart rate {hr_at(REF + 3.0, True):+.2f} "
+        f"bpm; healthy volunteers with CVP raised 2-6 mmHg show no slowing")
 
     # THE SWITCH MUST ACTUALLY SWITCH IT OFF.
     for cvp in (REF - 6.7, REF - 3.2, REF + 3.0):

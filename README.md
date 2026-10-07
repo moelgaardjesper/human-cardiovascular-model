@@ -301,6 +301,13 @@ directions in one cohort) with a separate cardiopulmonary arm at 3.8 bpm per mmH
 pressure. A 1000 mL bleed now produces **+28.6 bpm** against a human +25.3 to +38
 (re-measured 2026-09-16, age- and size-matched to the source cohort).
 
+**Since 2026-10-06 the cardiopulmonary arm acts only when filling falls.** Its gain was measured
+with filling falling (LBNP); applying it to rising filling slowed the heart 8.8 bpm in 30°
+head-down tilt where patients slow by 1.65. Healthy volunteers whose CVP was raised 2–6 mmHg by
+lower-body positive pressure, saline or head-down tilt show no slowing, across four laboratories
+(Norsk 1986, Shi 1993, Goldsmith 1984 and 1988, Keller 1990, Millar 2013; abstracts read). The one
+source cited for a slowing — Herrera 2017 — studied women in the third trimester.
+
 **Two claimed defects were retired rather than fixed.** A central-venous-pressure gap that had
 looked real for over a week was a measurement-site artefact — the cited catheter tip was in the
 *subclavian* vein, and a cycle mean was being compared against a catheter's end-expiratory

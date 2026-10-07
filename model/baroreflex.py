@@ -259,6 +259,20 @@ HR_REFLEX_SCALE_MMHG = 35.0   # gain at the setpoint = 30/35 = 0.857 bpm/mmHg
 CP_HR_GAIN_BPM_PER_MMHG = 3.8    # at the reference filling pressure
 CP_HR_RESERVE_BPM       = 40.0   # saturating reserve each way
 
+# THE ARM IS NOT BIDIRECTIONAL — 2026-10-06. The 3.8 bpm/mmHg above was measured
+# with filling FALLING (LBNP). The claim that rising filling slows the heart rested
+# on Herrera 2017's 500 mL bolus (HR 87 -> 83) — a THIRD-TRIMESTER cohort (Jesper).
+# Healthy volunteers with filling RAISED and CVP measured show no slowing, in four
+# labs: Norsk 1986 (PMID 3781950) LBPP, CVP 7.5 -> 13.4, HR unchanged; Shi 1993
+# (PMID 8342666) graded LBPP, CVP +2.1, HR unchanged; Goldsmith 1984 (PMID 6720976)
+# saline, CVP 4.7 -> 7.3, HR slightly UP (Bainbridge); 1 h HDT CVP 5.1 -> 9.0;
+# Keller 1990, Goldsmith 1988, Millar 2013 likewise. GRADE C (abstracts read, full
+# texts WANTED). Applied both ways, the arm slowed the heart 8.8 bpm at -30 deg
+# head-down against Likhvantsev's pooled -1.65.
+# The loading side is therefore ZERO. The small Bainbridge acceleration is not
+# modelled — no magnitude has been read.
+CP_HR_LOADING_FRACTION = 0.0
+
 # THE REFERENCE THIS ARM MEASURES DEVIATION FROM IS NOT `CVP_SETPOINT`.
 # A cardiopulmonary receptor sits at its operating point when filling is normal
 # FOR THAT PERSON. People differ in resting CVP and none of them are permanently
@@ -582,6 +596,9 @@ class BaroreflexController:
         vag      = kv * self._para_map
         sym_hr   = ks * self._symp_hr_map
         sym_cp   = ks * self._symp_hr_cvp
+        # Positive = filling ABOVE the reference. Only unloading drives the arm.
+        if sym_cp > 0.0:
+            sym_cp *= CP_HR_LOADING_FRACTION
         # SVR: slow sympathetic sustains vasoconstriction when MAP is chronically low
         svr_err  = -(self._symp_slow_map + self._symp_fast_cvp * 0.3)
         sym_vasc = ks * svr_err
@@ -595,7 +612,8 @@ class BaroreflexController:
             fv * (self._r_hr_vagal * _sigmoid(vag, scale=self._scale_hr))
             + (1.0 - fv) * (self._r_hr_symp * _sigmoid(sym_hr, scale=self._scale_hr))
         )
-        # Cardiopulmonary arm: falling filling pressure speeds the heart.
+        # Cardiopulmonary arm: falling filling pressure speeds the heart; rising
+        # filling does nothing (CP_HR_LOADING_FRACTION).
         if self.cp_hr_enabled:
             self.hr_delta += -self._gain_hr_cp * (self._r_hr_symp * _sigmoid(
                 sym_cp, scale=self._scale_hr_cp))
