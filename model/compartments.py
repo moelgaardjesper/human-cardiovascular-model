@@ -532,6 +532,37 @@ VENOUS_DRAINAGE_SCALE = 2.0      # documentation only; values are inlined below
 HIP_HEIGHT_M = -0.333
 
 
+# ---------------------------------------------------------------------------
+# ABDOMINAL GEOMETRY — FROM ANATOMY, 2026-10-07
+# ---------------------------------------------------------------------------
+# The gut and kidney compartments sat 8-10 cm below the heart, a value chosen
+# so the IVC segments met their tributaries, not from anatomy. Three
+# independent tilt measurements then disagreed with the model in the same
+# direction: Stewart 2004 (splanchnic +16 % on 35 deg HUT; model +2 %), and
+# Petersen 2014 (PMID 24481962, volume indifference point 13-29 cm below the
+# 4th intercostal space; model ~9 cm).
+#
+# THE ANATOMY. Baskin 2008 (PMID 18295694, 100 supine CTs): the top of the right
+# atrium is at the T5/T6 disc, and one upper-thoracic vertebral unit (body +
+# disc) measures ~2.0 cm. Acar 2021 (PMID 33453038, 155 supine CT angiograms):
+# the portal vein confluence and both renal arteries lie at L1 in ~70 %; the
+# aortic bifurcation and the iliac (IVC) confluence at L4/L5.
+# T5/T6 -> mid-L1 is ~7.5 vertebral units: ~15 cm at Baskin's 2.0 cm (adolescents,
+# 162 cm), nearer 15-19 cm in a 175 cm adult with taller lower vertebrae.
+# **0.17 m, the middle of that bracket. GRADE C/D** — the cm per unit below T6 is
+# not measured here (WANTED: adult thoracolumbar body + disc heights).
+#   splanchnic_vein / splanchnic_art   L1 (portal confluence, coeliac, SMA)
+#   renal_vein / renal_art / ivc_renal L1 (renal vessels; the IVC segment at its
+#                                      tributary's height, as the IVC rule needs)
+#   abdominal_aorta                    diaphragm to L4 bifurcation, centre ~L2: 0.18
+#   ivc (supra-hepatic)                unchanged -0.08: hepatic veins join at the
+#                                      diaphragm (Petersen's HIP, 7 cm below IC-4)
+#   ivc_infrarenal                     unchanged -0.20: centre ~L3, not re-derived
+# Like every height, these scale with the patient's stature (patient.py).
+L1_HEIGHT_M = -0.17
+ABDOMINAL_AORTA_HEIGHT_M = -0.18
+
+
 def default_compartments() -> list[Compartment]:
     """
     Return the 25 baseline compartments in canonical index order.
@@ -578,15 +609,15 @@ def default_compartments() -> list[Compartment]:
         Compartment("upper_body_vein",    12.00, 3.75,  764,  0.05,  849,
                     drain_resistance=0.100),  # 3  P0≈6 (R = arteriole + exchange segment)
         Compartment("svc",                 8.00, 0.05,   70,  0.05,  120, drain_resistance=CAVOATRIAL_R),  # 4  P0≈4
-        Compartment("abdominal_aorta",     0.40, 0.05,   60, -0.10,   91),  # 5  P0=88
-        Compartment("renal_art",           0.08, 0.10,   20, -0.10,   26),  # 6  P0=80 (conduit; arteriole moved to renal_vein)
+        Compartment("abdominal_aorta",     0.40, 0.05,   60, ABDOMINAL_AORTA_HEIGHT_M,   91),  # 5  P0=88
+        Compartment("renal_art",           0.08, 0.10,   20, L1_HEIGHT_M,   26),  # 6  P0=80 (conduit; arteriole moved to renal_vein)
         # renal_vein / splanchnic_vein: `resistance` is the artery→vein exchange
         # segment; `drain_resistance` is the vein→IVC drainage. These were a single
         # shared number until 2026-08-21 — see Compartment.drain_resistance.
-        Compartment("renal_vein",          7.20, 4.50,   60, -0.10,  135,
+        Compartment("renal_vein",          7.20, 4.50,   60, L1_HEIGHT_M,  135,
                     drain_resistance=0.200),                                # 7  P0≈8
-        Compartment("splanchnic_art",      0.19, 0.10,   50, -0.15,   64),  # 8  P0=83 (conduit; arteriole moved to splanchnic_vein)
-        Compartment("splanchnic_vein",    52.00, 3.60,  542, -0.08, 1051,
+        Compartment("splanchnic_art",      0.19, 0.10,   50, L1_HEIGHT_M,   64),  # 8  P0=83 (conduit; arteriole moved to splanchnic_vein)
+        Compartment("splanchnic_vein",    52.00, 3.60,  542, L1_HEIGHT_M, 1051,
                     drain_resistance=0.140),  # 9  P0≈11 (dominant mobilizable reservoir)
         # LEG HEIGHTS FROM ANATOMY, 2026-10-05 (leg rebuild stage 3) — see the
         # LEG GEOMETRY note above default_compartments. Was -0.50 / -0.20 / -0.55
@@ -667,13 +698,17 @@ def default_compartments() -> list[Compartment]:
         # each IVC segment sits at the height of the tributary that joins it, so
         # every tributary enters with zero junction head and the climb is carried
         # along the IVC itself, where it physically is.
-        #   ivc_infrarenal  -0.20  receives the leg drainage   (thigh_vein -0.20)
-        #   ivc_renal       -0.10  receives the renal drainage (renal_vein -0.10)
-        #   ivc (supra)     -0.08  receives the hepatic drainage (splanchnic_vein -0.08)
-        # Monotone toward the heart. CONSISTENCY CHECK, not a constraint: the
-        # volume-weighted centroid is 0.5*(-0.20) + 0.3*(-0.10) + 0.2*(-0.08) =
-        # -0.146 m against the old lumped -0.15 m, so the vessel as a whole sits
-        # where it did. **Do not move these to improve a tilt number** — that is how
+        #   ivc_infrarenal  -0.20  receives the leg drainage at the iliac confluence
+        #   ivc_renal       -0.17  receives the renal drainage (renal_vein, L1)
+        #   ivc (supra)     -0.08  receives the hepatic veins at the diaphragm
+        # UPDATED 2026-10-07 (see ABDOMINAL GEOMETRY above default_compartments):
+        # the gut and kidney compartments moved to L1 (-0.17). The renal segment
+        # follows its tributary; the hepatic junction stays at the diaphragm, so
+        # the splanchnic drain now climbs 9 cm, carried by the height term on that
+        # flow. The leg rebuild of 2026-10-06 had already broken "thigh at the
+        # infrarenal height" (thigh -0.52): the legs join at the iliac confluence,
+        # and the climb from thigh to IVC is carried by the flow's height term.
+        # Monotone toward the heart. **Do not move these to improve a tilt number** — that is how
         # upper_body_vein's height came to be chosen for its tilt behaviour.
         #
         # COMPLIANCE AND V0 split 50 / 30 / 20 by approximate segment length
@@ -734,7 +769,7 @@ def default_compartments() -> list[Compartment]:
         # adjusting starting volumes instead of re-deriving them.
         # `resistance` is not read by any flow for these two; it is set equal so the
         # two fields cannot silently diverge.
-        Compartment("ivc_renal",           3.60, 0.005,  36, -0.10,   60, drain_resistance=0.005),  # 23
+        Compartment("ivc_renal",           3.60, 0.005,  36, L1_HEIGHT_M,   60, drain_resistance=0.005),  # 23
         Compartment("ivc_infrarenal",      6.00, 0.005,  60, -0.20,  101, drain_resistance=0.005),  # 24
     ]
 

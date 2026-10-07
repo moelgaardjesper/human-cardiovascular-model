@@ -214,22 +214,22 @@ The mechanism works in both directions. On 2026-08-26 two xfails fired as XPASS 
 
 | # | Scenario | Reference | Literature target | Model result | |
 |---|---|---|---|---|---|
-| 1 | Supine resting haemodynamics | [Sejersen 2022](https://doi.org/10.14814/phy2.15216) — 10 healthy males, 177 cm, 80 kg | MAP 83±8 mmHg, HR 62±8 bpm, SV 110±16 mL, CO 7±2 L/min | MAP 88.5, HR 63.2, CO 5.97, SV 95.3 (re-measured 2026-10-06, after the leg heights and the Klotz LV curve) | ✓ |
-| 2 | 20° HDT in normovolemic subjects — MAP↑, CO maintained | [Sejersen 2022](https://doi.org/10.14814/phy2.15216) | ΔSV ≈ 0 (n.s.), ΔCO ≈ 0, ΔMAP +2 mmHg (n.s.) — heart on Starling plateau when supine | ΔMAP +6.1, ΔCO +0.74 L/min, ΔSV +15.0 mL — **the model still fills the heart in head-down tilt where these awake men did not** (re-measured 2026-10-06, after the leg heights and the Klotz LV curve) | ✓ on direction; magnitude disagrees |
-| 3 | 6° HDT vs 20° upright: HR lower during HDT | [Verdini 2019](https://doi.org/10.1038/s41598-019-39360-6) — 17 males, 179 cm, 79 kg | HR_HDT < HR_upright (p < 0.001), MAP_HDT < MAP_upright | HR_HDT 67.3 vs HR_upright 71.2 bpm ✓; MAP_HDT 101.0 vs MAP_upright 92.1 — MAP order opposite to the study, not asserted (re-measured 2026-10-06, after the leg heights and the Klotz LV curve) | ✓ on HR |
-| 4 | −15° Trendelenburg vs supine | [Likhvantsev 2025](https://doi.org/10.1053/j.jvca.2024.10.001) — meta-analysis, n=333, 16 studies | ΔCVP +4.13 mmHg (CI 2.42–5.84), ΔCO +0.33 L/min, ΔSV +8.27 mL, ΔHR −1.65 bpm | At −15°: ΔCO +0.55 ✓, ΔSV +10.5 ✓, **ΔCVP +0.6 ✗**. At −30°: ΔCO +0.91, ΔSV +21.9, ΔCVP +1.4 — larger than the 30° trials (re-measured 2026-10-06, after the leg heights and the Klotz LV curve) | ✓ on CO and SV; **CVP a known gap** |
-| 5 | −30° Trendelenburg: CVP↑, MAP maintained | [Sibbald 1979](https://pubmed.ncbi.nlm.nih.gov/467083/) — n=61 normotensive patients | Preload↑, CO slightly↑, SVR↓ ~5%, MAP unchanged | ΔCVP +1.4, ΔMAP +10.5, ΔCO +0.91 — passes as asserted; MAP and CO rises larger than Sibbald describes (re-measured 2026-10-06, after the leg heights and the Klotz LV curve) | ✓ as asserted |
-| 6 | 30° HUT dynamics: SV↓, CO↓, HR↑, MAP partially maintained | [Wieling 1998](https://doi.org/10.1042/cs0940347) — 6 healthy subjects | At 90° HUT: SV −39±9%, CO −26±10%, MAP +1±7 mmHg (maintained by baroreflex) | SV −20%, CO −16%, MAP −9.4 mmHg (30°, no muscle pump) (re-measured 2026-10-06, after the leg heights and the Klotz LV curve) | ✓ |
-| 7 | Graded HUT 0→20→30°: HR↑ and CO↓ monotonically | [Sarafian 2017](https://doi.org/10.3389/fphys.2016.00656) — 23 adults, graded tilt 0→60° | HR +41%, BP +10%, TPR +16% at 60°; monotonic increase with angle | HR 68.5→71.3→72.6 bpm, CO 5.94→5.36→4.96 L/min, monotonic (re-measured 2026-10-06, after the leg heights and the Klotz LV curve) | ✓ |
-| 8 | Microgravity: CVP higher than upright Earth | [Buckey 1996](https://pubmed.ncbi.nlm.nih.gov/8853498/) | CVP supine 5–8 mmHg, drops to 2.5 mmHg in orbit; higher than upright standing | CVP µg 4.26 vs upright 45° 2.95 mmHg (re-measured 2026-10-06, after the leg heights and the Klotz LV curve) | ✓ |
-| 9 | Cerebral perfusion pressure (CPP) decreases with upright posture | [Pohl & Cullen 2005](https://pubmed.ncbi.nlm.nih.gov/15983529/) | Beach-chair position: MAP drops 30–35 mmHg at brain level under GA; CPP risk < 50 mmHg | CPP supine 88 → 65 mmHg at 45° upright (re-measured 2026-10-06, after the leg heights and the Klotz LV curve) | ✓ |
+| 1 | Supine resting haemodynamics | [Sejersen 2022](https://doi.org/10.14814/phy2.15216) — 10 healthy males, 177 cm, 80 kg | MAP 83±8 mmHg, HR 62±8 bpm, SV 110±16 mL, CO 7±2 L/min | MAP 88.6, HR 63.4, CO 6.06, SV 95.2 (re-measured 2026-10-07, after the abdominal heights) | ✓ |
+| 2 | 20° HDT in normovolemic subjects — MAP↑, CO maintained | [Sejersen 2022](https://doi.org/10.14814/phy2.15216) | ΔSV ≈ 0 (n.s.), ΔCO ≈ 0, ΔMAP +2 mmHg (n.s.) — heart on Starling plateau when supine | ΔMAP +8.7, ΔCO +0.95 L/min, ΔSV +19.9 mL — **the model fills the heart in head-down tilt where these awake men did not** (re-measured 2026-10-07, after the abdominal heights) | ✓ on direction; magnitude disagrees |
+| 3 | 6° HDT vs 20° upright: HR lower during HDT | [Verdini 2019](https://doi.org/10.1038/s41598-019-39360-6) — 17 males, 179 cm, 79 kg | HR_HDT < HR_upright (p < 0.001), MAP_HDT < MAP_upright | HR_HDT 67.3 vs HR_upright 73.0 bpm ✓; MAP_HDT 102.1 vs MAP_upright 87.9 — MAP order opposite to the study, not asserted (re-measured 2026-10-07, after the abdominal heights) | ✓ on HR |
+| 4 | −15° Trendelenburg vs supine | [Likhvantsev 2025](https://doi.org/10.1053/j.jvca.2024.10.001) — meta-analysis, n=333, 16 studies | ΔCVP +4.13 mmHg (CI 2.42–5.84), ΔCO +0.33 L/min, ΔSV +8.27 mL, ΔHR −1.65 bpm | At −15°: ΔCO +0.80 ✓, ΔSV +14.1 ✓, **ΔCVP +0.9 ✗**. At −30°: ΔCO +1.49, ΔSV +27.6, ΔCVP +1.9 — larger than the 30° trials (re-measured 2026-10-07, after the abdominal heights) | ✓ on CO and SV; **CVP a known gap** |
+| 5 | −30° Trendelenburg: CVP↑, MAP maintained | [Sibbald 1979](https://pubmed.ncbi.nlm.nih.gov/467083/) — n=61 normotensive patients | Preload↑, CO slightly↑, SVR↓ ~5%, MAP unchanged | ΔCVP +1.9, ΔMAP +15.3, ΔCO +1.49 — passes as asserted; MAP and CO rises much larger than Sibbald describes (re-measured 2026-10-07, after the abdominal heights) | ✓ as asserted |
+| 6 | 30° HUT dynamics: SV↓, CO↓, HR↑, MAP partially maintained | [Wieling 1998](https://doi.org/10.1042/cs0940347) — 6 healthy subjects | At 90° HUT: SV −39±9%, CO −26±10%, MAP +1±7 mmHg (maintained by baroreflex) | SV −33%, CO −26%, MAP −16.6 mmHg (30°, no muscle pump) (re-measured 2026-10-07, after the abdominal heights) | ✓ |
+| 7 | Graded HUT 0→20→30°: HR↑ and CO↓ monotonically | [Sarafian 2017](https://doi.org/10.3389/fphys.2016.00656) — 23 adults, graded tilt 0→60° | HR +41%, BP +10%, TPR +16% at 60°; monotonic increase with angle | HR 68.5→73.0→75.4 bpm, CO 5.94→4.93→4.40 L/min, monotonic (re-measured 2026-10-07, after the abdominal heights) | ✓ |
+| 8 | Microgravity: CVP higher than upright Earth | [Buckey 1996](https://pubmed.ncbi.nlm.nih.gov/8853498/) | CVP supine 5–8 mmHg, drops to 2.5 mmHg in orbit; higher than upright standing | CVP µg 4.26 vs upright 45° 2.22 mmHg (re-measured 2026-10-07, after the abdominal heights) | ✓ |
+| 9 | Cerebral perfusion pressure (CPP) decreases with upright posture | [Pohl & Cullen 2005](https://pubmed.ncbi.nlm.nih.gov/15983529/) | Beach-chair position: MAP drops 30–35 mmHg at brain level under GA; CPP risk < 50 mmHg | CPP supine 88 → **52 mmHg at 45° upright** — near the 50 mmHg risk threshold, and probably understated because the heart over-responds to posture (re-measured 2026-10-07, after the abdominal heights) | ✓ on direction |
 | 10 | Buckberg index falls with tachycardia (coronary ischaemia risk) | [Buckberg 1972/1978](https://pubmed.ncbi.nlm.nih.gov/4667030/) | DPTI/SPTI > 0.8 at rest; falls as diastolic time shortens with HR↑ | Buckberg **1.48** at rest → **0.49** at HR=160 bpm (re-measured 2026-09-22; this table previously read 1.12 → 0.44). **Direction reproduced. The MAGNITUDE is not validated and is biased high — see the note below the table.** | direction only |
 | 11 | PPV > 13% identifies fluid-responsive patient under mechanical ventilation | [Michard & Teboul 2000](https://doi.org/10.1164/ajrccm.162.1.9905119) — n=40 septic shock patients | PPV > 13% predicts ≥15% CO rise with fluid challenge (sens. 94%, spec. 96%) | Normovolaemic **PPV 10.6% (< 13 ✓)**; 1000 mL bleed PPV 28.2% (> 13 ✓); resuscitation lowers PPV 28.2 → 17.9 and raises CO +159% ✓ *(re-measured 2026-09-24; PPV is now computed per beat inside the ODE loop, so it no longer depends on output decimation — earlier figures used a different method and are not comparable)* | ✓ |
 | 12 | High spinal anaesthesia (≈T4): MAP↓, CO maintained, HR near-unchanged | [Malmqvist 1987](https://doi.org/10.1111/j.1399-6576.1987.tb02605.x) — n=30, average block T4–5 | MAP ↓≥30% at complete block; CO preserved; minor HR changes (baroreflex compensates) | MAP ↓>5%, CO maintained ±20%, MAP >45 mmHg | ✓ |
 | 13 | Vasopressin dose-response: MAP monotonically↑, CO maintained | [Patel 2002](https://doi.org/10.1097/00000542-200203000-00011) — n=13 septic shock | MAP rises with dose (0→2→4 U/hr); CO maintained; NE requirement ↓79% | MAP monotonically↑; CO maintained ±20% at 2 U/hr | ✓ |
 | 14 | NE vs phenylephrine on spinal baseline: NE preserves CO better | [Ngan Kee 2015](https://doi.org/10.1097/ALN.0000000000000601) — n=104, C-section spinal | NE CO 102.7% vs phenyl 93.8% (p=0.004); NE HR > phenyl HR (reflex bradycardia) | **NE CO 5.50 vs phenyl 5.14 ✓**; NE HR 66.7 vs phenyl 60.1 ✓ (reflex bradycardia on phenylephrine). Re-measured 2026-09-26 after phenylephrine's pressor ceiling was recalibrated; the noradrenaline values had already drifted from the 5.66 / 64.7 previously shown here | ✓ |
 | 15 | Epinephrine: CO monotonically↑ with dose; MAP_high > MAP_low (α dominance) | [Freyschuss 1986](https://doi.org/10.1042/cs0700199) — n=11 healthy, stepwise IV ADR | Concentration-dependent ↑SV and ↑CO; marked ↓vascular resistance at low dose | CO monotonically↑; MAP_high > MAP_low | ✓ |
-| 16 | PLR: CO ≥+10% identifies fluid-responsive patient (preload-dependent) | [Monnet, Marik & Teboul 2016](https://doi.org/10.1007/s00134-015-4134-1) — meta-analysis 21 studies, 991 patients | PLR-induced CO ≥+10% threshold: sens 0.85, spec 0.91, AUC 0.95 | Normovolaemic: ΔCO **+10.7 % ✗** (just over the threshold); hypovolaemic 1200 mL: +37 % responder ✓ (re-measured 2026-10-06, after the leg heights and the Klotz LV curve) | ✓ hypovolaemic; **normovolaemic a known gap** |
+| 16 | PLR: CO ≥+10% identifies fluid-responsive patient (preload-dependent) | [Monnet, Marik & Teboul 2016](https://doi.org/10.1007/s00134-015-4134-1) — meta-analysis 21 studies, 991 patients | PLR-induced CO ≥+10% threshold: sens 0.85, spec 0.91, AUC 0.95 | Normovolaemic: ΔCO **+18.9 % ✗**; hypovolaemic 1200 mL: +54 % responder ✓ (re-measured 2026-10-07, after the abdominal heights) | ✓ hypovolaemic; **normovolaemic a known gap** |
 
 ### A note on row 10 — the coronary metric is biased in the unsafe direction
 
@@ -535,12 +535,35 @@ The muscle pump is still absent, and that still matters for a conscious patient
 standing, walking, or tilted beyond 45°. Under anaesthesia it is inactive, so it
 does not affect the model's main clinical range.
 
+### The abdomen now sits where anatomy puts it
+
+Since 2026-10-07 the gut and kidney blood sits at the level of the first lumbar vertebra, 17 cm below
+the heart in a 175 cm adult. It sat at 8–10 cm, which had been chosen to make the vena cava segments
+meet, not taken from anatomy. Sources: the top of the right atrium is at the T5/T6 disc
+([Baskin 2008](https://doi.org/10.1016/j.jvir.2007.09.005)); the portal vein confluence and renal
+vessels at L1 ([Açar 2021](https://doi.org/10.1007/s12565-021-00602-1)). The conversion from vertebral
+levels to centimetres is the soft part (15–19 cm), and the conclusions hold across that range. Like
+every height in the model, it scales with the patient's stature.
+
+**Two independent human measurements confirm it.**
+[Petersen 2014](https://doi.org/10.1152/japplphysiol.01175.2013) found venous pressure unchanged by
+±20° tilt at 7 ± 4 cm below the fourth intercostal space; the model now gives **7 cm** (4–5 before).
+Stewart's 35° tilt found the abdomen gaining 16 ± 2 % of its blood; the model now gives +11.5 %
+(+2 % before).
+
+**And it makes the heart's remaining problem plainer.** More blood now moves with posture, and the heart
+turns it into a stroke-volume change 4–6 times too large: sitting up costs 46 mL where healthy men lose
+3, and 45° head-up costs 42 mL. The chest gives up about 310 mL on a 35° tilt where Stewart's subjects
+gave up about 175. Two tests broke for that reason and are carried as strict `xfail`s (the age
+difference in tilt tachycardia, White 1997; the limb vein reflex still active at 230 s, Brown 1949). The
+right ventricle's filling curve and the missing pericardium are the work aimed at it.
+
 ### Validated tilt range: −30° to +45°, except head-down CVP
 **Changed 2026-10-04.** Head-down cardiac output and stroke volume rise again, for a physiological
 reason, though possibly too much at 30° and beyond. Head-down CVP does not — it rises about 0.5 mmHg at −15° against a
 pooled +4.1 — see *Head-down tilt passed for the wrong reason*.
 
-Beyond +45°, the lumped venous compartments cannot fully represent the distributed hydrostatic column without active venous return. Steep upright angles will show appropriate haemodynamic stress but overestimate cardiovascular collapse relative to a conscious patient. Cerebral perfusion at the +45° edge is now defended (CPP 65 mmHg on 2026-10-04, up from ~40 before the 2026-08-26 venous rework) — the residual limit on steeper angles is the absent skeletal-muscle pump, not the venous scale.
+Beyond +45°, the lumped venous compartments cannot fully represent the distributed hydrostatic column without active venous return. Steep upright angles will show appropriate haemodynamic stress but overestimate cardiovascular collapse relative to a conscious patient. Cerebral perfusion at the +45° edge fell to 52 mmHg on 2026-10-07 once the abdomen took its anatomical height — likely too low, because the heart over-responds to posture (it was 65 on 2026-10-04, up from ~40 before the 2026-08-26 venous rework) — the residual limit on steeper angles is the absent skeletal-muscle pump, not the venous scale.
 
 ### The resting heart is not on a Starling plateau — partly fixed
 
@@ -587,8 +610,8 @@ source; moving it ±7 cm changes leg pooling by about ±7 %.
 tilt and leg raising, and a heart without a Starling plateau passes all of it on: the Monnet
 normovolaemic patient now gains +17 % (threshold < 10 %), carried as a strict `xfail`.
 
-The validation table above was re-measured on 2026-10-06, after the leg heights and the heart's
-diastolic curve.
+The validation table above was re-measured on 2026-10-07, after the leg heights, the heart's
+diastolic curve and the abdominal heights.
 
 ### Single-compartment splanchnic and upper-body veins
 Currently single lumped compartments. Each therefore has one height, so the hydrostatic
