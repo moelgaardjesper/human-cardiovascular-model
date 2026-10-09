@@ -43,7 +43,7 @@ from .heart import (
     klotz_diastolic_pressure, _normalised_activation,
     RA_EMAX, RA_EMIN, LA_EMAX, LA_EMIN,
     atrial_phase_offset,
-    pericardial_pressure, PERI_P_REF, PERI_VK, PERI_V_REF,
+    pericardial_pressure, PERI_CAPACITY, PERI_K, PERI_VK,
 )
 from .gravity import (hydrostatic_delta_mmhg, GravityEnvironment, smooth_tilt_profile,
                       positional_itp_mmhg, articulated_hydrostatic_delta_mmhg)
@@ -315,12 +315,16 @@ class SimParams:
         # scaled with chamber size by apply_cardiac.
         self.lv_v0_dia = LV_V0_DIA
         self.lv_v30    = LV_V30
-        # The pericardium (heart.py THE PERICARDIUM). Off until measured; v_ref
-        # scales with heart size in apply_cardiac.
+        # The pericardium (heart.py THE PERICARDIUM): its own structure, with a
+        # capacity, a stiffness and a fluid content. Off until measured; capacity
+        # scales with heart size in apply_cardiac. pericardial_fluid_ml is EXCESS
+        # fluid (the normal film is inside the capacity): > 0 is an effusion, and
+        # with the sac on, a tamponade.
         self.pericardium_enabled = False
-        self.pericardial_p_ref = PERI_P_REF
-        self.pericardial_vk = PERI_VK
-        self.pericardial_v_ref = PERI_V_REF
+        self.pericardial_capacity_ml = PERI_CAPACITY
+        self.pericardial_k_mmhg = PERI_K
+        self.pericardial_vk_ml = PERI_VK
+        self.pericardial_fluid_ml = 0.0
         # Re-zeroes the reflex's CVP input to its resting value when the sac is on.
         self.reflex_cvp_offset = 0.0
         self.rv_emax = RV_EMAX
@@ -739,14 +743,14 @@ _CHAMBER_IDX = (IDX["right_atrium"], IDX["right_ventricle"], IDX["left_atrium"],
 
 
 def _pericardial_now(V: np.ndarray, params: SimParams) -> float:
-    """Sac pressure from the current total heart volume. The ONE formula both the
-    ODE and the monitor use — two parallel formulas for one quantity is how the
-    arrest CVP and hr_eff defects arose."""
+    """Sac pressure from its current contents (four chambers + excess fluid). The
+    ONE formula both the ODE and the monitor use — two parallel formulas for one
+    quantity is how the arrest CVP and hr_eff defects arose."""
     if not params.pericardium_enabled:
         return 0.0
-    v_heart = float(sum(V[k] for k in _CHAMBER_IDX))
-    return pericardial_pressure(v_heart, params.pericardial_v_ref,
-                                params.pericardial_p_ref, params.pericardial_vk)
+    contents = float(sum(V[k] for k in _CHAMBER_IDX)) + params.pericardial_fluid_ml
+    return pericardial_pressure(contents, params.pericardial_capacity_ml,
+                                params.pericardial_k_mmhg, params.pericardial_vk_ml)
 
 
 def _odes(t: float, V: np.ndarray, params: SimParams, baro: BaroreflexController | None,
@@ -1508,6 +1512,7 @@ def run_simulation(
     ao_intra_ts = np.zeros(n_out)
     la_p_ts     = np.zeros(n_out)
     ra_mean_ts  = np.zeros(n_out)
+    peri_p_ts   = np.zeros(n_out)
     lv_p_ts     = np.zeros(n_out)
     rv_p_ts     = np.zeros(n_out)
     co_ts       = np.zeros(n_out)
@@ -1597,7 +1602,8 @@ def run_simulation(
         # placeholder written after the loop because it is derived by smoothing.
         _series = [("t", None), ("aortic_p", aortic_p), ("map", None),
                    ("aortic_intraluminal", ao_intra_ts),
-                   ("cvp", cvp_ts), ("la_pressure", la_p_ts), ("ra_mean", ra_mean_ts), ("co", co_ts),
+                   ("cvp", cvp_ts), ("la_pressure", la_p_ts), ("ra_mean", ra_mean_ts),
+                   ("pericardial_p", peri_p_ts), ("co", co_ts),
                    ("hr", hr_ts), ("sv", sv_ts), ("dbp", dbp_ts),
                    ("sbp", sbp_ts), ("lvedp", lvedp_ts), ("cpp", cpp_ts),
                    ("cop", cop_ts), ("buckberg", buckberg_ts),
@@ -1669,11 +1675,12 @@ def run_simulation(
             _last_t_beat  = t
         sv_ts[_oi] += _sv_current
 
-        # CVP: end-diastolic RA trough (pass to baroreflex too, not instantaneous p_ra)
+        # CVP as REPORTED: end-diastolic RA trough. The baroreflex no longer reads
+        # this (2026-10-09): it reads instantaneous p_ra + sac, averaged to a mean.
         _cvp_win.append(p_ra)
         p_cvp_edi = min(_cvp_win)
-        # Sac pressure for REPORTING only (cavity = wall + sac). The baroreflex
-        # below keeps p_cvp_edi, the wall pressure: receptors sense stretch.
+        # Sac pressure: added to the reported cavity pressures and to the
+        # reflex input below.
         _pp_now = _pericardial_now(V, params)
         _cvp_rep_win.append(p_ra + _pp_now)
         p_cvp_rep = min(_cvp_rep_win)
@@ -1681,11 +1688,17 @@ def run_simulation(
         # Update baroreflex — updates hr_delta, svr_factor etc. for NEXT ODE step
         rsa_now = 0.0
         if baro is not None:
-            # With the sac on, the reflex reads CAVITY CVP re-zeroed to its resting
-            # value (heart.py THE PERICARDIUM): soft walls sit near zero and clip,
-            # which would blind the reflex to unloading. Off: unchanged.
-            _cvp_reflex = (p_cvp_rep - params.reflex_cvp_offset
-                           if params.pericardium_enabled else p_cvp_edi)
+            # The reflex reads INSTANTANEOUS right atrial pressure (wall + sac,
+            # no ITP); its own 2.5 s window (baroreflex.py) turns that into the
+            # CYCLE MEAN. Until 2026-10-09 it read the x-descent TROUGH
+            # (p_cvp_edi). Its sources measured catheter MEANS, and the trough
+            # moves with waveform SHAPE: AV-plane coupling deepens the x descent,
+            # which the trough read as hypovolaemia (HR 68.6 -> 80.2 in the
+            # prototype, validation log 2026-10-09). Jesper: "Switch to mean RA."
+            # The reference points moved by the measured mean-trough offset
+            # (baroreflex.py), so the resting state is unchanged.
+            # reflex_cvp_offset re-zeroes the input when the sac is on.
+            _cvp_reflex = p_ra + _pp_now - params.reflex_cvp_offset
             baro.update(p_ao, 40.0, _cvp_reflex)
         if params.ventilation_mode != 'none':
             rsa_now = respiratory_sinus_arrhythmia(
@@ -1776,7 +1789,7 @@ def run_simulation(
         )
 
         # Positional ITP offset for CVP and LA-pressure reporting.
-        # The baroreflex uses transmural CVP (p_cvp_edi) — wall-stretch drives
+        # The baroreflex uses transmural CVP (mean p_ra, no ITP) — wall-stretch drives
         # the reflex, not the absolute lumen pressure. Reported CVP is absolute
         # (transmural + positional ITP), matching what a CVC catheter reads.
         # Respiratory ITP is NOT added here: clinical CVP is read at end-
@@ -1830,6 +1843,10 @@ def run_simulation(
         # MEAN right atrial cavity pressure over the block — what a catheter mean
         # reads (Fujimoto 2011 reports MEAN RAP). `cvp` is the x-descent trough.
         ra_mean_ts[_oi]  += p_ra + _pp_now + itp_pos_now + _itp_vals_now
+        # Intrapericardial pressure as a pericardial catheter reads it: the sac's
+        # own pressure plus the same thoracic terms as ra_mean, so the two compare
+        # directly (tamponade equalisation, Reddy 1978). Zero sac -> pleural only.
+        peri_p_ts[_oi]   += _pp_now + itp_pos_now + _itp_vals_now
         hr_ts[_oi]       += hr_eff
         dbp_ts[_oi]      += p_dbp
         sbp_ts[_oi]      += p_sbp
@@ -2015,7 +2032,7 @@ def run_simulation(
     # Every series above was accumulated with += over its block; divide to get the
     # mean. With output_every=1 every block holds one sample and this is a no-op,
     # which is what makes that case bit-for-bit identical to the old behaviour.
-    for _arr in (aortic_p, ppv_acc, cvp_ts, ra_intra_ts, la_p_ts, ra_mean_ts, lv_p_ts, rv_p_ts,
+    for _arr in (aortic_p, ppv_acc, cvp_ts, ra_intra_ts, la_p_ts, ra_mean_ts, peri_p_ts, lv_p_ts, rv_p_ts,
                  co_ts, hr_ts, sv_ts,
                  dbp_ts, sbp_ts, brachial_sbp_ts, brachial_dbp_ts, lvedp_ts,
                  cpp_ts, cop_ts, buckberg_ts, ankle_p_ts, brachial_p_ts):
@@ -2090,6 +2107,7 @@ def run_simulation(
         "aortic_intraluminal": ao_intra_ts,
         "la_pressure": la_p_ts,
         "ra_mean":     ra_mean_ts,
+        "pericardial_p": peri_p_ts,
         "lv_pressure": lv_p_ts,
         "rv_pressure": rv_p_ts,
         "co":          co_ts,

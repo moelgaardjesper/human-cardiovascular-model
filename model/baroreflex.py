@@ -67,10 +67,14 @@ from collections import deque
 #   (S + 2D)/3 of 88.95 — a difference of **6.47 mmHg**. A cuff reading is NOT
 #   comparable with these numbers.
 #
-#   CVP is TRANSMURAL, and it is a rolling MINIMUM (end-diastolic trough), not a
-#   cycle mean. The reflex is fed `p_cvp_edi`. Transmural 4.39 against
-#   intraluminal 2.34 — a difference of **2.05 mmHg**, and larger under positive-
-#   pressure ventilation. A catheter reads intraluminal means.
+#   CVP is TRANSMURAL (no ITP) and, since 2026-10-09, a CYCLE MEAN: the reflex
+#   is fed instantaneous right atrial pressure and the 2.5 s window below
+#   averages it. Until then it was the x-descent TROUGH (`p_cvp_edi`); the
+#   switch moved both CVP references by the measured resting mean - trough
+#   offset, **1.540 mmHg** (mean 5.818, trough 4.278, reference patient, 240-300
+#   s), so the resting state is unchanged. Transmural against intraluminal
+#   differed by 2.05 mmHg (2026-09-27), larger under positive-pressure
+#   ventilation. A catheter reads intraluminal means.
 #
 # Two of this project's longest detours were exactly this: a finger pressure
 # compared against an integrated central one (registration 005, ~9 of an 11 mmHg
@@ -78,7 +82,7 @@ from collections import deque
 # made a venous return curve slope come out POSITIVE.
 MAP_SETPOINT = 93.0   # mmHg, CENTRAL AORTIC — McEniery 2005 males 50-59 measure 95 +/- 7
 PP_SETPOINT  = 40.0   # mmHg, CENTRAL AORTIC
-CVP_SETPOINT =  3.0   # mmHg, TRANSMURAL, end-diastolic trough
+CVP_SETPOINT =  4.54  # mmHg, TRANSMURAL, CYCLE MEAN — was 3.0 as a trough (uncited), + 1.540 offset
 
 # The reference patient's OPERATING POINT, used by `patient.py` to compute the
 # SVR a patient's measured numbers should be scaled against. This is NOT the
@@ -297,7 +301,11 @@ CP_HR_LOADING_FRACTION = 0.0
 # slightly stale (the settled CVP was 4.31 before the change). With the Klotz LV
 # curve (heart.py) the resting CVP is 4.27. Still a modelling choice, item 39.
 # (A Klotz RV briefly gave 2.56; that RV curve was withdrawn the same day.)
-CP_HR_REFERENCE_CVP_MMHG = 4.27
+#
+# RESTATED AS A CYCLE MEAN 2026-10-09: 4.27 (trough) -> 5.82, the settled MEAN
+# right atrial pressure of the default patient, by this note's own definition
+# (measured 5.818 alongside a trough of 4.278).
+CP_HR_REFERENCE_CVP_MMHG = 5.82
 
 
 # ---------------------------------------------------------------------------

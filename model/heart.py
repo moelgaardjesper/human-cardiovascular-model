@@ -200,12 +200,46 @@ LV_V0_DIA, LV_V30 = klotz_placement(74.0 * _BSA_REF, 11.0 - _PLEURAL_END_EXPIRAT
 #   - Mechanics: little pressure at small heart volume, steep once the heart
 #     fills the sac (Borlaug & Reddy; Kroeker 2003, dog).
 #
-# THE LAW: exponential in total heart volume,
-#     P_peri = p_ref * exp((V_heart - v_ref) / vk)
-# which tends to zero as the heart shrinks (slack) and steepens as it fills.
-# GRADE E for p_ref and vk: no human pericardial pressure-volume curve is in the
-# ledger. Both are to be PINNED from independent human endpoints (Fujimoto's
-# rest and -30 LBNP pressures; Levine's LVEDV range) and reported as such.
+# THE SAC IS ITS OWN STRUCTURE (rebuilt 2026-10-09, Jesper: "we need both if we
+# want to model cardiac tamponade"). It has an anatomical CAPACITY, it holds the
+# heart AND any excess fluid, and it presses only once its contents exceed that
+# capacity:
+#     contents = RA + RV + LA + LV + pericardial_fluid_ml
+#     P_peri   = 0                                       contents <= capacity
+#              = k * (exp((contents - capacity) / vk) - 1)  above it
+# Slack below the knee, an "elastic band" above it (Kroeker 2003, dog; Holt 1967
+# review: "accommodates large volume increases with little or no increase in
+# pressure; after a certain large volume is reached, small increases produce
+# large increases"). P_peri is relative to PLEURAL pressure; ITP is added on top
+# as for every thoracic structure, so a drained sac can read below atmospheric
+# (Reddy 1978, PMID 668074; Boltwood 1987, PMID 3568311).
+#
+# pericardial_fluid_ml is EXCESS fluid. The normal film is part of the capacity,
+# which keeps an unsourced "normal fluid volume" out of the model. Tamponade is
+# fluid > 0; pericardiocentesis is lowering it.
+#
+# THE THREE NUMBERS AND THEIR GRADES (ledger 2026-10-09, all read in full):
+#   capacity  GRADE C — at the resting heart volume. Dog: 10 mL into a normal sac
+#             raised pressure ~1.8 mmHg, so the heart fills it to within ~10 mL
+#             (Banchero via Holt 1967, PMID 4866091). Human: ~200 mL of acute
+#             effusion can cause hypotensive tamponade (Beck 1935 via Boltwood);
+#             ~70 % of resting wedge is external (Fujimoto 2011). CONTRADICTED by
+#             Applegate 1992 (dog, no constraint at rest) — recorded, unresolved.
+#             The default is the reference heart's measured mean four-chamber
+#             volume, 305 mL; it scales with heart size in apply_cardiac.
+#   k, vk     GRADE D/E — slope at the knee k/vk = 0.18 mmHg/mL from the same dog
+#             experiment. Human drainage slopes (0.03-0.2 mmHg/mL, Reddy, Boltwood)
+#             are from CHRONICALLY STRETCHED sacs and are not a normal sac's
+#             stiffness. vk is unmeasured. Both to be PINNED from a human endpoint
+#             (Borlaug 2018's 67 %, or Bhella 2014's RA rise on saline) and tested
+#             on the others.
+# A stretched (subacute) sac is a larger capacity with the same stiffness
+# (Freeman & LeWinter 1984, dog) — model it by raising capacity, not softening k.
+#
+# KNOWN BLOCKER FOR SWITCHING IT ON: the model's four-chamber volume swings
+# ~158 mL per beat against ~64 mL in man (Carlsson 2004, PMID 15016625), because
+# the atria do not fill during ventricular ejection (no AV-plane coupling). A
+# sac converts that swing into a large pressure oscillation every beat.
 #
 # WHAT EACH CONSUMER GETS. The ODE uses cavity pressure — venous return into the
 # RA is opposed by the sac as well as the wall. The baroreflex keeps the WALL
@@ -216,16 +250,31 @@ LV_V0_DIA, LV_V30 = klotz_placement(74.0 * _BSA_REF, 11.0 - _PLEURAL_END_EXPIRAT
 # KNOWN DOUBLE-COUNT IF SWITCHED ON AS-IS: the LV Klotz curve above was placed
 # at Chemla's wedge (11 mmHg) treated as a wall pressure. A wedge is a CAVITY
 # pressure, so part of it is already pericardial. Adding the sac on top counts
-# that part twice on the left. Re-placing the LV at its wall pressure is the
-# second step (validation log 2026-10-08).
-PERI_P_REF = 4.0     # mmHg at v_ref — GRADE E, to be pinned
-PERI_VK = 30.0       # mL — GRADE E, to be pinned
-PERI_V_REF = 305.0   # mL — mean total heart volume of the reference patient at rest, measured 2026-10-08
+# that part twice on the left. The walls must be re-placed at WALL pressures
+# (Hamilton 1994, Bhella 2014) before the sac goes on (validation log 2026-10-08).
+PERI_CAPACITY = 305.0  # mL — GRADE C: knee at the reference heart's mean four-chamber volume
+PERI_VK = 30.0         # mL — GRADE E, to be pinned
+PERI_K = 0.18 * PERI_VK  # mmHg — GRADE D: slope at the knee 0.18 mmHg/mL (dog, Banchero via Holt)
+# NUMERICAL GUARD, NOT PHYSIOLOGY. Above this sac pressure the curve continues as
+# a straight line at its own slope there (continuous value and slope). Without
+# it, an effusion the heart cannot make room for (300 mL into a 305 mL sac)
+# drives the exponential to ~1e5 mmHg and the 1 ms explicit integrator
+# overflows (measured 2026-10-09). 60 mmHg is ~3x the highest sac pressures in
+# human tamponade (Reddy 1978: 14-20; Boltwood 1987: 10-18), so no
+# physiological case reaches it.
+PERI_P_LINEAR = 60.0     # mmHg
 
 
-def pericardial_pressure(v_heart: float, v_ref: float, p_ref: float, vk: float) -> float:
-    """External pressure of the pericardial sac on all four chambers (mmHg)."""
-    return p_ref * np.exp((v_heart - v_ref) / vk)
+def pericardial_pressure(contents: float, capacity: float, k: float, vk: float) -> float:
+    """Pressure of the pericardial sac on all four chambers, relative to pleural
+    pressure (mmHg). Zero while the contents fit; exponential above capacity."""
+    if contents <= capacity:
+        return 0.0
+    x = (contents - capacity) / vk
+    x_lin = np.log(PERI_P_LINEAR / k + 1.0)
+    if x <= x_lin:
+        return k * (np.exp(x) - 1.0)
+    return PERI_P_LINEAR + (PERI_P_LINEAR + k) * (x - x_lin)
 
 
 # ---------------------------------------------------------------------------

@@ -1681,6 +1681,14 @@ def _venous_return_curve(bleed_ml=0.0, sympathetic_outflow_scale=1.0, baroreflex
     return float(slope), float(-intercept / slope)
 
 
+@pytest.mark.xfail(strict=True, raises=AssertionError, reason=(
+    "KNOWN PROTOCOL GAP, 2026-10-10 — the rotation is REFLEX-MEDIATED, not vascular. "
+    "Slope ratio 0.857 with the reflex reading mean RA (the convention its LBNP source "
+    "measured); 1.070 with reflexes OFF; 0.939 on the old trough input. The reflex acts "
+    "only because this protocol holds each airway pressure 60 s, where Maas's holds were "
+    "brief. The fix is short holds (backlog 47 step 2), not a wider band and not a "
+    "reflex-off test. Validation log 2026-10-10."
+))
 def test_haemorrhage_shifts_venous_return_curve_without_rotating_it():
     """[PMID: 19237896 — Maas 2009] A moderate haemorrhage must lower Pmsf and
     leave the venous-return slope alone: resistance to venous return is a
@@ -2066,7 +2074,11 @@ def _run_venous_tone(vt_factor, baro=False):
     p.drug_factors["venous_tone_factor"] = vt_factor
     r = run_simulation(p, duration_s=30.0, dt=DT, use_baroreflex=baro)
     h = len(r["map"]) // 2
-    return {k: float(np.mean(r[k][h:])) for k in ("map", "cvp", "co", "sv")}
+    out = {k: float(np.mean(r[k][h:])) for k in ("map", "cvp", "co", "sv")}
+    from model.circulation import THORACIC_COMPARTMENTS
+    th = [IDX[n] for n in THORACIC_COMPARTMENTS]
+    out["thorax_ml"] = float(np.mean(np.asarray(r["volumes"])[h:][:, th].sum(axis=1)))
+    return out
 
 
 def test_venous_tone_modulates_preload_regression():
@@ -2074,14 +2086,28 @@ def test_venous_tone_modulates_preload_regression():
 
     Fails bit-for-bit on the pre-fix code where the factor was never applied.
     Baroreflex OFF isolates the mechanical (preload-recruitment) effect.
+
+    A LIVENESS AND DIRECTION GUARD — NO SOURCED MAGNITUDE. Re-expressed
+    2026-10-09 (Jesper chose this). It used to assert CO > +5 %, a margin set in
+    August when the model happened to give +5.40 %. The leg rebuild (grade D leg
+    capacity, compliance 12 -> 25 mL/mmHg) let the legs absorb part of the
+    mobilised blood — correct physiology (Pang 2001, PMID 11578657) — and CO
+    became +4.94 %, failing a number nothing in the literature had set.
+    It now asserts what the mechanism CLAIMS: blood leaves the squeezed
+    reservoir and arrives in the chest. Measured 2026-10-09: reservoir -90 mL,
+    thorax +55 / -52 mL, legs +16 mL. The 20 mL margin is anchored to the dead
+    mechanism (0 mL), not to the value of the day.
     """
     neutral   = _run_venous_tone(1.00)
     constrict = _run_venous_tone(0.90)   # +10% venous tone (venoconstriction)
     dilate    = _run_venous_tone(1.10)   # 10% venodilation
 
-    # Venoconstriction recruits blood centrally: CVP, SV and CO all rise —
-    # by a clear margin, not marginally (guards against re-neutering).
-    assert constrict["co"]  > neutral["co"]  * 1.05, (
+    # Venoconstriction recruits blood INTO THE CHEST — the mechanism's claim,
+    # by a margin anchored to a dead mechanism (0 mL).
+    assert constrict["thorax_ml"] > neutral["thorax_ml"] + 20.0, (
+        f"Venoconstriction recruited only {constrict['thorax_ml'] - neutral['thorax_ml']:+.1f} mL "
+        f"into the thorax (dead mechanism: 0)")
+    assert constrict["co"]  > neutral["co"], (
         f"Venoconstriction did not raise CO: {neutral['co']:.2f}→{constrict['co']:.2f} L/min")
     assert constrict["sv"]  > neutral["sv"], (
         f"Venoconstriction did not raise SV: {neutral['sv']:.1f}→{constrict['sv']:.1f} mL")
@@ -2091,8 +2117,11 @@ def test_venous_tone_modulates_preload_regression():
     assert constrict["cvp"] > neutral["cvp"] + 0.2, (
         f"Venoconstriction did not raise CVP: {neutral['cvp']:.2f}→{constrict['cvp']:.2f} mmHg")
 
-    # Venodilation pools blood peripherally: CVP and CO fall.
-    assert dilate["co"]  < neutral["co"]  * 0.95, (
+    # Venodilation pools blood peripherally: the chest loses volume, CVP and CO fall.
+    assert dilate["thorax_ml"] < neutral["thorax_ml"] - 20.0, (
+        f"Venodilation moved only {dilate['thorax_ml'] - neutral['thorax_ml']:+.1f} mL out of "
+        f"the thorax (dead mechanism: 0)")
+    assert dilate["co"]  < neutral["co"], (
         f"Venodilation did not lower CO: {neutral['co']:.2f}→{dilate['co']:.2f} L/min")
     assert dilate["cvp"] < neutral["cvp"] - 0.2, (
         f"Venodilation did not lower CVP: {neutral['cvp']:.2f}→{dilate['cvp']:.2f} mmHg")
@@ -5751,10 +5780,13 @@ def test_the_reference_operating_point_is_stated_once_and_consistently():
     # The recorded, deliberate relationships. Changing a constant must fail here.
     # 4.7 -> 4.27 on 2026-10-06 (Klotz LV curve; the settled CVP with the arm at
     # rest — see the note at CP_HR_REFERENCE_CVP_MMHG and backlog item 39).
-    assert CVP_SETPOINT == 3.0 and CP_HR_REFERENCE_CVP_MMHG == 4.27, (
+    # 2026-10-09: BOTH restated as CYCLE MEANS (the reflex now reads mean RA, not
+    # the trough): 3.0 -> 4.54 and 4.27 -> 5.82, each + the measured resting
+    # mean - trough offset 1.540 mmHg. The deliberate gap is kept (1.27 -> 1.28).
+    assert CVP_SETPOINT == 4.54 and CP_HR_REFERENCE_CVP_MMHG == 5.82, (
         f"A FILLING-PRESSURE REFERENCE CHANGED: CVP_SETPOINT={CVP_SETPOINT} "
-        f"(was 3.0, uncited, used by the SVR arm), CP_HR_REFERENCE_CVP_MMHG="
-        f"{CP_HR_REFERENCE_CVP_MMHG} (was 4.27, the cardiopulmonary arm's reference, "
+        f"(was 4.54, uncited, used by the SVR arm), CP_HR_REFERENCE_CVP_MMHG="
+        f"{CP_HR_REFERENCE_CVP_MMHG} (was 5.82, the cardiopulmonary arm's reference, "
         f"chosen to sit at the model's own settled filling pressure). THEY ARE "
         f"DELIBERATELY DIFFERENT — read backlog item 39 before changing either, and "
         f"note that driving the HR arm from CVP_SETPOINT cost 6.0 bpm of spurious "
@@ -6880,3 +6912,93 @@ def test_abdominal_and_leg_heights_scale_with_stature():
             f"proportional to stature")
     assert abs(tc["hip_height_m"] / sc["hip_height_m"] - 200.0 / 150.0) < 1e-9, (
         "the hip pivot does not scale with stature")
+
+
+# ===========================================================================
+# 47. THE PERICARDIUM IS ITS OWN STRUCTURE — tamponade [PMID 668074, 3568311]
+# ===========================================================================
+# The sac (heart.py THE PERICARDIUM) has a capacity, a stiffness and a fluid
+# content, and is OFF by default until its stiffness is pinned and the walls are
+# re-placed at wall pressures. What is asserted here is the MECHANISM, which is
+# grade C in man and independent of the unpinned numbers: an effusion the heart
+# must make room for raises the pressure of every chamber toward the sac's and
+# throttles output. Magnitudes (k, vk) are grade D/E and are NOT asserted.
+
+def test_pericardial_effusion_produces_tamponade():
+    """[PMID 668074] Reddy 1978: in all 14 tamponade patients RVEDP was elevated
+    and EQUAL to pericardial pressure; with pulsus paradoxus the wedge equalised
+    too; CO 3.87 -> 7.0 L/min after drainage (output roughly halved by the
+    effusion). [PMID 3568311] Boltwood 1987: mean RAP = 0.98 x IPP + 1.1 (r .96).
+    Beck 1935 (JAMA 104:714, cited by Boltwood; not read): ~200 mL of ACUTE
+    effusion can cause hypotensive tamponade — a normal sac has little spare
+    capacity.
+
+    Through the code path: the same patient with the sac on, with and without
+    200 mL of excess fluid. Equalisation is asserted within 3 mmHg (Boltwood's
+    individual RAP - IPP offsets were 1-3 mmHg)."""
+    def run(fluid_ml):
+        p = SimParams()
+        p.pericardium_enabled = True
+        p.pericardial_fluid_ml = fluid_ml
+        r = run_simulation(p, duration_s=150.0, dt=DT, output_every=10)
+        t = np.asarray(r["t"]); m = t > 120.0
+        g = lambda k: float(np.mean(np.asarray(r[k])[m]))
+        return g("ra_mean"), g("la_pressure"), g("pericardial_p"), g("co")
+    ra0, la0, ipp0, co0 = run(0.0)
+    ra1, la1, ipp1, co1 = run(200.0)
+    assert ra1 > ra0 + 5.0, (
+        f"200 mL of effusion raised mean RA pressure only {ra0:.1f} -> {ra1:.1f}: "
+        f"the fluid is not reaching the sac, or the sac is not reaching the chambers")
+    assert abs(ra1 - ipp1) < 3.0 and abs(la1 - ipp1) < 3.0, (
+        f"no equalisation in tamponade: RA {ra1:.1f}, LA {la1:.1f}, IPP {ipp1:.1f} "
+        f"(Reddy: RVEDP = IPP; Boltwood: RAP = 0.98 IPP + 1.1)")
+    assert co1 < 0.6 * co0, (
+        f"tamponade did not throttle output: CO {co0:.2f} -> {co1:.2f} L/min")
+
+
+def test_pericardial_output_is_pleural_only_when_the_sac_is_off():
+    """The sac is OFF by default (heart.py: walls not yet at wall pressures, AV
+    coupling missing). With it off, the reported intrapericardial pressure must be
+    the thoracic terms alone, and an effusion must change nothing — so a default
+    run cannot silently carry a sac."""
+    p = SimParams()
+    assert p.pericardium_enabled is False
+    p.pericardial_fluid_ml = 200.0
+    r = run_simulation(p, duration_s=20.0, dt=DT, output_every=10)
+    q = SimParams()
+    r0 = run_simulation(q, duration_s=20.0, dt=DT, output_every=10)
+    assert np.allclose(r["ra_mean"], r0["ra_mean"]), "effusion acted with the sac off"
+    # Supine, no Valsalva: the thoracic terms in the series are zero, so with the
+    # sac off it must read exactly zero.
+    assert float(np.max(np.abs(np.asarray(r["pericardial_p"])))) < 1e-9, (
+        "sac pressure reported with the sac off")
+
+
+# ===========================================================================
+# 48. THE CARDIOPULMONARY REFLEX READS MEAN RIGHT ATRIAL PRESSURE
+# ===========================================================================
+
+def test_cardiopulmonary_reflex_reads_mean_not_trough_right_atrial_pressure():
+    """The cardiopulmonary reflex's sources measured CATHETER MEANS (its gain
+    is calibrated against LBNP CVP; baroreflex.py). Until 2026-10-09 the model
+    fed it the x-descent TROUGH, which moves with waveform SHAPE as well as
+    filling — and AV-plane coupling deepens the x descent, which the trough read
+    as hypovolaemia (HR 68.6 -> 80.2 in the prototype; validation log
+    2026-10-09). Jesper: "Switch to mean RA."
+
+    A CONVENTION PROBE, not a physiological claim: a fourfold atrial
+    contraction changes the RA waveform shape (trough -1.0 mmHg) while barely
+    moving its mean (-0.12). Read as a mean the reflex barely responds
+    (measured +0.14 bpm); read as a trough it produced a phantom +3.17 bpm
+    (sabotage, measured). The arm's own gain (3.8 bpm/mmHg) on the mean change
+    predicts ~0.5 bpm, so 1.0 separates the honest response from the artefact."""
+    def hr(f):
+        p = SimParams()
+        p.ra_emax *= f
+        r = run_simulation(p, duration_s=200.0, dt=DT, output_every=10)
+        t = np.asarray(r["t"])
+        return float(np.mean(np.asarray(r["hr"])[t > 160.0]))
+    h1, h4 = hr(1.0), hr(4.0)
+    assert abs(h4 - h1) < 1.0, (
+        f"a change in RA waveform SHAPE moved heart rate {h1:.2f} -> {h4:.2f} bpm: "
+        f"the cardiopulmonary reflex is reading the trough, not the mean")
