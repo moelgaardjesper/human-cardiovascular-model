@@ -174,6 +174,9 @@ def apply_cardiac(params, cardiac: dict) -> None:
     k = cardiac.get("lv_dia_volume_factor", 1.0)
     params.lv_v0_dia = LV_V0_DIA * k
     params.lv_v30 = LV_V30 * k
+    # The pericardial sac's reference volume scales with the heart it holds.
+    from .heart import PERI_V_REF
+    params.pericardial_v_ref = PERI_V_REF * k
     if "hr_bpm" in cardiac:
         params.hr_bpm = cardiac["hr_bpm"]
     # Reflex end-organ responsiveness by age — backlog item 51. Applied here

@@ -178,6 +178,57 @@ LV_V0_DIA, LV_V30 = klotz_placement(74.0 * _BSA_REF, 11.0 - _PLEURAL_END_EXPIRAT
 
 
 # ---------------------------------------------------------------------------
+# THE PERICARDIUM (2026-10-08) — a shared external pressure, not a compartment
+# ---------------------------------------------------------------------------
+# The heart sits in a sac. The sac holds no blood, so it is not a compartment:
+# it is a PRESSURE, set by how full the whole heart is, pressing on all four
+# chambers at once — the same kind of term as intrathoracic pressure, one layer
+# further in. Chamber pressure as a catheter reads it is then
+#     P_cavity = P_wall(V_chamber) + P_peri(V_heart) [+ ITP]
+# with V_heart = RA + RV + LA + LV.
+#
+# THE EVIDENCE (ledger, all read in full):
+#   - Pericardial pressure ~ right atrial pressure in man: slope 1.16 +/- 0.20,
+#     intercept 0.71 +/- 2.48 (Tyberg 1986, PMID 3948353, n 9, open chest).
+#   - Human RA wall (transmural) pressure 1.0 +/- 1.5 over CVP 3-16; the
+#     pericardium carries 89 % of RA and 77 % of RV cavity pressure at CVP 10
+#     (Hamilton 1994, PMID 7955207).
+#   - Healthy 55-year-olds: PCWP 11.4, RAP 8.0, LV wall pressure only 3.4 —
+#     70 % of the wedge reading is external (Fujimoto 2011, PMID 21398598).
+#   - Opening the sac cuts the PCWP rise on volume loading by 67 % in man
+#     (Borlaug 2018 via Borlaug & Reddy 2019, PMID 31248569).
+#   - Mechanics: little pressure at small heart volume, steep once the heart
+#     fills the sac (Borlaug & Reddy; Kroeker 2003, dog).
+#
+# THE LAW: exponential in total heart volume,
+#     P_peri = p_ref * exp((V_heart - v_ref) / vk)
+# which tends to zero as the heart shrinks (slack) and steepens as it fills.
+# GRADE E for p_ref and vk: no human pericardial pressure-volume curve is in the
+# ledger. Both are to be PINNED from independent human endpoints (Fujimoto's
+# rest and -30 LBNP pressures; Levine's LVEDV range) and reported as such.
+#
+# WHAT EACH CONSUMER GETS. The ODE uses cavity pressure — venous return into the
+# RA is opposed by the sac as well as the wall. The baroreflex keeps the WALL
+# pressure: cardiopulmonary receptors sense stretch, which is transmural.
+# Reported CVP / LA / chamber traces are cavity pressures, as a catheter reads.
+# Off by default (SimParams.pericardium_enabled) until measured.
+#
+# KNOWN DOUBLE-COUNT IF SWITCHED ON AS-IS: the LV Klotz curve above was placed
+# at Chemla's wedge (11 mmHg) treated as a wall pressure. A wedge is a CAVITY
+# pressure, so part of it is already pericardial. Adding the sac on top counts
+# that part twice on the left. Re-placing the LV at its wall pressure is the
+# second step (validation log 2026-10-08).
+PERI_P_REF = 4.0     # mmHg at v_ref — GRADE E, to be pinned
+PERI_VK = 30.0       # mL — GRADE E, to be pinned
+PERI_V_REF = 305.0   # mL — mean total heart volume of the reference patient at rest, measured 2026-10-08
+
+
+def pericardial_pressure(v_heart: float, v_ref: float, p_ref: float, vk: float) -> float:
+    """External pressure of the pericardial sac on all four chambers (mmHg)."""
+    return p_ref * np.exp((v_heart - v_ref) / vk)
+
+
+# ---------------------------------------------------------------------------
 # Default cardiac elastance parameters (healthy male, Heldt 2002)
 # ---------------------------------------------------------------------------
 LV_EMAX = 3.00   # mmHg/mL  left ventricle peak systolic elastance

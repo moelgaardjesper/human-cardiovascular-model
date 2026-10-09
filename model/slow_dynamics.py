@@ -237,11 +237,38 @@ ADH_MAX_SVR_FRACTION  = 0.13
 # Capillary beds: (arterial compartment, venous compartment, share of total Kf).
 # Shares follow roughly the resting distribution of cardiac output / exchange
 # surface across the systemic beds represented in the model.
+#
+# BACKLOG ITEM 74 CLOSED 2026-10-08 — the calf and foot had NO filtration bed.
+# The leg carried one bed (lower_body_art -> thigh_vein) for the whole limb,
+# so two of the three leg venous compartments could neither lose fluid nor
+# absorb it. That is why the model could not reproduce an LBNP time course:
+# Lundvall 1993 (PMID 8475742) measured 460 +/- 21 mL of plasma filtering into
+# the legs and buttocks over 10 min of 70-75 mmHg LBNP, and a NET plasma volume
+# fall of 491 +/- 29 mL, with the filtration continuing throughout while the
+# intravascular pooling was complete by ~3.5 min.
+#
+# THE LEG'S TOTAL SHARE IS UNCHANGED AT 0.20 and is merely RE-PARTITIONED across
+# the three segments by SOFT-TISSUE MASS (Winter 2009 Table 4.1, both legs,
+# 75 kg: thigh 15.00 kg, shank 6.97, foot 2.18; fractions 0.621 / 0.289 / 0.090).
+# Re-partitioning rather than re-weighting is deliberate: it leaves the resting
+# balance and every existing calibration untouched, and the quantity it changes
+# — WHERE in the leg fluid is exchanged — is the one item 74 is about.
+# GRADE D: mass is a proxy for exchange surface, and Winter's masses are
+# cadaveric. The fractions are the only new numbers here.
+#
+# AND A SEPARATE QUESTION THIS RAISES, RECORDED NOT ACTED ON: Lundvall's own
+# tissue masses are legs + buttocks 23-24 kg against upper-body muscle and skin
+# 10-12 kg, yet this table gives the upper body 0.30 and the whole leg 0.20.
+# If share tracked exchange mass the leg should outweigh the upper body. Changing
+# it would move the Lister 1963 refill trajectory that KF_TOTAL is validated
+# against, so it needs its own measurement pass.
 CAPILLARY_BEDS = (
     ("upper_body_art",  "upper_body_vein",  0.30),
     ("renal_art",       "renal_vein",       0.15),
     ("splanchnic_art",  "splanchnic_vein",  0.35),
-    ("lower_body_art",  "thigh_vein",       0.20),
+    ("lower_body_art",  "thigh_vein",       0.1242),
+    ("lower_body_art",  "calf_vein",        0.0578),
+    ("lower_body_art",  "foot_vein",        0.0180),
 )
 
 # Plasma protein and oncotic pressure. Normal plasma protein ~70 g/L over a

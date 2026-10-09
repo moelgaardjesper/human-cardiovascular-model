@@ -43,6 +43,7 @@ from .heart import (
     klotz_diastolic_pressure, _normalised_activation,
     RA_EMAX, RA_EMIN, LA_EMAX, LA_EMIN,
     atrial_phase_offset,
+    pericardial_pressure, PERI_P_REF, PERI_VK, PERI_V_REF,
 )
 from .gravity import (hydrostatic_delta_mmhg, GravityEnvironment, smooth_tilt_profile,
                       positional_itp_mmhg, articulated_hydrostatic_delta_mmhg)
@@ -314,6 +315,14 @@ class SimParams:
         # scaled with chamber size by apply_cardiac.
         self.lv_v0_dia = LV_V0_DIA
         self.lv_v30    = LV_V30
+        # The pericardium (heart.py THE PERICARDIUM). Off until measured; v_ref
+        # scales with heart size in apply_cardiac.
+        self.pericardium_enabled = False
+        self.pericardial_p_ref = PERI_P_REF
+        self.pericardial_vk = PERI_VK
+        self.pericardial_v_ref = PERI_V_REF
+        # Re-zeroes the reflex's CVP input to its resting value when the sac is on.
+        self.reflex_cvp_offset = 0.0
         self.rv_emax = RV_EMAX
         self.rv_emin = RV_EMIN
         self.la_emax = LA_EMAX
@@ -448,6 +457,17 @@ class SimParams:
         # transmission differs from positive-pressure ventilation's 0.376.
         # Standard bedside manoeuvre is 40 mmHg for 15 s.
         self.valsalva_start_s     = None   # s, or None for no strain
+        # LOWER BODY NEGATIVE PRESSURE — a sealed tank at the iliac crests. A
+        # negative external pressure on LEG_COMPARTMENTS, applied exactly like
+        # intrathoracic pressure on the thorax (intraluminal = transmural +
+        # external). Until 2026-10-08 LBNP was imitated by a bleed (500 mL ~
+        # -30 mmHg, PMID 27702883) — an equivalence fitted on the sac-free model,
+        # so circular once the heart changes. lbnp_mmhg < 0; ramped over
+        # lbnp_ramp_s; held until lbnp_end_s (None = to the end).
+        self.lbnp_mmhg   = 0.0
+        self.lbnp_start_s = 0.0
+        self.lbnp_end_s   = None
+        self.lbnp_ramp_s  = 5.0
         self.valsalva_duration_s  = 15.0   # s
         self.valsalva_mmhg        = 40.0   # mouth pressure held
 
@@ -700,9 +720,38 @@ def _valve_flow(dp: float, r_lin: float, k_orifice: float | None) -> float:
 # Main ODE function
 # ---------------------------------------------------------------------------
 
+_LEG_IDX = tuple(IDX[n] for n in LEG_COMPARTMENTS)
+
+
+def lbnp_now(t: float, params: SimParams) -> float:
+    """External pressure of the LBNP tank at time t (mmHg, <= 0): linear ramp on
+    from lbnp_start_s, held, linear ramp off at lbnp_end_s."""
+    if params.lbnp_mmhg == 0.0 or t < params.lbnp_start_s:
+        return 0.0
+    ramp = max(params.lbnp_ramp_s, 1e-9)
+    f = min(1.0, (t - params.lbnp_start_s) / ramp)
+    if params.lbnp_end_s is not None and t >= params.lbnp_end_s:
+        f = max(0.0, 1.0 - (t - params.lbnp_end_s) / ramp)
+    return params.lbnp_mmhg * f
+
+
+_CHAMBER_IDX = (IDX["right_atrium"], IDX["right_ventricle"], IDX["left_atrium"], IDX["left_ventricle"])
+
+
+def _pericardial_now(V: np.ndarray, params: SimParams) -> float:
+    """Sac pressure from the current total heart volume. The ONE formula both the
+    ODE and the monitor use — two parallel formulas for one quantity is how the
+    arrest CVP and hr_eff defects arose."""
+    if not params.pericardium_enabled:
+        return 0.0
+    v_heart = float(sum(V[k] for k in _CHAMBER_IDX))
+    return pericardial_pressure(v_heart, params.pericardial_v_ref,
+                                params.pericardial_p_ref, params.pericardial_vk)
+
+
 def _odes(t: float, V: np.ndarray, params: SimParams, baro: BaroreflexController | None,
           cardiac_phase: float, p_out: np.ndarray | None = None, slow=None,
-          hr_now: float | None = None):
+          hr_now: float | None = None, p_tm_out: np.ndarray | None = None):
     """
     Compute dV/dt for the 23-compartment system.
 
@@ -886,6 +935,12 @@ def _odes(t: float, V: np.ndarray, params: SimParams, baro: BaroreflexController
     P[i["right_ventricle"]] = _cardiac_pressure(V[i["right_ventricle"]], comp[i["right_ventricle"]].unstressed_volume, E_rv)
     P[i["left_atrium"]]     = _cardiac_pressure(V[i["left_atrium"]],     comp[i["left_atrium"]].unstressed_volume,     E_la)
     P[i["right_atrium"]]    = _cardiac_pressure(V[i["right_atrium"]],    comp[i["right_atrium"]].unstressed_volume,    E_ra)
+    # The pericardial sac presses on all four chambers (heart.py). Cavity
+    # pressure = wall pressure + sac pressure; flows see the cavity pressure.
+    if params.pericardium_enabled:
+        _pp = _pericardial_now(V, params)
+        for _c in _CHAMBER_IDX:
+            P[_c] += _pp
 
     # -----------------------------------------------------------------------
     # Tilt angle at current time  (computed first — needed for positional ITP)
@@ -935,9 +990,29 @@ def _odes(t: float, V: np.ndarray, params: SimParams, baro: BaroreflexController
                                   params.valsalva_duration_s, params.valsalva_mmhg)
     itp_total = itp_resp + itp_pos + itp_vals
 
+    # TRANSMURAL SNAPSHOT — taken BEFORE any external pressure is applied.
+    # The Starling balance is across the capillary WALL, and the interstitium
+    # sits at the SAME external pressure as the vessel it surrounds, so an
+    # external pressure cancels from (P_c - P_i) and must not reach the
+    # filtration code. Lundvall 1989 (cited in Lundvall 1993, PMID 8475742)
+    # measured that transmission of external negative pressure to limb tissue
+    # is "total or almost total, regardless of tissue depth" — so the tank
+    # pressure is applied to both sides in life, and to neither here.
+    # What DOES drive filtration under LBNP is the DISTENSION: blood flows in,
+    # venous transmural pressure rises, and that rise is already in this array.
+    if p_tm_out is not None:
+        p_tm_out[:] = P
+
     if itp_total != 0.0:
         for _ti in _THORACIC_IDX:
             P[_ti] += itp_total
+
+    # Lower body negative pressure on the legs (SimParams.lbnp_mmhg).
+    if params.lbnp_mmhg != 0.0:
+        _lb = lbnp_now(t, params)
+        if _lb != 0.0:
+            for _li in _LEG_IDX:
+                P[_li] += _lb
 
     # -----------------------------------------------------------------------
     # Abdominal pressure — the other half of the same diaphragm (item 27)
@@ -1351,6 +1426,7 @@ def run_simulation(
     # reported heart rate came to exclude drug chronotropy (see the 2026-09-04
     # entry in docs/validation_log.md).
     _p_scratch = np.zeros(len(comp))
+    _p_tm_scratch = np.zeros(len(comp))   # transmural, for the Starling balance
 
     t_eval = np.arange(0.0, duration_s, dt)
     n = len(t_eval)
@@ -1431,6 +1507,7 @@ def run_simulation(
     ra_intra_ts = np.zeros(n_out)
     ao_intra_ts = np.zeros(n_out)
     la_p_ts     = np.zeros(n_out)
+    ra_mean_ts  = np.zeros(n_out)
     lv_p_ts     = np.zeros(n_out)
     rv_p_ts     = np.zeros(n_out)
     co_ts       = np.zeros(n_out)
@@ -1466,6 +1543,7 @@ def run_simulation(
     from collections import deque as _deque
     _cvp_win_len = max(100, int(2 * 60.0 / params.hr_bpm / dt))
     _cvp_win     = _deque([10.0] * _cvp_win_len, maxlen=_cvp_win_len)
+    _cvp_rep_win = _deque([10.0] * _cvp_win_len, maxlen=_cvp_win_len)
 
     # DBP / SBP: rolling min / max of aortic and brachial pressure over 2 beats.
     _bp_win_len      = _cvp_win_len
@@ -1519,7 +1597,7 @@ def run_simulation(
         # placeholder written after the loop because it is derived by smoothing.
         _series = [("t", None), ("aortic_p", aortic_p), ("map", None),
                    ("aortic_intraluminal", ao_intra_ts),
-                   ("cvp", cvp_ts), ("la_pressure", la_p_ts), ("co", co_ts),
+                   ("cvp", cvp_ts), ("la_pressure", la_p_ts), ("ra_mean", ra_mean_ts), ("co", co_ts),
                    ("hr", hr_ts), ("sv", sv_ts), ("dbp", dbp_ts),
                    ("sbp", sbp_ts), ("lvedp", lvedp_ts), ("cpp", cpp_ts),
                    ("cop", cop_ts), ("buckberg", buckberg_ts),
@@ -1594,11 +1672,21 @@ def run_simulation(
         # CVP: end-diastolic RA trough (pass to baroreflex too, not instantaneous p_ra)
         _cvp_win.append(p_ra)
         p_cvp_edi = min(_cvp_win)
+        # Sac pressure for REPORTING only (cavity = wall + sac). The baroreflex
+        # below keeps p_cvp_edi, the wall pressure: receptors sense stretch.
+        _pp_now = _pericardial_now(V, params)
+        _cvp_rep_win.append(p_ra + _pp_now)
+        p_cvp_rep = min(_cvp_rep_win)
 
         # Update baroreflex — updates hr_delta, svr_factor etc. for NEXT ODE step
         rsa_now = 0.0
         if baro is not None:
-            baro.update(p_ao, 40.0, p_cvp_edi)
+            # With the sac on, the reflex reads CAVITY CVP re-zeroed to its resting
+            # value (heart.py THE PERICARDIUM): soft walls sit near zero and clip,
+            # which would blind the reflex to unloading. Off: unchanged.
+            _cvp_reflex = (p_cvp_rep - params.reflex_cvp_offset
+                           if params.pericardium_enabled else p_cvp_edi)
+            baro.update(p_ao, 40.0, _cvp_reflex)
         if params.ventilation_mode != 'none':
             rsa_now = respiratory_sinus_arrhythmia(
                 t, params.ventilation_mode, params.resp_rate_bpm, params.ie_ratio)
@@ -1698,7 +1786,7 @@ def run_simulation(
 
         aortic_p[_oi]    += p_ao
         ppv_acc[_oi]     += _ppv_now
-        cvp_ts[_oi]      += p_cvp_edi + itp_pos_now
+        cvp_ts[_oi]      += p_cvp_rep + itp_pos_now
         # INTRALUMINAL right atrial pressure — what a CVC transducer actually
         # traces, continuously, including the respiratory swing. `cvp` above
         # deliberately omits respiratory ITP because clinical CVP is READ at
@@ -1722,7 +1810,7 @@ def run_simulation(
         _itp_vals_now = valsalva_itp_mmhg(t, params.valsalva_start_s,
                                           params.valsalva_duration_s,
                                           params.valsalva_mmhg)
-        ra_intra_ts[_oi] += p_cvp_edi + itp_pos_now + _itp_resp_now + _itp_vals_now
+        ra_intra_ts[_oi] += p_cvp_rep + itp_pos_now + _itp_resp_now + _itp_vals_now
         # INTRALUMINAL AORTIC PRESSURE — what an arterial line reads.
         # `aortic_p` above is TRANSMURAL, (V - V0)/C with no external pressure,
         # which is the right quantity to drive the baroreflex (wall stretch) and
@@ -1738,11 +1826,14 @@ def run_simulation(
         # right atrium got `ra_intraluminal` for exactly this reason; the
         # arterial side never did, because until Valsalva nothing exercised it.
         ao_intra_ts[_oi] += p_ao + itp_pos_now + _itp_resp_now + _itp_vals_now
-        la_p_ts[_oi]     += p_la + itp_pos_now + _itp_vals_now
+        la_p_ts[_oi]     += p_la + _pp_now + itp_pos_now + _itp_vals_now
+        # MEAN right atrial cavity pressure over the block — what a catheter mean
+        # reads (Fujimoto 2011 reports MEAN RAP). `cvp` is the x-descent trough.
+        ra_mean_ts[_oi]  += p_ra + _pp_now + itp_pos_now + _itp_vals_now
         hr_ts[_oi]       += hr_eff
         dbp_ts[_oi]      += p_dbp
         sbp_ts[_oi]      += p_sbp
-        lvedp_ts[_oi]    += p_lvedp
+        lvedp_ts[_oi]    += p_lvedp + _pp_now
         cpp_ts[_oi]      += cerebral_perfusion_pressure(p_ao, tilt_now, params.gravity)
         cop_ts[_oi]      += coronary_perfusion_pressure(p_dbp, p_lvedp)
         buckberg_ts[_oi] += buckberg_index(p_dbp, p_lvedp, hr_eff, p_sbp)
@@ -1769,7 +1860,7 @@ def run_simulation(
         if _hr_row is not None:
             _hires_t[_hr_row] = t
             _hires_ao[_hr_row] = p_ao
-            _hires_cvp[_hr_row] = p_cvp_edi + itp_pos_now
+            _hires_cvp[_hr_row] = p_cvp_rep + itp_pos_now
             _hires_vol[_hr_row] = V
 
         if slow_enabled:
@@ -1797,6 +1888,7 @@ def run_simulation(
         # advance the slow state on its own coarse clock — update_slow_state()
         # returns immediately unless SLOW_DT of simulated time has elapsed.
         dV = _odes(t, V, params, baro, _cardiac_phase, _p_scratch, slow_state,
+                   p_tm_out=_p_tm_scratch,
                    hr_now=hr_now)
 
         # Ventricular pressures, taken from the array `_odes` just filled rather
@@ -1826,7 +1918,7 @@ def run_simulation(
             # folded into _odes: it is a slow-clock quantity (mL moved over
             # SLOW_DT), not a rate the 1 ms integrator should see.
             dV_slow = update_slow_state(
-                slow_state, t, V, _p_scratch, params, baro,
+                slow_state, t, V, _p_tm_scratch, params, baro,
                 postcap_factor=_drug_factors_at(params, t).get("postcap_factor", 1.0))
             if dV_slow is not None:
                 V = V + dV_slow
@@ -1923,7 +2015,7 @@ def run_simulation(
     # Every series above was accumulated with += over its block; divide to get the
     # mean. With output_every=1 every block holds one sample and this is a no-op,
     # which is what makes that case bit-for-bit identical to the old behaviour.
-    for _arr in (aortic_p, ppv_acc, cvp_ts, ra_intra_ts, la_p_ts, lv_p_ts, rv_p_ts,
+    for _arr in (aortic_p, ppv_acc, cvp_ts, ra_intra_ts, la_p_ts, ra_mean_ts, lv_p_ts, rv_p_ts,
                  co_ts, hr_ts, sv_ts,
                  dbp_ts, sbp_ts, brachial_sbp_ts, brachial_dbp_ts, lvedp_ts,
                  cpp_ts, cop_ts, buckberg_ts, ankle_p_ts, brachial_p_ts):
@@ -1997,6 +2089,7 @@ def run_simulation(
         "ra_intraluminal": ra_intra_ts,
         "aortic_intraluminal": ao_intra_ts,
         "la_pressure": la_p_ts,
+        "ra_mean":     ra_mean_ts,
         "lv_pressure": lv_p_ts,
         "rv_pressure": rv_p_ts,
         "co":          co_ts,

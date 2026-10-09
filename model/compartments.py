@@ -660,7 +660,21 @@ def default_compartments() -> list[Compartment]:
         # lower_body_art's inflow, split 30/40/30 across the three segments:
         #   2.80/0.30 = 9.33,  2.80/0.40 = 7.00,  2.80/0.30 = 9.33
         #   equivalent parallel R = 2.80 ✓, plus the 0.30 conduit = 3.10 as before.
-        Compartment("thigh_vein",          3.20, 9.033, 381, -0.52,  420, p_stiffen=12.0,
+        # LEG CAPACITY, GRADE D — 2026-10-08 (all three leg veins). Under real
+        # LBNP -30 the old legs (C0 3.2/4.8/4.0, p_stiffen 12/28/8) took up ~120 mL;
+        # a derivation from human data puts it at ~290-530 (ledger, "LBNP POOLING").
+        # LAW: Halliwill 1999 (PMID 10517791) calf curve, 0.111 mL/dL/mmHg at low
+        # pressure, halving at ~28 mmHg — ASSUMED to hold for the whole leg (thigh
+        # and foot unmeasured; that assumption is the grade D).
+        # TISSUE: Winter 2009 Table 4.1 segment masses (both legs, 75 kg, density
+        # 1.06): thigh 15.0 kg = 142 dL, shank 6.97 kg = 66 dL, foot 2.18 kg = 21 dL.
+        # Lawler 1998 (PMID 9760343) DXA leg muscle 17.5-25 kg in men brackets it.
+        # => C0 = 0.111 x dL: thigh 15.7, calf 7.30, foot 2.28 mL/mmHg; p_stiffen 28.
+        # RESTING VOLUMES KEPT (Arndt-anchored): V0 re-derived so each segment holds
+        # its old init_volume at its old settled pressure (21.5 / 23.0 / 23.9):
+        # V0 = V_rest - C0·k·ln(1 + P_rest/k) -> 170 / 465 / 259 mL.
+        # Old values for the record: thigh 3.20/381/12, calf 4.80/508/28, foot 4.00/254/8.
+        Compartment("thigh_vein",         15.71, 9.033, 170, -0.52,  420, p_stiffen=28.0,
                     drain_resistance=0.600),  # 11
         # CALF p_stiffen 11 -> 28 ON 2026-10-04, leg rebuild stage 2. GRADE A for
         # the quantity: Halliwill, Minson & Joyner 1999 (PMID 10517791) measured
@@ -672,12 +686,13 @@ def default_compartments() -> list[Compartment]:
         # THE OLD 11 WAS NOT SOURCED: it was chosen so "upright -> pooling capped,
         # no MAP collapse". Thigh (12) and foot (8) keep that unsourced value —
         # Halliwill measured the calf only, and no thigh or foot curve has been
-        # read. GRADE E for those two, carried rather than guessed.
+        # read. (Superseded 2026-10-08: all three now p_stiffen 28, GRADE D — see
+        # the LEG CAPACITY note above thigh_vein.)
         # init_volume 568 -> 589 re-derived from a settled run; the 21 mL came
         # mostly from splanchnic_vein (1064 -> 1047), total blood volume unchanged.
-        Compartment("calf_vein",           4.80, 6.950, 508, -0.95,  588, p_stiffen=28.0,
+        Compartment("calf_vein",           7.30, 6.950, 465, -0.95,  588, p_stiffen=28.0,
                     drain_resistance=0.100),  # 12
-        Compartment("foot_vein",           4.00, 9.263, 254, -1.23,  298, p_stiffen= 8.0,
+        Compartment("foot_vein",           2.28, 9.263, 259, -1.23,  298, p_stiffen=28.0,
                     drain_resistance=0.140),  # 13
         # ---- The IVC, now THREE segments — backlog items 65 and 72 (2026-10-04) ----
         # `ivc` below is the SUPRA-HEPATIC segment only. The other two are appended

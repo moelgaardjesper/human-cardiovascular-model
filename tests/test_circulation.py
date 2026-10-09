@@ -1833,12 +1833,11 @@ def phenyl_dose_response():
     return {d: _run_phenyl(d) for d in (0.0,) + _PHENYL_PLATEAU}
 
 
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason=(
-    "KNOWN GAP, 2026-10-06, DEFERRED TO LEG REBUILD STAGE 4 (phenylephrine). "
-    "Since the Klotz LV diastolic curve: dHR -14.2 bpm at 4.0 mcg/kg/min, on the "
-    "edge of Schafers' quartiles (-19.5, -14.2); the flow assertions after it are "
-    "not reached. Same cause as the pressor xfail above."
-))
+# CLOSED 2026-10-08 — a strict xfail from 2026-10-06 that XPASSED on the leg
+# capacity + item 74 + transmural Starling rebuild. The gap was dHR -14.2 bpm at
+# 4.0 mcg/kg/min, sitting exactly on the edge of Schafers' quartiles
+# (-19.5, -14.2), which blocked the flow assertions behind it. The PRESSOR xfail
+# above is a different quantity and remains open: only the flow arm closed.
 def test_phenylephrine_flow_response_schafers1999(phenyl_dose_response):
     """[PMID: 10073742 — Schäfers 1999] Phenylephrine in healthy supine men
     LOWERS cardiac output, LOWERS heart rate and RAISES stroke volume.
@@ -2863,14 +2862,15 @@ def test_male_patient_is_bit_for_bit_the_reference():
             f"male {chamber} factors must be exactly 1.0, got {f}")
 
 
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason=(
-    "KNOWN GAP BY A HAIR, 2026-10-04. Female LVEDV 59.95 mL/m2 against a floor of "
-    "60.0 (Luu 65 +/- 11). The calf stiffening change (Halliwill 1999) lets the "
-    "legs hold ~20 mL more at rest, and preload fell by that much. The band 60-71 "
-    "is about +/- 0.45 SD of Luu and its tightness is not explained here; it is "
-    "NOT widened because the model moved. Question for Jesper: should it be "
-    "Luu's 1 SD, as the right-atrial band was made Gao's 1 SD?"
-))
+# CLOSED 2026-10-08 — was a strict xfail from 2026-10-04 and XPASSED on the
+# grade D leg capacity change. The gap was female LVEDV 59.95 mL/m2 against a
+# floor of 60.0: the calf stiffening of 2026-10-04 had let the legs hold ~20 mL
+# more at rest and preload fell with it. Re-deriving the leg V0 so each segment
+# holds its OLD resting volume at its OLD settled pressure (compartments.py,
+# LEG CAPACITY) gave that preload back. **The band was never widened** — the
+# open question it carried (should the floor be Luu's 1 SD, as the right-atrial
+# band is Gao's 1 SD?) is now moot for this value but still worth Jesper's
+# answer, because the band's tightness is still unexplained.
 def test_female_chamber_volumes_match_luu_and_gao():
     """Female chamber volumes are smaller than male, and land in their sourced bands.
 
@@ -5812,27 +5812,21 @@ def test_the_venous_compartment_tuples_agree_across_modules():
         assert name in IDX, f"{name!r} is named in a venous tuple but is not a compartment"
 
 
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason=(
-    "KNOWN GAP — TWO OF THE SIX EXCHANGE BEDS HAVE BLOOD FLOW BUT NO STARLING "
-    "FILTRATION. Backlog item 74, opened 2026-09-27 from "
-    "tools/consistency_audit.py. MEASURED 2026-09-27 BY CONSTRUCTION: _odes "
-    "carries six artery-to-vein exchange segments (upper body, renal, splanchnic, "
-    "thigh, calf, foot) and slow_dynamics.CAPILLARY_BEDS has four entries. "
-    "calf_vein and foot_vein appear nowhere, so the entire lower limb's "
-    "filtration is carried by thigh_vein at a weight of 0.20. The weights DO sum "
-    "to 1.00, so nothing is double-counted — the two beds are simply absent. "
-    "WHY IT IS NOT COSMETIC: transcapillary refill is what recovers volume after "
-    "haemorrhage, and the legs are where a tilted or bleeding patient's blood "
-    "actually is. Leg capillary pressure is also the HIGHEST in the model when "
-    "upright, because the hydrostatic column adds to it — so the omitted beds are "
-    "the ones where filtration should be LARGEST. "
-    "CONSEQUENCE UNMEASURED: whether adding them moves the 2 h or 24 h refill "
-    "figures has never been tested, and the thigh's 0.20 weight was assigned when "
-    "the leg was one compartment. "
-    "DO IT WITH THE LEG WORK (items 9, 53, 54, 64, 65, 72) so the tilt and refill "
-    "suites are re-validated once. "
-    "strict=True so it flips to a FAILURE the day the beds are added."
-))
+# ITEM 74 CLOSED 2026-10-08 — this was a strict xfail from 2026-09-27 and it
+# XPASSED the day the beds were added, which is the announcement the ratchet
+# exists to make. It is now a LIVE GUARD.
+#
+# WHAT WAS WRONG: _odes carries six artery-to-vein exchange segments (upper
+# body, renal, splanchnic, thigh, calf, foot) and CAPILLARY_BEDS had four. The
+# calf and foot appeared nowhere, so the whole lower limb filtered through
+# thigh_vein at a weight of 0.20. Leg capillary pressure is the HIGHEST in the
+# model when upright, so the omitted beds were the ones where filtration should
+# be largest.
+# HOW IT WAS CLOSED: the leg's total share stayed 0.20 and was re-partitioned by
+# soft-tissue mass (Winter 2009) into thigh 0.1242 / calf 0.0578 / foot 0.0180.
+# The prompt was Lundvall 1993 (PMID 8475742), which measures 460 mL of plasma
+# filtering into the legs during LBNP — a time course the model could not
+# produce with two of its three leg beds inert.
 def test_every_exchange_bed_has_a_capillary_filtration_bed():
     """Every bed the ODE pushes blood through must also filter.
 
@@ -6705,11 +6699,23 @@ def test_gravity_does_no_net_work_with_the_legs_articulated():
     p.tilt_start_deg, p.tilt_end_deg = 0.0, 30.0
     p.hip_flexion_start_deg, p.hip_flexion_end_deg = 0.0, 75.0   # legs 45 deg up
     p.tilt_onset_s, p.tilt_duration_s = 20.0, 5.0
-    p.arrest_start_s, p.arrest_duration_s = 40.0, 200.0
-    r = run_simulation(p, duration_s=240.0, dt=DT)
+    # ARREST LENGTHENED 200 -> 400 s ON 2026-10-08, and the window with it.
+    # The grade D leg capacity (compartments.py) doubled total leg compliance
+    # (12.0 -> 25.3 mL/mmHg), and a venous segment settles with tau = R*C, so
+    # the legs now take about twice as long to come to rest. At 200 s the
+    # residual drift read 0.5065 mL against this test's 0.5 tolerance and the
+    # test failed — NOT because the loop had opened but because it was being
+    # read before it closed. MEASURED 2026-10-08, same geometry, three arrests:
+    #     200 s -> 0.5065 mL     400 s -> 0.0304 mL     800 s -> 0.0001 mL
+    # Monotone to zero, which is what a closed loop looks like and what an open
+    # one cannot do. The TOLERANCE IS UNCHANGED at 0.5 mL; only the settling
+    # time is. In effect this makes the test STRICTER — it now passes with 16x
+    # margin where it used to pass with none.
+    p.arrest_start_s, p.arrest_duration_s = 40.0, 400.0
+    r = run_simulation(p, duration_s=440.0, dt=DT)
     V = np.asarray(r["volumes"])
     t = np.asarray(r["t"])
-    late = V[t >= 215.0]
+    late = V[t >= 415.0]
     drift = float(np.abs(late[-1] - late[0]).max())
     assert drift < 0.5, (
         f"volumes still moving {drift:.3f} mL over the last 20 s of arrest with "
