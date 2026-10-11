@@ -1783,12 +1783,35 @@ def test_haemorrhage_shifts_venous_return_curve_without_rotating_it():
 # are recorded in docs/reference_values.md with that caveat.
 # ===========================================================================
 
-# Schäfers 1999 placebo arm, median (lower quartile, upper quartile)
-_SCH_DCO  = (-1.25, -0.40)    # L/min      median -1.15
-_SCH_DHR  = (-19.5, -14.2)    # beats/min  median -16
-_SCH_DSV  = (-0.5,  +18.5)    # mL         median  +9
-_SCH_DMAP = (+23.5, +32.5)    # mmHg       median +28
-_SCH_DTPR = (+650,  +1270)    # dyn.s/cm5  median +950
+# Schäfers 1999 placebo arm, as REPORTED: (median, lower quartile, upper quartile)
+_SCH_Q_DCO  = (-1.15, -1.25, -0.40)    # L/min
+_SCH_Q_DHR  = (-16.0, -19.5, -14.2)    # beats/min
+_SCH_Q_DSV  = (+9.0,  -0.5,  +18.5)    # mL
+_SCH_Q_DMAP = (+28.0, +23.5, +32.5)    # mmHg
+_SCH_Q_DTPR = (+950,  +650,  +1270)    # dyn.s/cm5
+
+
+def _one_sd_band(median, q1, q3):
+    """Schäfers' quartiles re-expressed as a 1 SD band, each side scaled
+    separately so his skew is kept: a quartile lies 0.674 SD from the median.
+
+    WHY, 2026-10-11 (Jesper's call). These tests asserted the INTERQUARTILE range
+    itself — the middle half of twelve individual men, i.e. about +/-0.67 SD —
+    tighter than any other band in the suite (Luu/Gao 1 SD, Weissler 2 SD). It
+    flipped on sub-bpm changes three times. 1 SD is the suite's convention.
+    CAVEATS, stated so a pass is not over-read: with n = 12 the skew is noisy,
+    and the dCO upper edge lands near zero (-0.04), which would accept almost no
+    fall at all; dHR -13.6 at adoption clears its edge (-13.3) by only 0.3.
+    """
+    z = 0.674
+    return (median - (median - q1) / z, median + (q3 - median) / z)
+
+
+_SCH_DCO  = _one_sd_band(*_SCH_Q_DCO)     # (-1.30, -0.04)
+_SCH_DHR  = _one_sd_band(*_SCH_Q_DHR)     # (-21.2, -13.3)
+_SCH_DSV  = _one_sd_band(*_SCH_Q_DSV)     # (-5.1,  +23.1)
+_SCH_DMAP = _one_sd_band(*_SCH_Q_DMAP)    # (+21.3, +34.7)
+_SCH_DTPR = _one_sd_band(*_SCH_Q_DTPR)    # (+505,  +1425)
 
 # The model's phenylephrine plateau — the doses where its pressor response is
 # near its own maximum, which is what Schäfers' bars correspond to (his subjects
@@ -1868,14 +1891,8 @@ def phenyl_dose_response():
 # 4.0 mcg/kg/min, sitting exactly on the edge of Schafers' quartiles
 # (-19.5, -14.2), which blocked the flow assertions behind it. The PRESSOR xfail
 # above is a different quantity and remains open: only the flow arm closed.
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason=(
-    "REOPENED 2026-10-11 — dHR -13.6 bpm at 4.0 mcg/kg/min against Schafers' quartiles "
-    "(-19.5, -14.2): the same quartile EDGE it sat on when first xfailed (-14.2). Moved by the "
-    "measured systolic timing + aortic Zc change (lower resting SV, so the pressor raises "
-    "pressure slightly less and the reflex slows the heart slightly less). The band is an "
-    "INTERQUARTILE range — half of Schafers' subjects lie outside it — so this assertion "
-    "flips on sub-bpm changes. Not widened; the band's choice is put to Jesper."
-))
+# CLOSED 2026-10-11 by moving the bands from the interquartile range to 1 SD
+# (see _one_sd_band) — a band decision, not a model change.
 def test_phenylephrine_flow_response_schafers1999(phenyl_dose_response):
     """[PMID: 10073742 — Schäfers 1999] Phenylephrine in healthy supine men
     LOWERS cardiac output, LOWERS heart rate and RAISES stroke volume.
@@ -1896,22 +1913,23 @@ def test_phenylephrine_flow_response_schafers1999(phenyl_dose_response):
         dsv = m["sv"] - base["sv"]
         assert _SCH_DCO[0] <= dco <= _SCH_DCO[1], (
             f"phenylephrine {dose} mcg/kg/min: dCO {dco:+.2f} L/min outside "
-            f"Schäfers quartiles {_SCH_DCO} (median -1.15)"
+            f"Schäfers 1 SD band {_SCH_DCO} (median -1.15)"
         )
         assert _SCH_DHR[0] <= dhr <= _SCH_DHR[1], (
             f"phenylephrine {dose} mcg/kg/min: dHR {dhr:+.1f} bpm outside "
-            f"Schäfers quartiles {_SCH_DHR} (median -16)"
+            f"Schäfers 1 SD band {_SCH_DHR} (median -16)"
         )
         assert _SCH_DSV[0] <= dsv <= _SCH_DSV[1], (
             f"phenylephrine {dose} mcg/kg/min: dSV {dsv:+.1f} mL outside "
-            f"Schäfers quartiles {_SCH_DSV} (median +9)"
+            f"Schäfers 1 SD band {_SCH_DSV} (median +9)"
         )
 
 
 @pytest.mark.xfail(strict=True, raises=AssertionError, reason=(
     "KNOWN GAP, 2026-10-06, DEFERRED TO LEG REBUILD STAGE 4 (phenylephrine). "
     "Since the Klotz LV diastolic curve the pressor response is smaller: dMAP "
-    "+19.1 mmHg against Schafers' quartiles 23.5-32.5. Leading reading, untested: "
+    "+19.1 mmHg against Schafers' quartiles 23.5-32.5 (still below his 1 SD floor of 21.3 "
+    "after the 2026-10-11 move to 1 SD bands). Leading reading, untested: "
     "a stiffer LV cannot dilate to absorb the added afterload, so SV and CO fall "
     "more and pressure rises less. Stage 4 is deliberately last because it "
     "depends on the legs, the heart and the reflex together."
@@ -1948,11 +1966,11 @@ def test_phenylephrine_pressor_response_schafers1999(phenyl_dose_response):
     dmap = best["map"] - base["map"]
     dtpr = best["tpr"] - base["tpr"]
     assert _SCH_DMAP[0] <= dmap <= _SCH_DMAP[1], (
-        f"dMAP {dmap:+.1f} mmHg outside Schäfers quartiles {_SCH_DMAP} "
+        f"dMAP {dmap:+.1f} mmHg outside Schäfers 1 SD band {_SCH_DMAP} "
         f"(median +28)"
     )
     assert _SCH_DTPR[0] <= dtpr <= _SCH_DTPR[1], (
-        f"dTPR {dtpr:+.0f} dyn.s/cm5 outside Schäfers quartiles {_SCH_DTPR} "
+        f"dTPR {dtpr:+.0f} dyn.s/cm5 outside Schäfers 1 SD band {_SCH_DTPR} "
         f"(median +950)"
     )
 

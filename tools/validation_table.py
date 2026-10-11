@@ -224,7 +224,7 @@ row("Epinephrine dose-response",
 # diastolic), so a fixed-rate comparison would be meaningless.
 row("Phenylephrine flow response, AGE-MATCHED (27)",
     "Schaefers 1999 PMID 10073742, 12 healthy supine men, median age 27",
-    "dCO -1.15 (-1.25 to -0.40), dHR -16 (-19.5 to -14.2), dSV +9 (-0.5 to +18.5)",
+    "median (1 SD band): dCO -1.15 (-1.30 to -0.04), dHR -16 (-21.2 to -13.3), dSV +9 (-5.1 to +23.1)",
     lambda: _phenyl_row())
 
 row("Norepinephrine postcapillary constriction",
