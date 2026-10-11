@@ -34,6 +34,91 @@ def _normalised_activation(t_n: float) -> float:
         return 0.0
 
 
+# ---------------------------------------------------------------------------
+# VENTRICULAR ACTIVATION — MEASURED HUMAN SHAPE AND TIMING (2026-10-10)
+# ---------------------------------------------------------------------------
+# `_normalised_activation` above is UNSOURCED and lays systole out as FRACTIONS
+# OF THE BEAT (rise to 0.30, relaxed by 0.45). Two defects in one: at rest the LV
+# ejected for 193 ms where man ejects ~294 (Weissler); and systole shrank in
+# proportion to the beat at high rates (106 ms at 110 bpm) — the error class of
+# the old fixed-fraction PR offset. It is kept only as the "legacy" option.
+#
+# SHAPE — Senzaki, Chen, Kass 1996 (PMID 8921794; conductance catheter, 72 loops,
+# 52 patients): normalised elastance E_N(t_N), t_N = t / t_max, "remarkably
+# consistent despite variations in ... heart rate" (atrial pacing 76-130 bpm
+# virtually identical). Their Table 4 12-term Fourier fit is used verbatim.
+# GRADE A for the shape. The model has a SEPARATE passive curve (Klotz), so only
+# the ACTIVE part is used: e = (E_N - E_N(0)) / (1 - E_N(0)), floored at 0.
+# Subtracting E_N(0) (not the diastolic plateau) removes a step at beat start
+# that otherwise produced a 4,800 mmHg/s dP/dt spike (prototype, 2026-10-10).
+#
+# TIMING — t_max (R wave -> peak elastance) = total electromechanical systole
+# QS2 (Weissler 1968, PMID 5640345; 121 men, 90 women): QS2 = -0.0021 HR + 0.546 s
+# (men). Two labs, two methods agree: Weissler's PEP/QS2 at 70 bpm = 103/399 =
+# 0.258; Senzaki's aortic opening at t_N 0.258 ± 0.035. GRADE B.
+# The model's beat starts at MECHANICAL onset, so the electromechanical delay is
+# subtracted: QRS onset -> LV pressure rise 21 ± 5 ms (Manolas 1975, Br Heart J
+# 37:1263; tip manometers, n 10, normal LV). GRADE A-minus. The atrial PR offset is
+# left relative to ventricular mechanical onset, i.e. atrial EMD ASSUMED equal.
+# The same curve and timing drive the RV — an ASSUMPTION (grade D): Senzaki
+# measured left ventricles; RV ejection is known to outlast LV ejection.
+# Validated (prototype, 2026-10-10): peak dP/dt 1,703 vs Manolas 1,700 ± 370;
+# (dP/dt)/DP 28 vs Mason 1971 ~30; LVET 312 ms at 70 bpm (Weissler 294, +1.8 SD),
+# 219 at 110 (226); LV Ees by Chen 1998's method 2.8 vs 2.3 ± 1.0.
+_SZ_A = np.array([28.38975, 37.58583, 21.02345, 7.665592, 4.809436, 4.181973, 1.940692,
+                  0.5870049, 1.181256, 0.84039, 0.02259011, 0.3071458, 0.3226207]) / 100.0
+_SZ_PHI = np.array([0.0, 0.08367674, -1.486758, 2.865675, 0.1677238, 4.630239, 3.088379,
+                    -0.3053668, 4.410703, 3.181538, 1.242886, 4.156753, 2.946186])
+_SZ_N = np.arange(13)
+_SZ_PERIOD_TN = 3.46            # one Fourier period (2 pi) in t_N, Senzaki Table 4
+_SZ_EN0 = float(_SZ_A[0] + np.sum(_SZ_A[1:] * np.sin(_SZ_PHI[1:])))   # E_N(0) = 0.0789
+_SZ_TN_END = 1.75               # active part < 0.01 beyond this (relaxed)
+
+QS2_INTERCEPT_S = 0.546         # Weissler 1968, men
+QS2_SLOPE_S_PER_BPM = 0.0021    # Weissler 1968, men
+ELECTROMECHANICAL_DELAY_S = 0.021   # Manolas 1975
+# t_max SCALE — GRADE E, PINNED 2026-10-10. Senzaki's t_max is timed to peak
+# elastance; mapping it onto Weissler's QS2 (which ends at A2, aortic CLOSURE)
+# was an inference (the 0.258 agreement). In THIS model the aortic valve closes
+# only when LV pressure falls below root pressure — there is no blood inertia to
+# decelerate and reverse flow — so ejection overruns peak elastance, and with the
+# characteristic impedance LVET came out 332 ms against Weissler's measured 294
+# (+3.8 SD). LVET is the MEASURED quantity (grade A), so t_max is pinned jointly
+# with AORTIC_ZC from two endpoints: LVET at rest (Weissler) and invasive-
+# equivalent central PP (McEniery + Cheng). Out-of-sample check that agreed:
+# peak aortic flow / SV 5.4 vs ~5-6 (Carlsson 2004 Fig 3). Sweep in
+# validation_log 2026-10-10.
+VENTRICULAR_T_MAX_SCALE = 0.875
+
+
+def senzaki_active(t_n: float) -> float:
+    """Active part (0..1) of Senzaki 1996's normalised human LV elastance at
+    t_N = t / t_max (time from mechanical onset over time to peak)."""
+    if t_n < 0.0 or t_n >= _SZ_TN_END:
+        return 0.0
+    x = 2.0 * np.pi * t_n / _SZ_PERIOD_TN
+    en = _SZ_A[0] + float(np.sum(_SZ_A[1:] * np.sin(_SZ_N[1:] * x + _SZ_PHI[1:])))
+    return max(0.0, (en - _SZ_EN0) / (1.0 - _SZ_EN0))
+
+
+def ventricular_t_max(hr_bpm: float, scale: float = 1.0) -> float:
+    """Mechanical time to peak elastance (s): Weissler's QS2 minus Manolas'
+    electromechanical delay, times `scale`, bounded so relaxation completes
+    within the beat."""
+    rr = 60.0 / max(hr_bpm, 1e-6)
+    t_max = scale * (QS2_INTERCEPT_S - QS2_SLOPE_S_PER_BPM * hr_bpm - ELECTROMECHANICAL_DELAY_S)
+    return min(t_max, 0.95 * rr / _SZ_TN_END)
+
+
+def ventricular_activation(cardiac_phase: float, hr_bpm: float, legacy: bool = False,
+                           t_max_scale: float = 1.0) -> float:
+    """Ventricular activation e(t) in 0..1 for the current beat phase."""
+    t_n = cardiac_phase % 1.0
+    if legacy:
+        return _normalised_activation(t_n)
+    return senzaki_active((t_n * 60.0 / max(hr_bpm, 1e-6)) / ventricular_t_max(hr_bpm, t_max_scale))
+
+
 def elastance_from_phase(
     t_n: float,
     e_max: float,

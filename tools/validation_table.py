@@ -33,7 +33,7 @@ import numpy as np
 
 from model.circulation import SimParams, run_simulation
 from model.gravity import GravityEnvironment
-from model.patient import build_patient_params
+from model.patient import build_patient_params, apply_cardiac
 from model.heart import LV_EMAX, RV_EMAX
 from model.pharmacology import combined_drug_factors
 
@@ -53,9 +53,13 @@ def run_scenario(height_cm=175, weight_kg=75, map_mmhg=None, hr_bpm=70,
     comps, cardiac = build_patient_params(height_cm, weight_kg,
                                           map_mmhg=map_mmhg, hr_bpm=hr_bpm)
     p = SimParams(compartments=comps)
+    # apply_cardiac, NOT a hand-written field list. Until 2026-10-11 this set only
+    # lv_emax and rv_emax, so it silently dropped the LV diastolic placement, the
+    # age-dependent reflex responsiveness and the sac capacity — and drifted from
+    # the test helper it claims to mirror (CPP at 45 deg: 54 here vs 36 in the
+    # test). The same failure mode that once dropped p_stiffen.
+    apply_cardiac(p, cardiac)
     p.hr_bpm = hr_bpm
-    p.lv_emax = LV_EMAX * cardiac.get("lv_emax_factor", 1.0)
-    p.rv_emax = RV_EMAX * cardiac.get("rv_emax_factor", 1.0)
     p.tilt_start_deg = p.tilt_end_deg = tilt_deg
     p.tilt_onset_s = 5.0
     p.gravity = gravity

@@ -138,6 +138,10 @@ TRICUSPID_R = VALVE_R      # was right_ventricle.resistance
 PULMONIC_R  = VALVE_R      # was 0.03; see above and validation_log 2026-09-10
 MITRAL_R    = VALVE_R      # was left_ventricle.resistance
 AORTIC_R    = VALVE_R      # was left_ventricle.resistance
+# AORTIC CHARACTERISTIC IMPEDANCE (mmHg s/mL), in series after the aortic valve —
+# 2026-10-10. Grade C, PINNED (not measured as a lumped element); see
+# SimParams.aortic_zc and validation_log 2026-10-10 for the sweep that sets it.
+AORTIC_ZC   = 0.08
 
 # ---------------------------------------------------------------------------
 # ORIFICE (BERNOULLI) VALVE FLOW — optional, off by default

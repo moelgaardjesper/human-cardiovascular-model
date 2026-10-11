@@ -214,22 +214,29 @@ The mechanism works in both directions. On 2026-08-26 two xfails fired as XPASS 
 
 | # | Scenario | Reference | Literature target | Model result | |
 |---|---|---|---|---|---|
-| 1 | Supine resting haemodynamics | [Sejersen 2022](https://doi.org/10.14814/phy2.15216) — 10 healthy males, 177 cm, 80 kg | MAP 83±8 mmHg, HR 62±8 bpm, SV 110±16 mL, CO 7±2 L/min | MAP 88.6, HR 63.4, CO 6.06, SV 95.2 (re-measured 2026-10-07, after the abdominal heights) | ✓ |
-| 2 | 20° HDT in normovolemic subjects — MAP↑, CO maintained | [Sejersen 2022](https://doi.org/10.14814/phy2.15216) | ΔSV ≈ 0 (n.s.), ΔCO ≈ 0, ΔMAP +2 mmHg (n.s.) — heart on Starling plateau when supine | ΔMAP +8.7, ΔCO +0.95 L/min, ΔSV +19.9 mL — **the model fills the heart in head-down tilt where these awake men did not** (re-measured 2026-10-07, after the abdominal heights) | ✓ on direction; magnitude disagrees |
-| 3 | 6° HDT vs 20° upright: HR lower during HDT | [Verdini 2019](https://doi.org/10.1038/s41598-019-39360-6) — 17 males, 179 cm, 79 kg | HR_HDT < HR_upright (p < 0.001), MAP_HDT < MAP_upright | HR_HDT 67.3 vs HR_upright 73.0 bpm ✓; MAP_HDT 102.1 vs MAP_upright 87.9 — MAP order opposite to the study, not asserted (re-measured 2026-10-07, after the abdominal heights) | ✓ on HR |
-| 4 | −15° Trendelenburg vs supine | [Likhvantsev 2025](https://doi.org/10.1053/j.jvca.2024.10.001) — meta-analysis, n=333, 16 studies | ΔCVP +4.13 mmHg (CI 2.42–5.84), ΔCO +0.33 L/min, ΔSV +8.27 mL, ΔHR −1.65 bpm | At −15°: ΔCO +0.80 ✓, ΔSV +14.1 ✓, **ΔCVP +0.9 ✗**. At −30°: ΔCO +1.49, ΔSV +27.6, ΔCVP +1.9 — larger than the 30° trials (re-measured 2026-10-07, after the abdominal heights) | ✓ on CO and SV; **CVP a known gap** |
-| 5 | −30° Trendelenburg: CVP↑, MAP maintained | [Sibbald 1979](https://pubmed.ncbi.nlm.nih.gov/467083/) — n=61 normotensive patients | Preload↑, CO slightly↑, SVR↓ ~5%, MAP unchanged | ΔCVP +1.9, ΔMAP +15.3, ΔCO +1.49 — passes as asserted; MAP and CO rises much larger than Sibbald describes (re-measured 2026-10-07, after the abdominal heights) | ✓ as asserted |
-| 6 | 30° HUT dynamics: SV↓, CO↓, HR↑, MAP partially maintained | [Wieling 1998](https://doi.org/10.1042/cs0940347) — 6 healthy subjects | At 90° HUT: SV −39±9%, CO −26±10%, MAP +1±7 mmHg (maintained by baroreflex) | SV −33%, CO −26%, MAP −16.6 mmHg (30°, no muscle pump) (re-measured 2026-10-07, after the abdominal heights) | ✓ |
-| 7 | Graded HUT 0→20→30°: HR↑ and CO↓ monotonically | [Sarafian 2017](https://doi.org/10.3389/fphys.2016.00656) — 23 adults, graded tilt 0→60° | HR +41%, BP +10%, TPR +16% at 60°; monotonic increase with angle | HR 68.5→73.0→75.4 bpm, CO 5.94→4.93→4.40 L/min, monotonic (re-measured 2026-10-07, after the abdominal heights) | ✓ |
+| 1 | Supine resting haemodynamics | [Sejersen 2022](https://doi.org/10.14814/phy2.15216) — 10 healthy males, 177 cm, 80 kg | MAP 83±8 mmHg, HR 62±8 bpm, SV 110±16 mL, CO 7±2 L/min | MAP 96.8, HR 69, CO 5.73, SV 84 (re-measured 2026-10-11, after the measured systolic timing and aortic impedance; earlier figures in this column came partly from a reporting tool that had drifted from the tests — see note below) | ✓ |
+| 2 | 20° HDT in normovolemic subjects — MAP↑, CO maintained | [Sejersen 2022](https://doi.org/10.14814/phy2.15216) | ΔSV ≈ 0 (n.s.), ΔCO ≈ 0, ΔMAP +2 mmHg (n.s.) — heart on Starling plateau when supine | ΔMAP +12.5, ΔCO +1.19 L/min, ΔSV +22.8 mL — **the model fills the heart in head-down tilt where these awake men did not** (re-measured 2026-10-11, after the measured systolic timing and aortic impedance; earlier figures in this column came partly from a reporting tool that had drifted from the tests — see note below) | ✓ on direction; magnitude disagrees |
+| 3 | 6° HDT vs 20° upright: HR lower during HDT | [Verdini 2019](https://doi.org/10.1038/s41598-019-39360-6) — 17 males, 179 cm, 79 kg | HR_HDT < HR_upright (p < 0.001), MAP_HDT < MAP_upright | HR_HDT 67.7 vs HR_upright 75.2 bpm ✓; MAP_HDT 100.5 vs MAP_upright 81.4 — MAP order opposite to the study, not asserted (re-measured 2026-10-11, after the measured systolic timing and aortic impedance; earlier figures in this column came partly from a reporting tool that had drifted from the tests — see note below) | ✓ on HR |
+| 4 | −15° Trendelenburg vs supine | [Likhvantsev 2025](https://doi.org/10.1053/j.jvca.2024.10.001) — meta-analysis, n=333, 16 studies | ΔCVP +4.13 mmHg (CI 2.42–5.84), ΔCO +0.33 L/min, ΔSV +8.27 mL, ΔHR −1.65 bpm | At −15°: ΔCO +0.97 ✓, ΔSV +16.5 ✓, **ΔCVP +1.1 ✗**. At −30°: ΔCO +1.71, ΔSV +30.8, ΔCVP +2.2 — larger than the 30° trials (re-measured 2026-10-11, after the measured systolic timing and aortic impedance; earlier figures in this column came partly from a reporting tool that had drifted from the tests — see note below) | ✓ on CO and SV; **CVP a known gap** |
+| 5 | −30° Trendelenburg: CVP↑, MAP maintained | [Sibbald 1979](https://pubmed.ncbi.nlm.nih.gov/467083/) — n=61 normotensive patients | Preload↑, CO slightly↑, SVR↓ ~5%, MAP unchanged | ΔCVP +2.2, ΔMAP +17.5, ΔCO +1.71 — passes as asserted; MAP and CO rises much larger than Sibbald describes (re-measured 2026-10-11, after the measured systolic timing and aortic impedance; earlier figures in this column came partly from a reporting tool that had drifted from the tests — see note below) | ✓ as asserted |
+| 6 | 30° HUT dynamics: SV↓, CO↓, HR↑, MAP partially maintained | [Wieling 1998](https://doi.org/10.1042/cs0940347) — 6 healthy subjects | At 90° HUT: SV −39±9%, CO −26±10%, MAP +1±7 mmHg (maintained by baroreflex) | SV −43%, CO −35%, MAP −24.5 mmHg (30°, no muscle pump) (re-measured 2026-10-11, after the measured systolic timing and aortic impedance; earlier figures in this column came partly from a reporting tool that had drifted from the tests — see note below) | ✓ |
+| 7 | Graded HUT 0→20→30°: HR↑ and CO↓ monotonically | [Sarafian 2017](https://doi.org/10.3389/fphys.2016.00656) — 23 adults, graded tilt 0→60° | HR +41%, BP +10%, TPR +16% at 60°; monotonic increase with angle | HR 69→75→78 bpm, CO 5.61→4.36→3.64 L/min, monotonic (re-measured 2026-10-11, after the measured systolic timing and aortic impedance; earlier figures in this column came partly from a reporting tool that had drifted from the tests — see note below) | ✓ |
 | 8 | Microgravity: CVP higher than upright Earth | [Buckey 1996](https://pubmed.ncbi.nlm.nih.gov/8853498/) | CVP supine 5–8 mmHg, drops to 2.5 mmHg in orbit; higher than upright standing | CVP µg 4.26 vs upright 45° 2.22 mmHg (re-measured 2026-10-07, after the abdominal heights) | ✓ |
-| 9 | Cerebral perfusion pressure (CPP) decreases with upright posture | [Pohl & Cullen 2005](https://pubmed.ncbi.nlm.nih.gov/15983529/) | Beach-chair position: MAP drops 30–35 mmHg at brain level under GA; CPP risk < 50 mmHg | CPP supine 88 → **52 mmHg at 45° upright** — near the 50 mmHg risk threshold, and probably understated because the heart over-responds to posture (re-measured 2026-10-07, after the abdominal heights) | ✓ on direction |
+| 9 | Cerebral perfusion pressure (CPP) decreases with upright posture | [Pohl & Cullen 2005](https://pubmed.ncbi.nlm.nih.gov/15983529/) | Beach-chair position: MAP drops 30–35 mmHg at brain level under GA; CPP risk < 50 mmHg | CPP supine 86 → **36 mmHg at 45° upright** — below the 50 mmHg risk threshold. The test's 40 mmHg floor is now a strict xfail: MAP falls ~40 mmHg at 45°, the orthostatic collapse that dates from the soft legs (a missing muscle pump is the leading suspect). The 52 shown here before came from the drifted tool (re-measured 2026-10-11, after the measured systolic timing and aortic impedance; earlier figures in this column came partly from a reporting tool that had drifted from the tests — see note below) | ✓ on direction; **orthostatic MAP a known gap** |
 | 10 | Buckberg index falls with tachycardia (coronary ischaemia risk) | [Buckberg 1972/1978](https://pubmed.ncbi.nlm.nih.gov/4667030/) | DPTI/SPTI > 0.8 at rest; falls as diastolic time shortens with HR↑ | Buckberg **1.48** at rest → **0.49** at HR=160 bpm (re-measured 2026-09-22; this table previously read 1.12 → 0.44). **Direction reproduced. The MAGNITUDE is not validated and is biased high — see the note below the table.** | direction only |
-| 11 | PPV > 13% identifies fluid-responsive patient under mechanical ventilation | [Michard & Teboul 2000](https://doi.org/10.1164/ajrccm.162.1.9905119) — n=40 septic shock patients | PPV > 13% predicts ≥15% CO rise with fluid challenge (sens. 94%, spec. 96%) | Normovolaemic **PPV 10.6% (< 13 ✓)**; 1000 mL bleed PPV 28.2% (> 13 ✓); resuscitation lowers PPV 28.2 → 17.9 and raises CO +159% ✓ *(re-measured 2026-09-24; PPV is now computed per beat inside the ODE loop, so it no longer depends on output decimation — earlier figures used a different method and are not comparable)* | ✓ |
+| 11 | PPV > 13% identifies fluid-responsive patient under mechanical ventilation | [Michard & Teboul 2000](https://doi.org/10.1164/ajrccm.162.1.9905119) — n=40 septic shock patients | PPV > 13% predicts ≥15% CO rise with fluid challenge (sens. 94%, spec. 96%) | Normovolaemic **PPV 9.1% (< 13 ✓)**; 1000 mL bleed PPV 22.7% (> 13 ✓); resuscitation raises CO +81% ✓ but lowers PPV only to 21.7 — **the fall in PPV with fluid is now small** *(re-measured 2026-10-11; PPV is computed per beat at the elastic aortic node)* | ✓ |
 | 12 | High spinal anaesthesia (≈T4): MAP↓, CO maintained, HR near-unchanged | [Malmqvist 1987](https://doi.org/10.1111/j.1399-6576.1987.tb02605.x) — n=30, average block T4–5 | MAP ↓≥30% at complete block; CO preserved; minor HR changes (baroreflex compensates) | MAP ↓>5%, CO maintained ±20%, MAP >45 mmHg | ✓ |
 | 13 | Vasopressin dose-response: MAP monotonically↑, CO maintained | [Patel 2002](https://doi.org/10.1097/00000542-200203000-00011) — n=13 septic shock | MAP rises with dose (0→2→4 U/hr); CO maintained; NE requirement ↓79% | MAP monotonically↑; CO maintained ±20% at 2 U/hr | ✓ |
-| 14 | NE vs phenylephrine on spinal baseline: NE preserves CO better | [Ngan Kee 2015](https://doi.org/10.1097/ALN.0000000000000601) — n=104, C-section spinal | NE CO 102.7% vs phenyl 93.8% (p=0.004); NE HR > phenyl HR (reflex bradycardia) | **NE CO 5.50 vs phenyl 5.14 ✓**; NE HR 66.7 vs phenyl 60.1 ✓ (reflex bradycardia on phenylephrine). Re-measured 2026-09-26 after phenylephrine's pressor ceiling was recalibrated; the noradrenaline values had already drifted from the 5.66 / 64.7 previously shown here | ✓ |
+| 14 | NE vs phenylephrine on spinal baseline: NE preserves CO better | [Ngan Kee 2015](https://doi.org/10.1097/ALN.0000000000000601) — n=104, C-section spinal | NE CO 102.7% vs phenyl 93.8% (p=0.004); NE HR > phenyl HR (reflex bradycardia) | **NE CO 5.36 vs phenyl 4.92 ✓**; NE HR 66 vs phenyl 62 ✓ (reflex bradycardia on phenylephrine) (re-measured 2026-10-11, after the measured systolic timing and aortic impedance; earlier figures in this column came partly from a reporting tool that had drifted from the tests — see note below) | ✓ |
 | 15 | Epinephrine: CO monotonically↑ with dose; MAP_high > MAP_low (α dominance) | [Freyschuss 1986](https://doi.org/10.1042/cs0700199) — n=11 healthy, stepwise IV ADR | Concentration-dependent ↑SV and ↑CO; marked ↓vascular resistance at low dose | CO monotonically↑; MAP_high > MAP_low | ✓ |
-| 16 | PLR: CO ≥+10% identifies fluid-responsive patient (preload-dependent) | [Monnet, Marik & Teboul 2016](https://doi.org/10.1007/s00134-015-4134-1) — meta-analysis 21 studies, 991 patients | PLR-induced CO ≥+10% threshold: sens 0.85, spec 0.91, AUC 0.95 | Normovolaemic: ΔCO **+18.9 % ✗**; hypovolaemic 1200 mL: +54 % responder ✓ (re-measured 2026-10-07, after the abdominal heights) | ✓ hypovolaemic; **normovolaemic a known gap** |
+| 16 | PLR: CO ≥+10% identifies fluid-responsive patient (preload-dependent) | [Monnet, Marik & Teboul 2016](https://doi.org/10.1007/s00134-015-4134-1) — meta-analysis 21 studies, 991 patients | PLR-induced CO ≥+10% threshold: sens 0.85, spec 0.91, AUC 0.95 | Normovolaemic: ΔCO **+19.3 % ✗**; hypovolaemic 1200 mL: +58.9 % responder ✓ (re-measured 2026-10-11) | ✓ hypovolaemic; **normovolaemic a known gap** |
+
+**A reporting tool had drifted from the tests (found 2026-10-11).** `tools/validation_table.py` claimed to
+mirror the test helper but built each patient with a hand-written field list instead of `apply_cardiac`, so it
+silently dropped the left-ventricular filling-curve scaling, the age-dependent reflex responsiveness and the sac
+capacity. Its cerebral perfusion pressure at 45° read 54 where the test read 36. Rows above that had been
+measured with it were re-measured with the corrected runner and the tests' own helpers. Nothing asserts on that
+tool — which is exactly how it drifted.
 
 ### A note on row 10 — the coronary metric is biased in the unsafe direction
 
@@ -249,7 +256,7 @@ right.
 |---|---|
 | brachial diastolic pressure ~18 mmHg too high in a young adult | raises the diastolic integral |
 | systolic pressure ~8 mmHg too low | lowers the systolic integral |
-| systole fixed at 45 % of the cardiac cycle at every rate | overstates diastolic time as rate rises |
+| ~~systole fixed at 45 % of the cardiac cycle at every rate~~ **FIXED 2026-10-11** — systolic timing is now measured (Senzaki shape, Weissler timing): the index fell 1.57 → 1.41 at rest and 0.84 → 0.75 at 120 bpm | overstated diastolic time as rate rose |
 
 The first two were measured blind in a pre-registered comparison against 16 young
 and 16 older volunteers ([PMID 9404222](https://pubmed.ncbi.nlm.nih.gov/9404222/),
@@ -380,13 +387,26 @@ claimed the resting MAP of ~96 sat against "a literature expectation nearer
 model. It was neither. **The 77 ± 14 came from a cohort aged 25 ± 3** — the
 model was being compared against people a generation younger than the patient it
 simulates. Age-matched against McEniery 2005 (PMID 16256881), males 50–59,
-n = 429: MAP 95 ± 7, and the model sits at **95.4 — inside 0.1 SD.** Peripheral
+n = 429: MAP 95 ± 7, and the model sits at **95.4 — inside 0.1 SD** (re-measured 2026-10-11). ~~Peripheral
 systolic, peripheral pulse pressure and heart rate are all within one SD of the
-same cohort.
+same cohort.~~ *(peripheral pulse pressure no longer — see the re-statement below)*
 
 So the resting operating point was never the problem. What was real, and was
 fixed separately on 2026-09-14, was CENTRAL pulse pressure: +2.9 SD too wide,
-now +0.3 SD. **The model's peripheral haemodynamics were right throughout; only
+then +0.3 SD.
+
+**Re-stated 2026-10-11.** That +0.3 SD was against a CUFF-CALIBRATED target, and
+the model's pulse pressure was being made by an unphysiological ejection (left
+ventricular ejection time 193 ms against ~294 in man; peak aortic flow 924 mL/s
+against ~560). With measured systolic timing ([Senzaki 1996](https://pubmed.ncbi.nlm.nih.gov/8921794/),
+[Weissler 1968](https://pubmed.ncbi.nlm.nih.gov/5640345/)), an aortic characteristic
+impedance, and the central targets re-expressed as a catheter would read them
+([Cheng 2013](https://pubmed.ncbi.nlm.nih.gov/22622052/): cuff-calibrated tonometry
+underestimates central pulse pressure by ~15 mmHg), the model reads central
+131/80, pulse pressure 51, against an invasive-equivalent 123/72, 50. **Withdrawn:**
+the claim below that peripheral pulse pressure is within one SD of McEniery — the
+brachial trace is now narrower (~25 mmHg), the known limit of a model without
+wave reflection (a strict xfail). **The model's peripheral haemodynamics were right throughout; only
 the central ones were wrong.** Two confounds had been stacked — cohort age, and
 convention, since a time-integrated central MAP is not a cuff reading and the
 difference is worth roughly 9 mmHg on its own.

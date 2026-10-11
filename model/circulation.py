@@ -34,13 +34,14 @@ from scipy.integrate import solve_ivp
 
 from .compartments import (
     HIP_HEIGHT_M, default_compartments, IDX,
-    TRICUSPID_R, PULMONIC_R, MITRAL_R, AORTIC_R,
+    TRICUSPID_R, PULMONIC_R, MITRAL_R, AORTIC_R, AORTIC_ZC,
     orifice_k, VALVE_DP_REG,
 )
 from .heart import (
     elastance_from_phase, frank_starling_emax,
     LV_EMAX, RV_EMAX, RV_EMIN, LV_V0_DIA, LV_V30,
-    klotz_diastolic_pressure, _normalised_activation,
+    klotz_diastolic_pressure, _normalised_activation, ventricular_activation,
+    VENTRICULAR_T_MAX_SCALE,
     RA_EMAX, RA_EMIN, LA_EMAX, LA_EMIN,
     atrial_phase_offset,
     pericardial_pressure, PERI_CAPACITY, PERI_K, PERI_VK,
@@ -327,6 +328,23 @@ class SimParams:
         self.pericardial_fluid_ml = 0.0
         # Re-zeroes the reflex's CVP input to its resting value when the sac is on.
         self.reflex_cvp_offset = 0.0
+        # Ventricular activation (heart.py VENTRICULAR ACTIVATION): Senzaki's measured
+        # human shape timed in SECONDS (Weissler QS2 - Manolas EMD). True = the
+        # unsourced fraction-of-beat curve, kept only for comparison runs.
+        self.legacy_ventricular_activation = False
+        self.ventricular_t_max_scale = VENTRICULAR_T_MAX_SCALE   # heart.py, grade E pinned
+        # AORTIC CHARACTERISTIC IMPEDANCE (mmHg s/mL) — 2026-10-10. In series between
+        # the aortic valve and the aortic compliance: the LV ejects against ROOT
+        # pressure (node + Zc x flow). Without it the model's pulse pressure was made
+        # by an unphysiological ejection (peak aortic flow 924 mL/s vs ~560 in man,
+        # Carlsson 2004 Fig 3). GRADE C, PINNED: Framingham men measure 0.14 (Nayor
+        # 2023, PMID 37850464) as a WAVE quantity; a lumped resistor is not a wave
+        # impedance, so the value is pinned from invasive-equivalent central PP
+        # (McEniery 2005 + Cheng 2013) and peak aortic flow together. See the sweep
+        # in validation_log 2026-10-10. Central SBP/DBP are reported at the ROOT; MAP
+        # and the baroreflex stay at the elastic NODE, because a lumped series Zc puts
+        # a mean pressure drop (Zc x mean flow) that real large arteries do not have.
+        self.aortic_zc = AORTIC_ZC
         self.rv_emax = RV_EMAX
         self.rv_emin = RV_EMIN
         self.la_emax = LA_EMAX
@@ -755,7 +773,8 @@ def _pericardial_now(V: np.ndarray, params: SimParams) -> float:
 
 def _odes(t: float, V: np.ndarray, params: SimParams, baro: BaroreflexController | None,
           cardiac_phase: float, p_out: np.ndarray | None = None, slow=None,
-          hr_now: float | None = None, p_tm_out: np.ndarray | None = None):
+          hr_now: float | None = None, p_tm_out: np.ndarray | None = None,
+          flow_out: dict | None = None):
     """
     Compute dV/dt for the 23-compartment system.
 
@@ -800,8 +819,11 @@ def _odes(t: float, V: np.ndarray, params: SimParams, baro: BaroreflexController
     t_n_v = cardiac_phase % 1.0
     # LV: systolic elastance line blended with the Klotz diastolic curve by the
     # activation e(t) — see heart.py, VENTRICULAR DIASTOLE. RV: straight line.
-    e_v = _normalised_activation(t_n_v)
-    E_rv = elastance_from_phase(t_n_v, rv_emax_eff, params.rv_emin)
+    e_v = ventricular_activation(cardiac_phase,
+                                 hr_now if hr_now is not None else params.hr_bpm,
+                                 legacy=params.legacy_ventricular_activation,
+                                 t_max_scale=params.ventricular_t_max_scale)
+    E_rv = (rv_emax_eff - params.rv_emin) * e_v + params.rv_emin
 
     # Atria fire one PR interval before the ventricles. The offset is derived
     # from a fixed PR TIME at the current rate, not a fixed fraction of the
@@ -1195,7 +1217,22 @@ def _odes(t: float, V: np.ndarray, params: SimParams, baro: BaroreflexController
     Q_mitral    = _valve_flow(P[i["left_atrium"]] - P[i["left_ventricle"]], params.mitral_r, _k["mitral"])
     # Aortic valve (LV → aorta). Never aorta.resistance — that is the systemic
     # arterial resistance, not a valve.
-    Q_aortic    = _valve_flow(P[i["left_ventricle"]] - P[i["aorta"]] + hdp("left_ventricle") - hdp("aorta"), params.aortic_r, _k["aortic"])
+    # Aortic valve and characteristic impedance in SERIES: Q = valve(dp - Zc * Q),
+    # solved by bisection (the valve law is monotone). Zc = 0 -> the old law exactly.
+    _dp_ao = P[i["left_ventricle"]] - P[i["aorta"]] + hdp("left_ventricle") - hdp("aorta")
+    if params.aortic_zc > 0.0 and _dp_ao > 0.0:
+        _lo, _hi = 0.0, _dp_ao / params.aortic_zc
+        for _ in range(40):
+            _mid = 0.5 * (_lo + _hi)
+            if _valve_flow(_dp_ao - params.aortic_zc * _mid, params.aortic_r, _k["aortic"]) > _mid:
+                _lo = _mid
+            else:
+                _hi = _mid
+        Q_aortic = 0.5 * (_lo + _hi)
+    else:
+        Q_aortic = _valve_flow(_dp_ao, params.aortic_r, _k["aortic"])
+    if flow_out is not None:
+        flow_out["aortic"] = Q_aortic
 
     # Coronary (aorta → coronary → right atrium)
     Q_ao_cor    = (P[i["aorta"]] - P[i["coronary"]] + hdp("aorta") - hdp("coronary")) / R("coronary", True)
@@ -1585,6 +1622,7 @@ def run_simulation(
     # used for CVP/PCWP monitoring (advanced using _hr_monitor). Both replace
     # (t % T)/T, which is discontinuous whenever HR varies step-to-step.
     _cardiac_phase = 0.0
+    _flow_state = {"aortic": 0.0}   # last step's aortic valve flow, for the root pressure
     _monitor_phase = 0.0
 
     _disk = None
@@ -1739,8 +1777,12 @@ def run_simulation(
             if p_ao > _beat_hi: _beat_hi = p_ao
             if p_ao < _beat_lo: _beat_lo = p_ao
 
-        # DBP / SBP tracking (rolling min / max)
-        _dbp_win.append(p_ao); _sbp_win.append(p_ao)
+        # DBP / SBP tracking (rolling min / max) at the AORTIC ROOT — the catheter
+        # site the invasive references measure (Cheng 2013): elastic node + Zc x
+        # flow (last step's valve flow). Diastole is unaffected (no flow). PPV, MAP
+        # and the reflex stay at the node (see SimParams.aortic_zc).
+        _p_root = p_ao + params.aortic_zc * _flow_state["aortic"]
+        _dbp_win.append(_p_root); _sbp_win.append(_p_root)
         p_dbp = min(_dbp_win)
         p_sbp = max(_sbp_win)
 
@@ -1906,7 +1948,7 @@ def run_simulation(
         # returns immediately unless SLOW_DT of simulated time has elapsed.
         dV = _odes(t, V, params, baro, _cardiac_phase, _p_scratch, slow_state,
                    p_tm_out=_p_tm_scratch,
-                   hr_now=hr_now)
+                   hr_now=hr_now, flow_out=_flow_state)
 
         # Ventricular pressures, taken from the array `_odes` just filled rather
         # than recomputed. `_oi` is still this step's output index.
