@@ -2930,13 +2930,13 @@ def test_male_patient_is_bit_for_bit_the_reference():
 # open question it carried (should the floor be Luu's 1 SD, as the right-atrial
 # band is Gao's 1 SD?) is now moot for this value but still worth Jesper's
 # answer, because the band's tightness is still unexplained.
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason=(
-    "REOPENED 2026-10-11 — female LVEDV 58.3 mL/m2 against the floor of 60.0 (Luu female 65 "
-    "± 11). Measured systolic timing lengthened systole (LVET 207 -> 292 ms at 70 bpm, as in "
-    "man), shortening diastole and lowering filling slightly. The band's floor question is "
-    "still unanswered: should it be Luu's 1 SD (54), as the right-atrial band is Gao's 1 SD? "
-    "Not widened; put to Jesper."
-))
+# BANDS RE-SET 2026-10-11 (Jesper's call). The ventricular bands were 60-71 and
+# 66-80: Luu's mean +/- about HALF an SD, with no reason recorded anywhere — not in
+# the commit that added them (2297b9d), the log or the ledger. An unsourced band
+# tighter than the evidence is a guess, so both now use Luu's own 1 SD, as the
+# right-atrial band already uses Gao's. A strict xfail opened the same day
+# (female LVEDV 58.3 < 60) is closed by this, and the closure is BY the re-set,
+# not by the model moving — stated so nobody reads it as a fix.
 def test_female_chamber_volumes_match_luu_and_gao():
     """Female chamber volumes are smaller than male, and land in their sourced bands.
 
@@ -2999,11 +2999,12 @@ def test_female_chamber_volumes_match_luu_and_gao():
             f"mL/m2 — every one of these three is smaller in women per [L1][G1]")
 
     # Then the magnitudes, against the measured female columns.
-    assert 60.0 <= f["left_ventricle"] <= 71.0, (
-        f"female LVEDV {f['left_ventricle']:.1f} mL/m2 outside 60-71; "
+    # Bands are Luu's 1 SD; see the comment above the test for why.
+    assert 54.0 <= f["left_ventricle"] <= 76.0, (
+        f"female LVEDV {f['left_ventricle']:.1f} mL/m2 outside Luu's 1 SD of 54-76; "
         f"[L1] female 65 ± 11, male 74")
-    assert 66.0 <= f["right_ventricle"] <= 80.0, (
-        f"female RVEDV {f['right_ventricle']:.1f} mL/m2 outside 66-80; "
+    assert 59.0 <= f["right_ventricle"] <= 85.0, (
+        f"female RVEDV {f['right_ventricle']:.1f} mL/m2 outside Luu's 1 SD of 59-85; "
         f"[L1] female 72 ± 13, male 86")
     # Band is Gao's 1 SD; see the docstring for why it is not tighter.
     assert 24.5 <= f["right_atrium"] <= 40.9, (
