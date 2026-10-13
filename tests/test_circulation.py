@@ -7093,3 +7093,69 @@ def test_ejection_time_follows_weissler_across_heart_rate():
         assert abs(z) <= 2.0, (
             f"LVET at {hr:.0f} bpm {model*1000:.0f} ms is {z:+.1f} SD from Weissler's "
             f"{w*1000:.0f} ms (men, SD 10 ms)")
+
+
+# ===========================================================================
+# 50. THE ATRIA FILL WHILE THE VENTRICLES EJECT — AV-plane coupling
+#     (Carlsson 2004; Stephensen 2014). Mechanism OFF by default; this guard
+#     switches it on, so it watches the mechanism, not the default.
+# ===========================================================================
+
+def _heart_volume_bookkeeping(av_on):
+    """Per beat, from LV end-diastole to the following LV end-systole: blood
+    ejected by both ventricles, blood gained by both atria, and the net fall of
+    the four-chamber blood volume. Reference patient, reflexes on, 120-130 s."""
+    p = SimParams()
+    p.av_coupling_enabled = av_on
+    r = run_simulation(p, duration_s=130.0, dt=DT, output_every=1)
+    t = np.asarray(r["t"]); m = t > 120.0
+    V = np.asarray(r["volumes"])[m]
+    lv, rv = V[:, IDX["left_ventricle"]], V[:, IDX["right_ventricle"]]
+    la, ra = V[:, IDX["left_atrium"]], V[:, IDX["right_atrium"]]
+    thv = lv + rv + la + ra
+    beat = int(round(60.0 / p.hr_bpm / DT))
+    ej, fill, fall = [], [], []
+    a = int(np.argmax(lv[:beat]))
+    while a + beat < len(lv):
+        b = a + int(np.argmin(lv[a:a + beat // 2 + 1]))
+        ej.append((lv[a] - lv[b]) + (rv[a] - rv[b]))
+        fill.append((la[b] - la[a]) + (ra[b] - ra[a]))
+        fall.append(thv[a] - thv[b])
+        a = a + int(np.argmax(lv[a + beat // 2:a + beat + beat // 2])) + beat // 2
+    ej, fill, fall = map(np.mean, (ej, fill, fall))
+    return fill / ej, fall / ej
+
+
+def test_atria_fill_during_ejection_carlsson2004():
+    """[PMID 15016625 — Carlsson 2004; PMID 24441546 — Stephensen 2014]
+    In man the ventricles empty largely by pulling the AV plane toward the apex.
+    The atria fill from the veins DURING ejection, and the heart's total volume
+    falls far less than the volume it ejects.
+
+    Carlsson 2004 (8 healthy adults, MRI, two methods agreeing within subject):
+    atrial inflow during systole 64 ± 2 % (SE; SD ~5.7) of the volume ejected;
+    net heart-volume fall / ejected ~0.34. Stephensen 2014 (45 adults, same
+    lab): 0.26. Band for the ratio: 0.26-0.37 (one lab, two cohorts).
+
+    The coupling's SIZE comes from a different measurement — the volume the
+    plane sweeps (Stephensen: LV 61 %, RV 79 % of SV) — so filling and net fall
+    are OUTCOMES here, not inputs. Note THV in Carlsson includes myocardium; the
+    RATIO is compared, never a percentage of THV.
+
+    The OFF arm proves the mechanism is live: without it the model's atria
+    barely fill during ejection (measured 2026-10-11: 28.5 %, ratio 0.72), so
+    a coupling that silently stopped working fails here.
+    """
+    fill_on, ratio_on = _heart_volume_bookkeeping(True)
+    fill_off, ratio_off = _heart_volume_bookkeeping(False)
+    z = (fill_on * 100.0 - 64.0) / 5.7
+    assert abs(z) <= 2.0, (
+        f"atrial filling during ejection {fill_on*100:.1f} % of SV is {z:+.1f} SD "
+        f"from Carlsson's 64 % (SD ~5.7)")
+    assert 0.26 <= ratio_on <= 0.37, (
+        f"net heart-volume fall / ejected {ratio_on:.2f} outside 0.26-0.37 "
+        f"(Stephensen 0.26, Carlsson 0.34)")
+    assert ratio_off > 0.5 and fill_off < 0.45, (
+        f"coupling OFF gives fill {fill_off*100:.1f} % / ratio {ratio_off:.2f} — the "
+        f"off arm should fail Carlsson; if it passes, this test no longer proves the "
+        f"coupling is what lands the on arm")

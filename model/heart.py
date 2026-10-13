@@ -119,6 +119,39 @@ def ventricular_activation(cardiac_phase: float, hr_bpm: float, legacy: bool = F
     return senzaki_active((t_n * 60.0 / max(hr_bpm, 1e-6)) / ventricular_t_max(hr_bpm, t_max_scale))
 
 
+# ---------------------------------------------------------------------------
+# AV-PLANE COUPLING (2026-10-11) — the atria fill while the ventricles eject.
+# ---------------------------------------------------------------------------
+# In man the ventricles empty mostly by pulling the valve ring (the AV plane)
+# toward the apex; the outer contour of the heart barely moves. The plane's
+# descent ENLARGES the atria, so they fill from the veins during ventricular
+# ejection, and the heart's total volume changes far less than the volume it
+# ejects. Measured: total heart volume falls by only 26-37 % of the volume
+# ejected (Carlsson 2004, PMID 15020295; Stephensen 2014, PMID 24441546 —
+# one lab, two cohorts); the atria fill 71-74 % of it during ejection. Opening
+# the pericardium barely changes this (Carlsson 2005, PMID 15972025), so it
+# belongs to the fibrous ring, not to the sac.
+#
+# Modelled as a rise in each atrium's UNSTRESSED volume equal to f x the volume
+# its ventricle has ejected so far this beat (reset at ventricular onset): the
+# atrium gets bigger without being stretched, as the plane's descent does.
+#
+# f IS THE VOLUME THE PLANE SWEEPS, as a share of stroke volume — Stephensen
+# 2014 (PMID 24441546, CMR, 45 healthy adults): longitudinal (AV-plane) share
+# of SV 61 ± 1 % for the LV, 79 ± 1 % for the RV (mean ± SE). GRADE A for that
+# quantity. That the swept volume appears on the ATRIAL side one-for-one is the
+# modelling ASSUMPTION (the outer contour is near-constant, so the volume has
+# to go somewhere; Carlsson finds it in the atria and appendages): grade C.
+# ATRIAL FILLING IS THEREFORE AN OUTCOME, NOT AN INPUT, and is tested against
+# Carlsson's direct inflow measurement (64 ± 2 % of SV, flow in all six veins).
+# An earlier prototype set f to the measured filling instead (Järvinen 0.54
+# for the LA, 0.88 derived for the RA); both routes land filling at 64 % and
+# net fall at 0.35-0.36, so the choice is not doing the work.
+# OFF by default (SimParams.av_coupling_enabled) — validation log 2026-10-11.
+AV_PLANE_F_LA = 0.61
+AV_PLANE_F_RA = 0.79
+
+
 def elastance_from_phase(
     t_n: float,
     e_max: float,

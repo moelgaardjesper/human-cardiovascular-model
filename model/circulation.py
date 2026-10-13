@@ -41,7 +41,7 @@ from .heart import (
     elastance_from_phase, frank_starling_emax,
     LV_EMAX, RV_EMAX, RV_EMIN, LV_V0_DIA, LV_V30,
     klotz_diastolic_pressure, _normalised_activation, ventricular_activation,
-    VENTRICULAR_T_MAX_SCALE,
+    VENTRICULAR_T_MAX_SCALE, AV_PLANE_F_LA, AV_PLANE_F_RA,
     RA_EMAX, RA_EMIN, LA_EMAX, LA_EMIN,
     atrial_phase_offset,
     pericardial_pressure, PERI_CAPACITY, PERI_K, PERI_VK,
@@ -345,6 +345,14 @@ class SimParams:
         # and the baroreflex stay at the elastic NODE, because a lumped series Zc puts
         # a mean pressure drop (Zc x mean flow) that real large arteries do not have.
         self.aortic_zc = AORTIC_ZC
+        # AV-PLANE COUPLING (heart.py): each atrium's unstressed volume rises by
+        # f x the volume its ventricle has ejected this beat. OFF until the
+        # over-filling it exposes is understood (validation log 2026-10-11).
+        # Only run_simulation carries the per-beat reference; api/live.py calls
+        # _odes without it, so there the switch is inert.
+        self.av_coupling_enabled = False
+        self.av_f_la = AV_PLANE_F_LA
+        self.av_f_ra = AV_PLANE_F_RA
         self.rv_emax = RV_EMAX
         self.rv_emin = RV_EMIN
         self.la_emax = LA_EMAX
@@ -771,10 +779,19 @@ def _pericardial_now(V: np.ndarray, params: SimParams) -> float:
                                 params.pericardial_k_mmhg, params.pericardial_vk_ml)
 
 
+def _av_shift(V: np.ndarray, params: SimParams, av_ref: dict | None) -> tuple[float, float]:
+    """AV-plane coupling: (LA, RA) unstressed-volume rise, mL. f x volume each
+    ventricle has ejected since its end-diastolic reference (heart.py)."""
+    if av_ref is None or not params.av_coupling_enabled:
+        return 0.0, 0.0
+    return (params.av_f_la * max(0.0, av_ref["lv_ed"] - V[IDX["left_ventricle"]]),
+            params.av_f_ra * max(0.0, av_ref["rv_ed"] - V[IDX["right_ventricle"]]))
+
+
 def _odes(t: float, V: np.ndarray, params: SimParams, baro: BaroreflexController | None,
           cardiac_phase: float, p_out: np.ndarray | None = None, slow=None,
           hr_now: float | None = None, p_tm_out: np.ndarray | None = None,
-          flow_out: dict | None = None):
+          flow_out: dict | None = None, av_ref: dict | None = None):
     """
     Compute dV/dt for the 23-compartment system.
 
@@ -959,8 +976,9 @@ def _odes(t: float, V: np.ndarray, params: SimParams, baro: BaroreflexController
         e_v * lv_emax_eff * (V[i["left_ventricle"]] - comp[i["left_ventricle"]].unstressed_volume)
         + (1.0 - e_v) * klotz_diastolic_pressure(V[i["left_ventricle"]], params.lv_v0_dia, params.lv_v30))
     P[i["right_ventricle"]] = _cardiac_pressure(V[i["right_ventricle"]], comp[i["right_ventricle"]].unstressed_volume, E_rv)
-    P[i["left_atrium"]]     = _cardiac_pressure(V[i["left_atrium"]],     comp[i["left_atrium"]].unstressed_volume,     E_la)
-    P[i["right_atrium"]]    = _cardiac_pressure(V[i["right_atrium"]],    comp[i["right_atrium"]].unstressed_volume,    E_ra)
+    _sh_la, _sh_ra = _av_shift(V, params, av_ref)
+    P[i["left_atrium"]]     = _cardiac_pressure(V[i["left_atrium"]],     comp[i["left_atrium"]].unstressed_volume + _sh_la, E_la)
+    P[i["right_atrium"]]    = _cardiac_pressure(V[i["right_atrium"]],    comp[i["right_atrium"]].unstressed_volume + _sh_ra, E_ra)
     # The pericardial sac presses on all four chambers (heart.py). Cavity
     # pressure = wall pressure + sac pressure; flows see the cavity pressure.
     if params.pericardium_enabled:
@@ -1584,8 +1602,8 @@ def run_simulation(
     # CVP: rolling minimum of RA pressure over 2 beats (end-diastolic trough).
     from collections import deque as _deque
     _cvp_win_len = max(100, int(2 * 60.0 / params.hr_bpm / dt))
-    _cvp_win     = _deque([10.0] * _cvp_win_len, maxlen=_cvp_win_len)
     _cvp_rep_win = _deque([10.0] * _cvp_win_len, maxlen=_cvp_win_len)
+    _cvp_rep_sum = 10.0 * _cvp_win_len   # running sum of the window, for its mean
 
     # DBP / SBP: rolling min / max of aortic and brachial pressure over 2 beats.
     _bp_win_len      = _cvp_win_len
@@ -1623,6 +1641,9 @@ def run_simulation(
     # (t % T)/T, which is discontinuous whenever HR varies step-to-step.
     _cardiac_phase = 0.0
     _flow_state = {"aortic": 0.0}   # last step's aortic valve flow, for the root pressure
+    # AV-plane coupling: end-diastolic ventricular volumes, re-taken at each
+    # ventricular onset (phase wrap). Unused unless params.av_coupling_enabled.
+    _av_ref = {"lv_ed": float(V[IDX["left_ventricle"]]), "rv_ed": float(V[IDX["right_ventricle"]])}
     _monitor_phase = 0.0
 
     _disk = None
@@ -1693,8 +1714,9 @@ def run_simulation(
         E_la_now = elastance_from_phase(t_n_a_monitor, params.la_emax, params.la_emin)
 
         p_ao = _vascular_pressure(V[i["aorta"]], c_ao.unstressed_volume, c_ao.compliance)
-        p_ra = _cardiac_pressure(V[i["right_atrium"]], c_ra.unstressed_volume, E_ra_now)
-        p_la = _cardiac_pressure(V[i["left_atrium"]], c_la.unstressed_volume, E_la_now)
+        _sh_la_m, _sh_ra_m = _av_shift(V, params, _av_ref)
+        p_ra = _cardiac_pressure(V[i["right_atrium"]], c_ra.unstressed_volume + _sh_ra_m, E_ra_now)
+        p_la = _cardiac_pressure(V[i["left_atrium"]], c_la.unstressed_volume + _sh_la_m, E_la_now)
 
         # CO: measure from LV volume decrease (no elastance-timing dependency).
         curr_V_lv = V[i["left_ventricle"]]
@@ -1713,15 +1735,24 @@ def run_simulation(
             _last_t_beat  = t
         sv_ts[_oi] += _sv_current
 
-        # CVP as REPORTED: end-diastolic RA trough. The baroreflex no longer reads
-        # this (2026-10-09): it reads instantaneous p_ra + sac, averaged to a mean.
-        _cvp_win.append(p_ra)
-        p_cvp_edi = min(_cvp_win)
+        # CVP as REPORTED: the MEAN right atrial cavity pressure (wall + sac) over
+        # the last ~2 beats — what a catheter mean reads. Respiratory ITP is not in
+        # it, so it is the END-EXPIRATORY reading clinicians take.
+        #
+        # Until 2026-10-11 this was the window MINIMUM, and its comment called it
+        # "end-diastolic". It was end-diastolic only while the lowest pressure of
+        # the beat happened to fall at end-diastole. With the AV-plane coupling the
+        # minimum is the systolic x descent instead, clamped at zero by the
+        # emptying atrium, and every "filling pressure" in the suite read ~0
+        # (validation log 2026-10-11). The quantity was never what the catheter
+        # sources measured (Richter, Hoff, Fujimoto all report means); the switch
+        # just made it visible. The baroreflex already reads the mean (2026-10-09).
         # Sac pressure: added to the reported cavity pressures and to the
         # reflex input below.
         _pp_now = _pericardial_now(V, params)
+        _cvp_rep_sum += (p_ra + _pp_now) - _cvp_rep_win[0]
         _cvp_rep_win.append(p_ra + _pp_now)
-        p_cvp_rep = min(_cvp_rep_win)
+        p_cvp_rep = _cvp_rep_sum / _cvp_win_len
 
         # Update baroreflex — updates hr_delta, svr_factor etc. for NEXT ODE step
         rsa_now = 0.0
@@ -1882,8 +1913,8 @@ def run_simulation(
         # arterial side never did, because until Valsalva nothing exercised it.
         ao_intra_ts[_oi] += p_ao + itp_pos_now + _itp_resp_now + _itp_vals_now
         la_p_ts[_oi]     += p_la + _pp_now + itp_pos_now + _itp_vals_now
-        # MEAN right atrial cavity pressure over the block — what a catheter mean
-        # reads (Fujimoto 2011 reports MEAN RAP). `cvp` is the x-descent trough.
+        # MEAN right atrial cavity pressure over the OUTPUT block (instantaneous,
+        # block-averaged); `cvp` is the same pressure averaged over ~2 beats.
         ra_mean_ts[_oi]  += p_ra + _pp_now + itp_pos_now + _itp_vals_now
         # Intrapericardial pressure as a pericardial catheter reads it: the sac's
         # own pressure plus the same thoracic terms as ra_mean, so the two compare
@@ -1948,7 +1979,7 @@ def run_simulation(
         # returns immediately unless SLOW_DT of simulated time has elapsed.
         dV = _odes(t, V, params, baro, _cardiac_phase, _p_scratch, slow_state,
                    p_tm_out=_p_tm_scratch,
-                   hr_now=hr_now, flow_out=_flow_state)
+                   hr_now=hr_now, flow_out=_flow_state, av_ref=_av_ref)
 
         # Ventricular pressures, taken from the array `_odes` just filled rather
         # than recomputed. `_oi` is still this step's output index.
@@ -2023,6 +2054,9 @@ def run_simulation(
         else:
             _phase_prev = _cardiac_phase
             _cardiac_phase = (_cardiac_phase + hr_now / 60.0 * dt) % 1.0
+            if _cardiac_phase < _phase_prev:
+                _av_ref["lv_ed"] = float(V[IDX["left_ventricle"]])
+                _av_ref["rv_ed"] = float(V[IDX["right_ventricle"]])
             if _cardiac_phase < _phase_prev and _beat_hi is not None:
                 # A beat just closed. Record its pulse pressure and drop
                 # anything older than one respiratory cycle.
