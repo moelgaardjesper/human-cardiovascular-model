@@ -74,7 +74,7 @@ Each chamber is a time-varying elastance. What has been rebuilt against human me
 - **The left ventricle fills along the Klotz 2006 curve**, measured in 80 human hearts, which gives a Starling plateau from structure. The right ventricle keeps a linear wall; the Klotz curve failed there.
 - **The atria fill while the ventricles eject.** The ventricles empty mostly by pulling the valve ring toward the apex, which enlarges the atria (Carlsson 2004, Stephensen 2014). Atrial filling during ejection is an outcome, not an input: 62 % of the ejected volume, against Carlsson's 64 %.
 - **The atria are sized and timed on cast-validated MRI** (Järvinen 1994, appendage included). The right atrium's unstressed volume is pinned on its maximum volume and each atrium's contraction on its atrial ejection fraction. The right-atrial waveform then matches catheter data that set nothing (Condos 1987, Ferguson 1989).
-- **The pericardium is a structure of its own**, holding all four chambers and any effusion, so tamponade emerges. Its capacity is calculated from each patient's own chamber walls at sourced end-diastolic pressures: it just meets the heart at end-diastole and is slack through a normal beat. That reading follows several labs (Burger 1995, Mangano, Carlsson 2005, Sutton 1977). The single-lab view that it carries right-atrial pressure at rest was weighed and not followed. Its stiffness above the knee is pinned on human saline loading (Bhella 2014).
+- **The pericardium is a structure of its own**, holding all four chambers and any effusion, so tamponade emerges. Its capacity is calculated from each patient's own chamber walls at sourced end-diastolic pressures: it just meets the heart at end-diastole and is slack through a normal beat. That reading follows several labs (Burger 1995, Mangano, Carlsson 2005, Sutton 1977). The single-lab view that it carries right-atrial pressure at rest was weighed and not followed. Its stiffness above the knee was pinned on the ratio of RA to wedge pressure rise on human saline loading (Bhella 2014). That ratio is met only because both rises are about 70 % too large in the model, so the stiffness is a magnitude, not a measurement (grade D).
 
 ### The reflexes
 
@@ -156,7 +156,7 @@ All values re-measured on **2026-10-17**, at the current commit, through the sam
 | 7 | Cerebral perfusion at 45° upright | [Pohl & Cullen 2005](https://pubmed.ncbi.nlm.nih.gov/15983529/) | falls; risk below 50 | 90 → 40 mmHg | direction ✓; level a known gap |
 | 8 | Passive leg raise | [Monnet 2016](https://doi.org/10.1007/s00134-015-4134-1), 21 studies | responder ≥ +10 % CO; specificity 0.91 | normovolaemic +9.2 % (non-responder ✓); after 1200 mL +62 % ✓ | ✓ |
 | 9 | Pulse pressure variation, ventilated | [Michard & Teboul 2000](https://doi.org/10.1164/ajrccm.162.1.9905119) | > 13 % predicts fluid response | normovolaemic 8.8 % ✓; 1000 mL bleed 25.1 % ✓; after fluid CO +88 %, PPV 23.4 % | ✓ (the fall in PPV with fluid is small) |
-| 10 | Saline loading, external share | [Bhella 2014](https://pubmed.ncbi.nlm.nih.gov/25236519/), healthy seniors | ΔRAP / ΔPCWP 0.59–0.64 | 0.62 (the pin) | pinned |
+| 10 | Saline loading, external share | [Bhella 2014](https://pubmed.ncbi.nlm.nih.gov/25236519/), healthy seniors | ΔRAP / ΔPCWP 0.59–0.64; ΔPCWP +4.4–5.5, ΔRAP +2.6–3.5 | ratio 0.61, but ΔPCWP +8.8 and ΔRAP +5.3 | ratio right for the wrong reason |
 | 11 | Microgravity CVP | [Buckey 1996](https://pubmed.ncbi.nlm.nih.gov/8853498/) | orbit ~2.5, above upright Earth | 4.54 vs 2.01 at 45° upright | ✓ order |
 | 12 | Phenylephrine, young men | [Schäfers 1999](https://pubmed.ncbi.nlm.nih.gov/10073742/) | ΔMAP +28 (21.3–34.7), ΔHR −16, ΔCO −1.15, ΔSV +9 | 4 µg/kg/min: ΔMAP +20.2, ΔHR −15.1, ΔCO −1.24, ΔSV +3.1 | pressor ✓ at plateau (+21.8); CO edge at 6 µg/kg/min |
 | 13 | Noradrenaline vs phenylephrine, spinal | [Ngan Kee 2015](https://doi.org/10.1097/ALN.0000000000000601), n=104 | NE preserves CO better; NE HR higher | CO 5.92 vs 5.42; HR 64 vs 61 | ✓ |
@@ -181,14 +181,14 @@ All values re-measured on **2026-10-17**, at the current commit, through the sam
 The frozen list is in [`FREEZE.md`](FREEZE.md); if the two disagree, `FREEZE.md` wins for the v1.0.0 artefact. Each item below is carried as a strict `xfail` unless stated.
 
 **The heart**
-- **The left-heart walls are too stiff on loading.** Opening the pericardium in the model *raises* the wedge pressure rise on saline loading (+9 → +22 mmHg), where Borlaug 2018's patients' rise fell by 67 %. Older and female left ventricles also start too high on their filling curves (resting wedge 13–18 mmHg against Bhella's 10.9 ± 2.0). The likely missing structure is **ventricular interdependence through the septum**, the next work item.
+- **The left-heart walls are too stiff on loading.** Opening the pericardium in the model *raises* the wedge pressure rise on saline loading (+9 → +22 mmHg), where Borlaug 2018's patients' rise fell by 67 %. Older and female left ventricles also start too high on their filling curves (resting wedge 13–18 mmHg against Bhella's 10.9 ± 2.0). Two tweaks were tested on 2026-10-17 and neither was adopted. Re-placing the LV filling curve on the wall's share of wedge pressure changed nothing. A stiffer right-ventricular filling law halved the over-filling and improved posture, but broke the saline ratio. A geometric heart with a septum is the remaining candidate.
 - **Head-down filling is still too large** at 20° (Sejersen) on the test protocol.
 - **Atrial reservoir is split unevenly.** Left-atrial emptying runs +1.2 SD and right-atrial −1.2 SD (Järvinen). The probable cause is how the valve ring's swept volume is shared between the atria.
 - **Tamponade needs ~300 mL, not 200.** The larger, measured right atrium enlarges the calculated pericardial capacity. Beck's 200 mL is historical and read only second-hand.
 - **The reference patient rescales itself** when entered by its own haemodynamics, and tier-3 calibration does not converge on entered values.
 
 **Posture**
-- **Orthostatic pressure falls too far.** MAP drops ~25 mmHg at 30° and ~40 at 45°, where people hold it near supine. Cerebral perfusion at 45° is therefore too low. The leading suspect is the absent leg muscle pump.
+- **Orthostatic pressure falls too far.** MAP drops ~25 mmHg at 30° and ~40 at 45°, where people hold it near supine. Cerebral perfusion at 45° is therefore too low. This is not the absent leg muscle pump: the same failure appears lying flat under lower-body suction (Atherton 1997, −30 mmHg: MAP +3 ± 5 in man, −10 in the model), where no muscle acts. The pressure is not defended once central volume falls.
 - **Tilt-response differences by age** (White 1997) and the limb venous reflex's time course under the new heart are open.
 - **Intracranial pressure** is clamped flat above about 29° head-up, so the model must not be used to rank two head-up postures against each other.
 

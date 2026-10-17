@@ -583,14 +583,16 @@ def test_graded_hut_monotonicity_sarafian2017(supine_175_75, hut20_175_75, hut30
 @pytest.mark.xfail(strict=True, raises=AssertionError, reason=(
     "KNOWN GAP, REOPENED 2026-10-17 — CPP 39.5 at 45 deg against the 40 floor. It passed on "
     "2026-10-13 only because resting MAP was higher; the real defect never closed: MAP falls "
-    "~38 mmHg at 45 deg where man holds it near supine (missing leg muscle pump suspected). "
-    "Floor not moved."
+    "~38 mmHg at 45 deg where man holds it near supine. Not the muscle pump: the same MAP "
+    "failure appears supine on -30 LBNP (Atherton 1997: MAP +3 +- 5; model -10), where no "
+    "muscle acts. Floor not moved."
 ))
 # CLOSED 2026-10-13, BUT NOT FIXED — the strict xfail of 2026-10-11 (CPP 36.2)
 # XPASSED at 44.4 because resting pressure and SV rose with the AV-plane coupling and
 # the sac (MAP 101.6 supine in this fixture). MAP still falls ~38 mmHg at 45 deg
-# (101.6 -> 63.1) where man holds it near supine: the orthostatic collapse (missing
-# muscle pump suspected) is still open and this floor is not evidence against it.
+# (101.6 -> 63.1) where man holds it near supine: the orthostatic collapse is still
+# open and this floor is not evidence against it. The muscle pump was the suspect
+# until 2026-10-17; supine LBNP (no muscle activity) shows the same MAP failure.
 def test_cerebral_perfusion_pressure_pohl_cullen2005(supine_175_75, upright45_175_75):
     """Cerebral perfusion pressure (Pohl/Cullen 2005).
 
@@ -7295,7 +7297,14 @@ def test_sac_carries_most_of_a_filling_load_bhella2014(bhella_saline):
     high on its filling curve and over-responds in absolute terms (wedge +9.4 vs
     +4.4-5.5) whatever the sac does. Band 0.55-0.70: Bhella's two estimates (base 2
     -> saline 15: 2.6/4.4; vs baseline mean: 3.5/5.5) widened by ~0.05 each way for
-    figure-reading precision. Grade C."""
+    figure-reading precision.
+
+    THE PASS RESTS ON TWO ERRORS THAT CANCEL (measured 2026-10-17). Both rises are
+    ~70 % too large: wedge +8.8 against ~5, RA pressure +5.3 against ~3. Their RATIO
+    lands on Bhella's 0.6. So this guards the pin, not the physiology, and the pin
+    it guards (PERI_K) is grade D. The band is NOT changed and the target is NOT
+    switched to the absolutes after the fact; a stiffer RV law that got the wedge
+    rise right failed this ratio (0.78-1.17), recorded in the validation log."""
     ratio = {sex: bhella_saline[(sex, True)][1] / bhella_saline[(sex, True)][0]
              for sex in ("male", "female")}
     r = _cohort_mean(ratio)

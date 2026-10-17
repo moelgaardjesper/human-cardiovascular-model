@@ -421,11 +421,15 @@ PERI_VK = 30.0         # mL — GRADE E, to be pinned
 # over-respond in absolute terms (wedge +9.4 vs +4.4-5.5) whatever the sac does.
 # Sweep (cohort-weighted): slope 0.025 / 0.05 / 0.09 / 0.11 / 0.14 / 0.18 gives
 # dRAP/dPCWP 0.41 / 0.50 / 0.58 / 0.62 / 0.66 / 0.69 -> 0.11 (range 0.09-0.14).
-# GRADE C. Was 0.18, the dog value (Banchero via Holt 1967, grade D). vk stays E.
+# Was 0.18, the dog value (Banchero via Holt 1967, grade D). vk stays E.
+# DOWNGRADED TO GRADE D, 2026-10-17: the ratio is met by two errors that cancel.
+# Both absolute rises are ~70 % too large in the model (wedge +8.8 vs ~5, RA +5.3
+# vs ~3), so 0.11 is the stiffness that makes two wrong numbers agree in ratio,
+# not a measured stiffness. Treat it as a magnitude only (validation log).
 # TESTED: Sejersen 20 deg head-down dSV +5.9 (~0, n.s.) passes; Schafers phenylephrine
 # does not depend on it; Borlaug's sac-opening direction FAILS — the left-heart walls,
 # not the sac (validation log 2026-10-16).
-PERI_K = 0.11 * PERI_VK  # mmHg — GRADE C: slope at the knee 0.11 mmHg/mL, pinned on Bhella 2014
+PERI_K = 0.11 * PERI_VK  # mmHg — GRADE D: slope at the knee 0.11 mmHg/mL, Bhella 2014 ratio (errors cancel)
 # NUMERICAL GUARD, NOT PHYSIOLOGY. Above this sac pressure the curve continues as
 # a straight line at its own slope there (continuous value and slope). Without
 # it, an effusion the heart cannot make room for (300 mL into a 305 mL sac)
