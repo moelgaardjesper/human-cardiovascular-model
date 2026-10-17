@@ -82,7 +82,7 @@ from collections import deque
 # made a venous return curve slope come out POSITIVE.
 MAP_SETPOINT = 93.0   # mmHg, CENTRAL AORTIC — McEniery 2005 males 50-59 measure 95 +/- 7
 PP_SETPOINT  = 40.0   # mmHg, CENTRAL AORTIC
-CVP_SETPOINT =  4.54  # mmHg, TRANSMURAL, CYCLE MEAN — was 3.0 as a trough (uncited), + 1.540 offset
+CVP_SETPOINT =  3.04  # mmHg, CAVITY, CYCLE MEAN — keeps its 1.28 gap below CP_HR_REFERENCE (2026-10-11)
 
 # The reference patient's OPERATING POINT, used by `patient.py` to compute the
 # SVR a patient's measured numbers should be scaled against. This is NOT the
@@ -305,7 +305,13 @@ CP_HR_LOADING_FRACTION = 0.0
 # RESTATED AS A CYCLE MEAN 2026-10-09: 4.27 (trough) -> 5.82, the settled MEAN
 # right atrial pressure of the default patient, by this note's own definition
 # (measured 5.818 alongside a trough of 4.278).
-CP_HR_REFERENCE_CVP_MMHG = 5.82
+#
+# RE-MEASURED 2026-10-11, same definition, after the AV-plane coupling and the
+# sac went on by default: the atria now fill during ejection, which lowers the
+# resting MEAN RA pressure (5.82 -> 4.32, fixed point with the arm at rest).
+# Leaving 5.82 made the reflex read the new resting state as blood loss (HR
+# 69 -> 72). CVP_SETPOINT moved by the same amount, keeping its gap.
+CP_HR_REFERENCE_CVP_MMHG = 4.32
 
 
 # ---------------------------------------------------------------------------

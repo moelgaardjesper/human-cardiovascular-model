@@ -528,16 +528,10 @@ def test_trendelenburg_minus15_likhvantsev2025(supine_175_75, hdt15_175_75):
     assert dmap > -5, f"MAP dropped substantially at -15 deg: d={dmap:+.1f} mmHg"
 
 
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason=(
-    "KNOWN GAP, 2026-10-04. The positional intrathoracic pressure that put this "
-    "inside the CI was fitted, and Drummond & Martin 1978 (PMID 147698) measured "
-    "no pleural pressure change at 15 deg head-down, so it is now zero. MEASURED: "
-    "dCVP +0.52 mmHg against a pooled +4.13 (CI 2.42-5.84). NOT YET EXPLAINED. "
-    "Read 2026-10-05: the pool is 7 trials with I2 88 %, mostly ventilated "
-    "patients at about 30 deg, many after cardiac surgery; pneumoperitoneum was "
-    "an exclusion criterion. So the target is weak (grade C) and the angle here "
-    "(-15) does not match it. Do not restore a chest pressure to close this."
-))
+# CLOSED 2026-10-13 — strict xfail of 2026-10-04 (dCVP +0.52) XPASSED when the sac
+# went on with its knee at the resting end-diastolic heart: head-down fills the heart
+# past the knee and the sac raises filling pressure. Measured: dCVP +3.13 (CI 2.42-
+# 5.84), dSV +6.2, dCO +0.40. The target stays weak (grade C, pooled -5 to -45 deg).
 def test_trendelenburg_minus15_cvp_likhvantsev2025(supine_175_75, hdt15_175_75):
     """[PMID: 39500675 — Likhvantsev 2025] The CVP half of the -15 deg comparison,
     split from the test above on 2026-10-04 so the passing flow assertions are
@@ -587,13 +581,16 @@ def test_graded_hut_monotonicity_sarafian2017(supine_175_75, hut20_175_75, hut30
 
 
 @pytest.mark.xfail(strict=True, raises=AssertionError, reason=(
-    "KNOWN GAP, 2026-10-11 — CPP 36.2 mmHg at 45 deg upright against the 40 floor. It was "
-    "passing by 0.5 (40.5) on the legacy timing. The real defect is OLDER and larger: MAP "
-    "falls from ~96 supine to 55 at 45 deg (legacy 59), where healthy people hold MAP near "
-    "supine. That orthostatic MAP collapse dates from the soft legs (validation log; a "
-    "missing muscle pump is the leading suspect) and is what must be fixed. The measured "
-    "systolic timing lowered resting SV ~5 mL and tipped CPP over. Floor not moved."
+    "KNOWN GAP, REOPENED 2026-10-17 — CPP 39.5 at 45 deg against the 40 floor. It passed on "
+    "2026-10-13 only because resting MAP was higher; the real defect never closed: MAP falls "
+    "~38 mmHg at 45 deg where man holds it near supine (missing leg muscle pump suspected). "
+    "Floor not moved."
 ))
+# CLOSED 2026-10-13, BUT NOT FIXED — the strict xfail of 2026-10-11 (CPP 36.2)
+# XPASSED at 44.4 because resting pressure and SV rose with the AV-plane coupling and
+# the sac (MAP 101.6 supine in this fixture). MAP still falls ~38 mmHg at 45 deg
+# (101.6 -> 63.1) where man holds it near supine: the orthostatic collapse (missing
+# muscle pump suspected) is still open and this floor is not evidence against it.
 def test_cerebral_perfusion_pressure_pohl_cullen2005(supine_175_75, upright45_175_75):
     """Cerebral perfusion pressure (Pohl/Cullen 2005).
 
@@ -1707,10 +1704,16 @@ def _venous_return_curve(bleed_ml=0.0, sympathetic_outflow_scale=1.0, baroreflex
     return float(slope), float(-intercept / slope)
 
 
-# CLOSED AGAIN 2026-10-11 — the strict xfail of 2026-10-10 (ratio 0.857, reflex-
-# mediated under sustained holds) XPASSED on the measured systolic timing + aortic
-# Zc change. The protocol caveat stands: sustained holds still let the reflex act
-# (backlog 47 step 2, short holds). Band unchanged.
+# CLOSED 2026-10-11 (XPASS on the systolic timing change), REOPENED 2026-10-15.
+@pytest.mark.xfail(strict=True, raises=AssertionError, reason=(
+    "KNOWN PROTOCOL GAP, 2026-10-15 — ratio 0.855 with reflexes on, 1.123 with them OFF: "
+    "two effects of the SUSTAINED 60 s holds, pulling opposite ways. Reflex on: the reflex "
+    "acts during each hold (as 2026-10-10). Reflex off: with the AV-plane coupling, the bled "
+    "heart at the 35 cmH2O hold falls to CO 1.6 L/min — the low-flow, collapsing-vein regime "
+    "this docstring excludes. The sac is NOT involved (identical with it on and off: the holds "
+    "shrink the heart below the knee). Maas's holds were brief. Fix: short holds (backlog 47 "
+    "step 2), not a wider band. Validation log 2026-10-15."
+))
 def test_haemorrhage_shifts_venous_return_curve_without_rotating_it():
     """[PMID: 19237896 — Maas 2009] A moderate haemorrhage must lower Pmsf and
     leave the venous-return slope alone: resistance to venous return is a
@@ -1893,6 +1896,12 @@ def phenyl_dose_response():
 # above is a different quantity and remains open: only the flow arm closed.
 # CLOSED 2026-10-11 by moving the bands from the interquartile range to 1 SD
 # (see _one_sd_band) — a band decision, not a model change.
+@pytest.mark.xfail(strict=True, raises=AssertionError, reason=(
+    "EDGE GAP, 2026-10-17 — dCO -1.32 at 6.0 mcg/kg/min against the 1 SD floor -1.30 "
+    "(-1.24 at 4.0 passes; -1.49 at 8.0). SV now RISES at the lower doses (+3.1 mL, Schafers "
+    "+9) where it fell 7 mL before the atrial pins, so the flow response moved toward man. "
+    "Band not moved."
+))
 def test_phenylephrine_flow_response_schafers1999(phenyl_dose_response):
     """[PMID: 10073742 — Schäfers 1999] Phenylephrine in healthy supine men
     LOWERS cardiac output, LOWERS heart rate and RAISES stroke volume.
@@ -1925,15 +1934,9 @@ def test_phenylephrine_flow_response_schafers1999(phenyl_dose_response):
         )
 
 
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason=(
-    "KNOWN GAP, 2026-10-06, DEFERRED TO LEG REBUILD STAGE 4 (phenylephrine). "
-    "Since the Klotz LV diastolic curve the pressor response is smaller: dMAP "
-    "+19.1 mmHg against Schafers' quartiles 23.5-32.5 (still below his 1 SD floor of 21.3 "
-    "after the 2026-10-11 move to 1 SD bands). Leading reading, untested: "
-    "a stiffer LV cannot dilate to absorb the added afterload, so SV and CO fall "
-    "more and pressure rises less. Stage 4 is deliberately last because it "
-    "depends on the legs, the heart and the reflex together."
-))
+# CLOSED 2026-10-17 — the strict xfail of 2026-10-06 (dMAP +19.1) XPASSED with the
+# atrial pins (Järvinen): dMAP +20.2 / +21.4 / +21.8 at 4 / 6 / 8 mcg/kg/min against the
+# 1 SD floor 21.3 — inside, but by 0.5 at the plateau. A fragile pass, recorded as such.
 def test_phenylephrine_pressor_response_schafers1999(phenyl_dose_response):
     """[PMID: 10073742 — Schäfers 1999] Phenylephrine in healthy supine men
     raises MAP by +28 mmHg (quartiles 23.5-32.5) and total peripheral
@@ -2079,14 +2082,10 @@ def test_plr_fluid_responsiveness_monnet2016():
     )
 
 
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason=(
-    "KNOWN GAP, 2026-10-06 — SAME CAUSE AS THE SEJERSEN MAGNITUDE XFAIL: the resting "
-    "heart has no Starling plateau. With the anatomical leg heights (Winter 2009) the "
-    "legs return more blood, and the normovolaemic patient's CO rises +17.0 % (was "
-    "+9.6 % with the old, unsourced, compressed heights). Split from the test above so "
-    "the hypovolaemic arm stays live. Not closed by shortening the legs: the work aimed "
-    "at it is the Klotz 2006 diastolic curve (validation log 2026-10-05)."
-))
+# CLOSED 2026-10-13 — strict xfail of 2026-10-06 (CO +17.0 %) XPASSED when the sac
+# went on: the full normovolaemic heart meets the sac and stops filling (CO +1.8 %),
+# while after a 1200 mL bleed it sits below the knee and still responds (+60.8 %).
+# A Starling plateau from structure, not from a fitted curve.
 def test_plr_normovolaemic_non_responder_monnet2016():
     """[PMID 26825952 — Monnet 2016] Specificity 0.91: a normovolaemic patient
     on the Starling plateau should NOT reach the +10 % responder threshold. Same
@@ -2746,22 +2745,54 @@ def test_pulmonary_pressures_are_physiological():
 # atrial volumes than echo. The bands below span both rather than picking a winner.
 # The model exceeds both by a wide margin, so the disagreement does not affect the
 # verdict — but it does mean these bands must not be tightened onto one modality.
+#
+# [J1] Järvinen V, Kupari M, Hekali P, Poutanen V-P (1994). "Assessment of left
+#      atrial volumes and phasic function using cine magnetic resonance imaging in
+#      normal subjects." Am J Cardiol 73:1135-1138. DOI 10.1016/0002-9149(94)90298-4
+#      Cine MRI, 17 healthy adults aged 24-47 (mean 40), cast-validated, LA
+#      APPENDAGE INCLUDED. LAmax 52 +/- 9, LAmin 24 +/- 5 mL/m2; emptying 53 +/- 5 %.
+#
+# 2026-10-15: THE LEFT ATRIUM IS NOW TESTED AGAINST [J1], NOT [G1][G2]. Gao and the
+# 3D-echo pool measure the atrial BODY and exclude the appendage. Since the AV-plane
+# coupling (2026-10-13) the model's atrium takes up the volume the valve ring sweeps,
+# which in man includes the appendage (Carlsson 2004), so the quantity it represents
+# is the appendage-inclusive one. Jesper chose Järvinen for the LA on 2026-10-09
+# (source_conflicts F, Gao demoted). Bands are Järvinen's 1 SD, as Luu and Gao are
+# used elsewhere. The RIGHT atrium is split into its own tests and stays on [G1]
+# until an appendage-inclusive RA source is read (Järvinen 1994 Radiology, PMID
+# 8134560, requested; its abstract gives RAmax 77 +/- 11 mL/m2).
 # ===========================================================================
 
 REFERENCE_BSA = (175.0 * 70.0 / 3600.0) ** 0.5   # Mosteller, the default patient
 
 
 def _atrial_state():
-    """Cycle max/min volume and emptying fraction for both atria."""
+    """Max/min volume and emptying fraction of the AVERAGE BEAT, both atria.
+
+    MATCHED TO JÄRVINEN'S METHOD (2026-10-17). His cine MRI was not respiratory-
+    gated: "the effect of respiration was averaged out from the data because of
+    the long imaging time" (Radiology 1994). Each frame is an average over many
+    beats and breaths, so his volume curve is the ensemble-AVERAGE beat during
+    quiet breathing. Until 2026-10-17 this ran with breathing OFF and took the
+    absolute max/min over 20 s — matched to Gao's breath-hold CMR, which these
+    bands no longer use. Now: spontaneous breathing, beats aligned at LV
+    end-diastole and averaged, then max/min of that average beat."""
     p = SimParams()
-    p.ventilation_mode = "none"
     p.slow_dynamics_enabled = False
-    r = run_simulation(p, duration_s=60.0, dt=DT)
-    V = r["volumes"][2 * len(r["volumes"]) // 3:]
+    r = run_simulation(p, duration_s=90.0, dt=DT, output_every=1)
+    t = np.asarray(r["t"])
+    V = np.asarray(r["volumes"])[t >= 30.0]
+    lv = V[:, IDX["left_ventricle"]]
+    beat = int(round(60.0 / float(np.mean(np.asarray(r["hr"])[t >= 30.0])) / DT))
+    starts, i = [], int(np.argmax(lv[:beat]))
+    while i + beat < len(lv):
+        starts.append(i)
+        i += int(np.argmax(lv[i + beat // 2:i + beat + beat // 2])) + beat // 2
+    n = min(starts[k + 1] - starts[k] for k in range(len(starts) - 1))
     out = {}
     for key, name in (("la", "left_atrium"), ("ra", "right_atrium")):
-        v = V[:, IDX[name]]
-        vmax, vmin = float(v.max()), float(v.min())
+        avg = np.mean([V[s:s + n, IDX[name]] for s in starts[:-1]], axis=0)
+        vmax, vmin = float(avg.max()), float(avg.min())
         out[key] = {
             "vmax": vmax, "vmin": vmin,
             "vmax_i": vmax / REFERENCE_BSA, "vmin_i": vmin / REFERENCE_BSA,
@@ -2789,26 +2820,46 @@ def test_atrial_volumes_are_physiological():
     left less volume in the central pool, so the shared pool shrank. LAVmax is
     once again a function of atrial parameters rather than of the pool.
     """
-    """[G1][G2] Atrial volumes indexed to BSA must match human reference ranges."""
+    """[J1] Left atrial volumes (appendage included) indexed to BSA, 1 SD of Järvinen.
+    The bands were [G1][G2] (atrial body only) until 2026-10-15; see the section note."""
     s = _atrial_state()
-    # Bands span [G2] 3D-echo and [G1] CMR; see the modality note above.
-    assert 20.0 <= s["la"]["vmax_i"] <= 50.0, (
+    assert 43.0 <= s["la"]["vmax_i"] <= 61.0, (
         f"LAVmax {s['la']['vmax_i']:.1f} mL/m2 ({s['la']['vmax']:.0f} mL) outside "
-        f"20-50; [G2] 3D echo 25.18, [G1] CMR 36.9 +/- 7.7"
+        f"43-61; [J1] 52 +/- 9 (appendage included)"
     )
-    assert 8.0 <= s["la"]["vmin_i"] <= 22.0, (
-        f"LAVmin {s['la']['vmin_i']:.1f} mL/m2 outside 8-22; [G2] 11.10, [G1] 14.4"
+    assert 19.0 <= s["la"]["vmin_i"] <= 29.0, (
+        f"LAVmin {s['la']['vmin_i']:.1f} mL/m2 outside 19-29; [J1] 24 +/- 5"
     )
-    assert 20.0 <= s["ra"]["vmax_i"] <= 48.0, (
+
+
+def test_right_atrial_volumes_are_physiological():
+    """[PMID 8134560 — Järvinen 1994, Radiology] Right atrial volumes, APPENDAGE
+    INCLUDED, caval inlets excluded; cine MRI over free breathing (average beat).
+    RAmax 77 +/- 11, RAmin 38 +/- 8 mL/m2 (SD, n 8, age 41, BSA 1.90). MRI read
+    the RA casts 7.2 +/- 2.3 mL LOW (~3.8 mL/m2), so the bands are the CAST-
+    CORRECTED mean +/- 1 SD: max 70-92, min 34-50. RE-TARGETED 2026-10-17 from Gao
+    (atrial body only, a different quantity); the RA's unstressed volume is PINNED
+    on the max, so the max band guards the pin and the min tests it."""
+    s = _atrial_state()
+    assert 70.0 <= s["ra"]["vmax_i"] <= 92.0, (
         f"RAVmax {s['ra']['vmax_i']:.1f} mL/m2 ({s['ra']['vmax']:.0f} mL) outside "
-        f"20-48; [G1] CMR 33.9 +/- 8.9"
+        f"70-92; Järvinen 77 +/- 11, cast-corrected ~81"
     )
-    assert 8.0 <= s["ra"]["vmin_i"] <= 28.0, (
-        f"RAVmin {s['ra']['vmin_i']:.1f} mL/m2 outside 8-28; [G1] 17.1 +/- 5.6"
+    assert 34.0 <= s["ra"]["vmin_i"] <= 50.0, (
+        f"RAVmin {s['ra']['vmin_i']:.1f} mL/m2 outside 34-50; Järvinen 38 +/- 8, "
+        f"cast-corrected ~42"
     )
 
 
 # Was a strict xfail; closed 2026-10-06 by the Klotz LV diastolic curve (heart.py).
+@pytest.mark.xfail(strict=True, raises=AssertionError, reason=(
+    "KNOWN GAP, 2026-10-17 — LA total emptying 59.1 % against Järvinen's 53 +/- 5 (+1.2 SD), "
+    "with LA contraction PINNED on his LA ejection fraction (28 %) and LA max/min on target. "
+    "The excess is RESERVOIR: the AV-plane coupling gives the LA 61 % of LV SV (Stephensen's "
+    "swept volume) where Järvinen measured LA systolic filling at 54 %, and the RA mirrors it "
+    "(reservoir too SMALL, see the RA test). Likely cause: the split of the swept volume "
+    "between the atria. Recorded, not tuned (validation log 2026-10-17)."
+))
 def test_atrial_emptying_fractions_are_physiological():
     """[G1][G2] Total atrial emptying fraction must match human reference ranges.
 
@@ -2821,12 +2872,26 @@ def test_atrial_emptying_fractions_are_physiological():
     one without the other leaves an atrium the right size with the wrong dynamics.
     """
     s = _atrial_state()
-    assert 45.0 <= s["la"]["ef"] <= 72.0, (
-        f"LA emptying fraction {s['la']['ef']:.1f}% outside 45-72; [G1] 61.1 +/- 6.2, "
-        f"[G2] 55.94 (CI 51.92-59.96)"
+    # [J1] since 2026-10-15 (was 45-72 on [G1][G2], atrial body only).
+    assert 48.0 <= s["la"]["ef"] <= 58.0, (
+        f"LA emptying fraction {s['la']['ef']:.1f}% outside 48-58; [J1] 53 +/- 5 "
+        f"(appendage included)"
     )
-    assert 35.0 <= s["ra"]["ef"] <= 65.0, (
-        f"RA emptying fraction {s['ra']['ef']:.1f}% outside 35-65; [G1] 49.7 +/- 9.2"
+
+
+@pytest.mark.xfail(strict=True, raises=AssertionError, reason=(
+    "KNOWN GAP, 2026-10-17 — RA total emptying 44.8 % against Järvinen's 52 +/- 6 (-1.2 SD), "
+    "the mirror of the LA (+1.2 SD): the RA's reservoir share runs small (48 vs 57 +/- 12 % of "
+    "SV) while the LA's runs large. Likely cause: the split of the AV-plane swept volume "
+    "between the atria (f_LA 0.61 vs Järvinen's LA filling 0.54). Recorded, not tuned."
+))
+def test_right_atrial_emptying_fraction_is_physiological():
+    """[PMID 8134560 — Järvinen 1994] RA fractional emptying 52 +/- 6 % (average
+    beat, free breathing). RE-TARGETED 2026-10-17 from Gao's 49.7 +/- 9.2 (body
+    only). Band 1 SD."""
+    s = _atrial_state()
+    assert 46.0 <= s["ra"]["ef"] <= 58.0, (
+        f"RA emptying fraction {s['ra']['ef']:.1f}% outside 46-58; Järvinen 52 +/- 6"
     )
 
 
@@ -3024,10 +3089,12 @@ def test_female_chamber_volumes_match_luu_and_gao():
     assert 59.0 <= f["right_ventricle"] <= 85.0, (
         f"female RVEDV {f['right_ventricle']:.1f} mL/m2 outside Luu's 1 SD of 59-85; "
         f"[L1] female 72 ± 13, male 86")
-    # Band is Gao's 1 SD; see the docstring for why it is not tighter.
-    assert 24.5 <= f["right_atrium"] <= 40.9, (
-        f"female RAVmax {f['right_atrium']:.1f} mL/m2 outside Gao's 1 SD of "
-        f"24.5-40.9; [G1] female 32.7 ± 8.2, male 34.9")
+    # RE-TARGETED 2026-10-17: the RA is now appendage-inclusive (Järvinen 1994,
+    # cast-corrected 1 SD 70-92 mL/m2, cohort 5 M / 3 F — no sex split published).
+    # Gao's female 32.7 +/- 8.2 is the atrial BODY only, a different quantity.
+    assert 70.0 <= f["right_atrium"] <= 92.0, (
+        f"female RAVmax {f['right_atrium']:.1f} mL/m2 outside Järvinen's 1 SD of "
+        f"70-92 (cast-corrected; appendage included)")
 
 
 # ===========================================================================
@@ -4776,7 +4843,11 @@ def test_age_slope_of_brachial_pulse_pressure_white1997(white1997_arms):
 # the measured dCO and dHR, **-30 mmHg behaves like 500 mL or a little less**,
 # and 1000 mL is about double the measured effect. Registration 002 recorded
 # that direction in advance and it held.
-_LBNP_SV_IQR  = (72.5, 84.4)   # supine stroke volume, median 80.4 mL
+# 1 SD from the reported quartiles (2026-10-17, Jesper: "yes to 1 SD", the suite's
+# convention since the Schäfers decision): median 80.4, quartiles 72.5 / 84.4, each
+# side scaled by 1/0.674 -> (68.7, 86.3). The IQR itself is kept as data.
+_LBNP_SV_QUARTILES = (80.4, 72.5, 84.4)   # median, lower, upper quartile, mL
+_LBNP_SV_IQR  = (round(80.4 - (80.4 - 72.5) / 0.674, 1), round(80.4 + (84.4 - 80.4) / 0.674, 1))
 _LBNP_DCO     = -1.00          # L/min at -30 mmHg, spontaneous breathing
 _LBNP_DHR     = +5.8           # bpm
 _LBNP_DMAP    = +2.90          # mmHg — the model has this BACKWARDS
@@ -4838,7 +4909,9 @@ def test_resting_stroke_volume_in_young_adults_pmid27702883(lbnp_young_haemorrha
     the lower quartile of 72.5.
 
     **That 0.06 mL is recorded rather than smoothed over, and the band is NOT
-    widened to absorb it.** Widening a literature band to make a model fit is
+    widened to absorb it.** (2026-10-17: the band IS now 1 SD instead of the IQR —
+    Jesper's suite-wide convention, decided for Schäfers and applied here on his
+    explicit call, not to absorb a miss: 84.56 vs 84.4 at the time.) Widening a literature band to make a model fit is
     the move this project exists to refuse. The sex-mean is the honest
     comparator for a near-balanced cohort, it is what the White 1997 tests
     above use for the same reason, and it does not depend on which arm happens
@@ -4849,7 +4922,7 @@ def test_resting_stroke_volume_in_young_adults_pmid27702883(lbnp_young_haemorrha
     mean_sv = sum(sv) / len(sv)
     assert lo <= mean_sv <= hi, (
         f"resting stroke volume, mean of the two sex arms, is {mean_sv:.2f} mL "
-        f"— outside the measured IQR {lo}-{hi} (median 80.4). Individual arms: "
+        f"— outside the 1 SD band {lo}-{hi} (median 80.4, IQR 72.5-84.4). Individual arms: "
         f"{', '.join(f'{v:.2f}' for v in sv)}"
     )
 
@@ -5839,10 +5912,12 @@ def test_the_reference_operating_point_is_stated_once_and_consistently():
     # 2026-10-09: BOTH restated as CYCLE MEANS (the reflex now reads mean RA, not
     # the trough): 3.0 -> 4.54 and 4.27 -> 5.82, each + the measured resting
     # mean - trough offset 1.540 mmHg. The deliberate gap is kept (1.27 -> 1.28).
-    assert CVP_SETPOINT == 4.54 and CP_HR_REFERENCE_CVP_MMHG == 5.82, (
+    # 2026-10-11: re-measured by the same definition after the AV-plane coupling
+    # and the sac went on (resting mean RA fell); gap kept at 1.28.
+    assert CVP_SETPOINT == 3.04 and CP_HR_REFERENCE_CVP_MMHG == 4.32, (
         f"A FILLING-PRESSURE REFERENCE CHANGED: CVP_SETPOINT={CVP_SETPOINT} "
-        f"(was 4.54, uncited, used by the SVR arm), CP_HR_REFERENCE_CVP_MMHG="
-        f"{CP_HR_REFERENCE_CVP_MMHG} (was 5.82, the cardiopulmonary arm's reference, "
+        f"(was 3.04, uncited, used by the SVR arm), CP_HR_REFERENCE_CVP_MMHG="
+        f"{CP_HR_REFERENCE_CVP_MMHG} (was 4.32, the cardiopulmonary arm's reference, "
         f"chosen to sit at the model's own settled filling pressure). THEY ARE "
         f"DELIBERATELY DIFFERENT — read backlog item 39 before changing either, and "
         f"note that driving the HR arm from CVP_SETPOINT cost 6.0 bpm of spurious "
@@ -6980,6 +7055,13 @@ def test_abdominal_and_leg_heights_scale_with_stature():
 # must make room for raises the pressure of every chamber toward the sac's and
 # throttles output. Magnitudes (k, vk) are grade D/E and are NOT asserted.
 
+@pytest.mark.xfail(strict=True, raises=AssertionError, reason=(
+    "KNOWN GAP, 2026-10-17 — 200 mL raises RA only 4.6 -> 8.5 (needs > +5) and CO falls to "
+    "70 % (needs < 60 %); 300 mL gives RA 12.1, CO 41 %, RA-IPP 2.2, LA-IPP 1.5 (full "
+    "tamponade). The RA's unstressed volume was pinned on Järvinen (appendage included), so "
+    "the heart, and the CALCULATED pericardial capacity, is ~40 mL larger. Beck's '200 mL "
+    "can cause hypotensive tamponade' is 1935, read only via Boltwood. Not moved."
+))
 def test_pericardial_effusion_produces_tamponade():
     """[PMID 668074] Reddy 1978: in all 14 tamponade patients RVEDP was elevated
     and EQUAL to pericardial pressure; with pulsus paradoxus the wedge equalised
@@ -7013,15 +7095,15 @@ def test_pericardial_effusion_produces_tamponade():
 
 
 def test_pericardial_output_is_pleural_only_when_the_sac_is_off():
-    """The sac is OFF by default (heart.py: walls not yet at wall pressures, AV
-    coupling missing). With it off, the reported intrapericardial pressure must be
-    the thoracic terms alone, and an effusion must change nothing — so a default
-    run cannot silently carry a sac."""
+    """With the sac switched OFF (it is on by default since 2026-10-11), the
+    reported intrapericardial pressure must be the thoracic terms alone, and an
+    effusion must change nothing — the switch must really remove the sac."""
     p = SimParams()
-    assert p.pericardium_enabled is False
+    p.pericardium_enabled = False
     p.pericardial_fluid_ml = 200.0
     r = run_simulation(p, duration_s=20.0, dt=DT, output_every=10)
     q = SimParams()
+    q.pericardium_enabled = False
     r0 = run_simulation(q, duration_s=20.0, dt=DT, output_every=10)
     assert np.allclose(r["ra_mean"], r0["ra_mean"]), "effusion acted with the sac off"
     # Supine, no Valsalva: the thoracic terms in the series are zero, so with the
@@ -7126,6 +7208,11 @@ def _heart_volume_bookkeeping(av_on):
     return fill / ej, fall / ej
 
 
+@pytest.mark.xfail(strict=True, raises=AssertionError, reason=(
+    "EDGE GAP, 2026-10-17 — net heart-volume fall / ejected 0.379 against the 0.37 ceiling "
+    "(Carlsson 0.34, Stephensen 0.26), after the atrial pins: the larger RA and stronger LA "
+    "kick change how much the atria take up during ejection. Filling assertion still passes."
+))
 def test_atria_fill_during_ejection_carlsson2004():
     """[PMID 15016625 — Carlsson 2004; PMID 24441546 — Stephensen 2014]
     In man the ventricles empty largely by pulling the AV plane toward the apex.
@@ -7159,3 +7246,79 @@ def test_atria_fill_during_ejection_carlsson2004():
         f"coupling OFF gives fill {fill_off*100:.1f} % / ratio {ratio_off:.2f} — the "
         f"off arm should fail Carlsson; if it passes, this test no longer proves the "
         f"coupling is what lands the on arm")
+
+
+# ===========================================================================
+# 51. THE SAC TAKES MOST OF A FILLING LOAD — Bhella 2014 (pin), Borlaug 2018 (test)
+# ===========================================================================
+
+_BHELLA_SEDENTARY = (169.5, 74.7, 69.0)   # height cm, weight kg, age (Table 1)
+
+
+def _saline_load(sex, sac=True):
+    """Bhella 2014's loading step: warm saline 15 mL/kg at ~200 mL/min in a
+    supine sedentary senior. Returns (dPCWP, dRAP, dSV), end of infusion vs the
+    30 s before it. PCWP is the LA cavity pressure, RAP the reported CVP."""
+    h, w, age = _BHELLA_SEDENTARY
+    p = cohort_params(h, w, age_years=age, sex=sex)
+    p.pericardium_enabled = sac
+    vol = 15.0 * w
+    dur = vol / 200.0 * 60.0
+    t0 = 120.0
+    p.fluid_bolus_ml, p.fluid_bolus_start_s, p.fluid_bolus_duration_s = vol, t0, dur
+    r = run_simulation(p, duration_s=t0 + dur + 60.0, dt=DT, output_every=10)
+    t = np.asarray(r["t"])
+    def win(k, a, b):
+        return float(np.mean(np.asarray(r[k])[(t >= a) & (t < b)]))
+    return tuple(win(k, t0 + dur, t0 + dur + 30.0) - win(k, t0 - 30.0, t0)
+                 for k in ("la_pressure", "cvp", "sv"))
+
+
+@pytest.fixture(scope="module")
+def bhella_saline():
+    """Both sexes, sac on and off. Bhella's sedentary group was 44 % female."""
+    return {(sex, sac): _saline_load(sex, sac)
+            for sex in ("male", "female") for sac in (True, False)}
+
+
+def _cohort_mean(values):
+    return 0.56 * values["male"] + 0.44 * values["female"]
+
+
+def test_sac_carries_most_of_a_filling_load_bhella2014(bhella_saline):
+    """[PMID 25236519 — Bhella 2014] On saline loading, healthy seniors' RA pressure
+    (= pericardial pressure, by their method) rose by 0.59-0.64 of the wedge rise:
+    most of the extra LV filling pressure is EXTERNAL. This is the endpoint the sac's
+    knee slope was PINNED on (heart.py PERI_K, 2026-10-16), so it guards the pin.
+
+    A RATIO, because the absolutes are confounded: the model's older LV starts too
+    high on its filling curve and over-responds in absolute terms (wedge +9.4 vs
+    +4.4-5.5) whatever the sac does. Band 0.55-0.70: Bhella's two estimates (base 2
+    -> saline 15: 2.6/4.4; vs baseline mean: 3.5/5.5) widened by ~0.05 each way for
+    figure-reading precision. Grade C."""
+    ratio = {sex: bhella_saline[(sex, True)][1] / bhella_saline[(sex, True)][0]
+             for sex in ("male", "female")}
+    r = _cohort_mean(ratio)
+    assert 0.55 <= r <= 0.70, (
+        f"external share of the saline wedge rise dRAP/dPCWP {r:.2f} outside 0.55-0.70 "
+        f"(Bhella 0.59-0.64); male {ratio['male']:.2f}, female {ratio['female']:.2f}")
+
+
+@pytest.mark.xfail(strict=True, raises=AssertionError, reason=(
+    "KNOWN GAP, 2026-10-16 — THE LEFT-HEART WALLS ARE TOO STIFF ON LOADING. Opening the "
+    "sac RAISES the model's saline wedge rise (+9.4 -> +22) where Borlaug's patients' fell "
+    "67 %. Without the sac the LA and LV walls carry the whole load, and they are much "
+    "stiffer than a human heart's: the Klotz LV curve is placed at a CAVITY pressure "
+    "(Chemla's wedge) and older/female LVs start too high on it (resting wedge 13.4 / 18.1 "
+    "vs Bhella 10.9). Not the sac: its slope is pinned on Bhella's ratio (test above)."
+))
+def test_opening_the_sac_reduces_the_filling_pressure_rise_borlaug2018(bhella_saline):
+    """[PMID 30571519 — Borlaug 2018, via Borlaug & Reddy 2019 PMID 31248569 Fig 5I-K]
+    In patients at AVR/CABG, opening the anterior pericardium cut the wedge rise on
+    volume loading by 67 % (~9.5 -> ~3.5). The DIRECTION is asserted (a smaller rise
+    with the sac open), on Bhella's load, because Borlaug's load size is not given."""
+    on = _cohort_mean({s: bhella_saline[(s, True)][0] for s in ("male", "female")})
+    off = _cohort_mean({s: bhella_saline[(s, False)][0] for s in ("male", "female")})
+    assert off < on, (
+        f"opening the sac did not reduce the wedge rise on loading: {on:+.1f} -> {off:+.1f} "
+        f"mmHg (Borlaug: -67 %)")

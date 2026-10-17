@@ -44,7 +44,7 @@ from .heart import (
     VENTRICULAR_T_MAX_SCALE, AV_PLANE_F_LA, AV_PLANE_F_RA,
     RA_EMAX, RA_EMIN, LA_EMAX, LA_EMIN,
     atrial_phase_offset,
-    pericardial_pressure, PERI_CAPACITY, PERI_K, PERI_VK,
+    pericardial_pressure, pericardial_capacity, PERI_K, PERI_VK,
 )
 from .gravity import (hydrostatic_delta_mmhg, GravityEnvironment, smooth_tilt_profile,
                       positional_itp_mmhg, articulated_hydrostatic_delta_mmhg)
@@ -317,12 +317,12 @@ class SimParams:
         self.lv_v0_dia = LV_V0_DIA
         self.lv_v30    = LV_V30
         # The pericardium (heart.py THE PERICARDIUM): its own structure, with a
-        # capacity, a stiffness and a fluid content. Off until measured; capacity
-        # scales with heart size in apply_cardiac. pericardial_fluid_ml is EXCESS
+        # capacity, a stiffness and a fluid content. ON since 2026-10-11 (knee at
+        # the resting end-diastolic heart; heart.py); capacity scales with heart
+        # size in apply_cardiac. pericardial_fluid_ml is EXCESS
         # fluid (the normal film is inside the capacity): > 0 is an effusion, and
         # with the sac on, a tamponade.
-        self.pericardium_enabled = False
-        self.pericardial_capacity_ml = PERI_CAPACITY
+        self.pericardium_enabled = True
         self.pericardial_k_mmhg = PERI_K
         self.pericardial_vk_ml = PERI_VK
         self.pericardial_fluid_ml = 0.0
@@ -346,11 +346,11 @@ class SimParams:
         # a mean pressure drop (Zc x mean flow) that real large arteries do not have.
         self.aortic_zc = AORTIC_ZC
         # AV-PLANE COUPLING (heart.py): each atrium's unstressed volume rises by
-        # f x the volume its ventricle has ejected this beat. OFF until the
-        # over-filling it exposes is understood (validation log 2026-10-11).
+        # f x the volume its ventricle has ejected this beat. ON since 2026-10-11
+        # (option 1, with the sac): ventricles on Luu, Carlsson filling 64 %.
         # Only run_simulation carries the per-beat reference; api/live.py calls
         # _odes without it, so there the switch is inert.
-        self.av_coupling_enabled = False
+        self.av_coupling_enabled = True
         self.av_f_la = AV_PLANE_F_LA
         self.av_f_ra = AV_PLANE_F_RA
         self.rv_emax = RV_EMAX
@@ -359,6 +359,9 @@ class SimParams:
         self.la_emin = LA_EMIN
         self.ra_emax = RA_EMAX
         self.ra_emin = RA_EMIN
+        # Pericardial capacity from the walls just set (heart.py). apply_cardiac
+        # recomputes it for a built patient.
+        self.set_pericardial_capacity()
 
         # Posture / gravity
         self.tilt_start_deg  = 0.0                     # degrees from horizontal
@@ -601,6 +604,17 @@ class SimParams:
     # side of `*_art`, ITP across the aortic valve, PPV's missing compartments —
     # and now a parameter that was never a parameter.
     #
+    def set_pericardial_capacity(self) -> None:
+        """Pericardial capacity from this patient's own walls (heart.py
+        pericardial_capacity): the chambers' volumes at their sourced
+        end-diastolic pressures. Call again after changing a wall."""
+        c, i = self.compartments, IDX
+        self.pericardial_capacity_ml = pericardial_capacity(
+            self.lv_v0_dia, self.lv_v30,
+            c[i["right_ventricle"]].unstressed_volume, self.rv_emin,
+            c[i["left_atrium"]].unstressed_volume, self.la_emin,
+            c[i["right_atrium"]].unstressed_volume, self.ra_emin)
+
     # Raising here turns a silent no-op into an immediate, named failure.
     def __setattr__(self, name: str, value) -> None:
         if getattr(self, "_sealed", False) and name not in self.__dict__:

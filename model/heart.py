@@ -147,7 +147,7 @@ def ventricular_activation(cardiac_phase: float, hr_bpm: float, legacy: bool = F
 # An earlier prototype set f to the measured filling instead (Järvinen 0.54
 # for the LA, 0.88 derived for the RA); both routes land filling at 64 % and
 # net fall at 0.35-0.36, so the choice is not doing the work.
-# OFF by default (SimParams.av_coupling_enabled) — validation log 2026-10-11.
+# ON by default since 2026-10-11 (SimParams.av_coupling_enabled) — validation log.
 AV_PLANE_F_LA = 0.61
 AV_PLANE_F_RA = 0.79
 
@@ -317,6 +317,15 @@ LV_V0_DIA, LV_V30 = klotz_placement(74.0 * _BSA_REF, 11.0 - _PLEURAL_END_EXPIRAT
 #     (Borlaug 2018 via Borlaug & Reddy 2019, PMID 31248569).
 #   - Mechanics: little pressure at small heart volume, steep once the heart
 #     fills the sac (Borlaug & Reddy; Kroeker 2003, dog).
+#   - AGAINST "the sac carries RA pressure AT REST" (2026-10-11, conflict H):
+#     the two balloon studies above are ONE lab and method (Tyberg); Fujimoto
+#     ASSUMES RAP = Pperi. Several labs find little constraint at normal
+#     filling: opening the sac changed nothing (Burger 1995, PMID 7813308, RVEDV
+#     79 -> 78, RAP 4.3 -> 4.3; Mangano 1980/85; Carlsson 2005, PMID 15972025);
+#     a transducer in the closed human sac read 0-5 mmHg with a SMALL beat swing
+#     at low mean, ~25 % of LV diastolic pressure external (Sutton 1977, PMID
+#     831731). Jesper chose this side (option 1): the walls carry the resting
+#     pressures, and the sac engages ABOVE the resting heart.
 #
 # THE SAC IS ITS OWN STRUCTURE (rebuilt 2026-10-09, Jesper: "we need both if we
 # want to model cardiac tamponade"). It has an anatomical CAPACITY, it holds the
@@ -343,8 +352,11 @@ LV_V0_DIA, LV_V30 = klotz_placement(74.0 * _BSA_REF, 11.0 - _PLEURAL_END_EXPIRAT
 #             effusion can cause hypotensive tamponade (Beck 1935 via Boltwood);
 #             ~70 % of resting wedge is external (Fujimoto 2011). CONTRADICTED by
 #             Applegate 1992 (dog, no constraint at rest) — recorded, unresolved.
-#             The default is the reference heart's measured mean four-chamber
-#             volume, 305 mL; it scales with heart size in apply_cardiac.
+#             CALCULATED (2026-10-16): the sum of the four chambers' volumes at
+#             their SOURCED end-diastolic pressures, from each chamber's own wall
+#             law — see pericardial_capacity() below. The pericardium just meets
+#             the heart at end-diastole (Burger, Sutton), and it is ANATOMY: it
+#             is not resized to wherever a model heart happens to settle.
 #   k, vk     GRADE D/E — slope at the knee k/vk = 0.18 mmHg/mL from the same dog
 #             experiment. Human drainage slopes (0.03-0.2 mmHg/mL, Reddy, Boltwood)
 #             are from CHRONICALLY STRETCHED sacs and are not a normal sac's
@@ -354,25 +366,66 @@ LV_V0_DIA, LV_V30 = klotz_placement(74.0 * _BSA_REF, 11.0 - _PLEURAL_END_EXPIRAT
 # A stretched (subacute) sac is a larger capacity with the same stiffness
 # (Freeman & LeWinter 1984, dog) — model it by raising capacity, not softening k.
 #
-# KNOWN BLOCKER FOR SWITCHING IT ON: the model's four-chamber volume swings
-# ~158 mL per beat against ~64 mL in man (Carlsson 2004, PMID 15016625), because
-# the atria do not fill during ventricular ejection (no AV-plane coupling). A
-# sac converts that swing into a large pressure oscillation every beat.
+# ON BY DEFAULT since 2026-10-11, with the AV-plane coupling (which brought the
+# beat's heart-volume swing from ~158 mL down to ~90, Carlsson ~64). With the
+# knee at end-diastole the sac is ~0 at rest and engages on loading: at 20 deg
+# head-down dSV +27 -> +3 mL against Sejersen's ~0 (validation log 2026-10-11).
 #
 # WHAT EACH CONSUMER GETS. The ODE uses cavity pressure — venous return into the
-# RA is opposed by the sac as well as the wall. The baroreflex keeps the WALL
-# pressure: cardiopulmonary receptors sense stretch, which is transmural.
-# Reported CVP / LA / chamber traces are cavity pressures, as a catheter reads.
-# Off by default (SimParams.pericardium_enabled) until measured.
+# RA is opposed by the sac as well as the wall. The cardiopulmonary reflex reads
+# CAVITY pressure (wall + sac, its gain was calibrated against catheter CVP;
+# 2026-10-09). Reported CVP / LA / chamber traces are cavity pressures.
 #
-# KNOWN DOUBLE-COUNT IF SWITCHED ON AS-IS: the LV Klotz curve above was placed
-# at Chemla's wedge (11 mmHg) treated as a wall pressure. A wedge is a CAVITY
-# pressure, so part of it is already pericardial. Adding the sac on top counts
-# that part twice on the left. The walls must be re-placed at WALL pressures
-# (Hamilton 1994, Bhella 2014) before the sac goes on (validation log 2026-10-08).
-PERI_CAPACITY = 305.0  # mL — GRADE C: knee at the reference heart's mean four-chamber volume
+# THE WALLS ARE NOT RE-PLACED. Placing them at "wall pressures" (Hamilton's ~1
+# mmHg RA wall) was tried 2026-10-11 and withdrawn: it rests on the one-lab
+# side of conflict H and made the sac swing 0-10 mmHg every beat, against
+# Sutton's small swing at low mean and Condos' RA waveform.
+# THE CAPACITY IS CALCULATED, NOT A CONSTANT (2026-10-16). It is the volume the
+# heart holds at end-diastole at the SOURCED filling pressures the walls were
+# placed on — the same numbers that size the chambers:
+#   LV  on its Klotz curve at Chemla's wedge (the LV placement pressure)
+#   LA  at the LV's end-diastolic pressure (mitral valve open)
+#   RV  at Richter's RVEDP 4 mmHg
+#   RA  at the RV's end-diastolic pressure (tricuspid open)
+# all transmural (+1.47 for end-expiratory pleural pressure, as for the Klotz
+# placement). So the knee follows the patient's own chamber sizes (body size, sex,
+# age) through their wall parameters, with no simulation. Reference patient: 440 mL
+# (LV 141, RV 175, LA 81, RA 43).
+# WHY NOT MEASURED. A version that ran each patient to rest and took its maximum
+# heart volume was tried the same day and withdrawn (Jesper): it resizes the sac
+# around whatever the model produces, INCLUDING its errors. The older woman's heart
+# holds 64 mL more than her sourced chamber sizes predict (resting wedge 18 vs 10.9)
+# and the young man's 45 mL less; a measured sac absorbed both. A calculated one
+# shows them. GRADE C.
+P_LEFT_ED_TM = 11.0 - _PLEURAL_END_EXPIRATION     # mmHg, Chemla wedge, transmural
+P_RIGHT_ED_TM = 4.0 - _PLEURAL_END_EXPIRATION     # mmHg, Richter RVEDP, transmural
+
+
+def pericardial_capacity(lv_v0_dia, lv_v30, rv_v0, rv_emin, la_v0, la_emin,
+                         ra_v0, ra_emin) -> float:
+    """Pericardial capacity (mL): the four chambers' volumes at their sourced
+    end-diastolic pressures, each from its own wall law."""
+    lv = lv_v0_dia + (lv_v30 - lv_v0_dia) * (P_LEFT_ED_TM / KLOTZ_AN) ** (1.0 / KLOTZ_BN)
+    return (lv + la_v0 + P_LEFT_ED_TM / la_emin
+            + rv_v0 + P_RIGHT_ED_TM / rv_emin + ra_v0 + P_RIGHT_ED_TM / ra_emin)
+
+
 PERI_VK = 30.0         # mL — GRADE E, to be pinned
-PERI_K = 0.18 * PERI_VK  # mmHg — GRADE D: slope at the knee 0.18 mmHg/mL (dog, Banchero via Holt)
+# THE SLOPE AT THE KNEE, k/vk — PINNED 2026-10-16 on a human ratio (Jesper: "pin the
+# sac stiffness on a human result and test"). Bhella 2014 (PMID 25236519, healthy
+# sedentary adults aged ~69, saline 15 mL/kg at ~200 mL/min): RAP rose 2.6-3.5 for a
+# wedge rise of 4.4-5.5 — the external (pericardial) share of loading, by their
+# method, 0.59-0.64. Borlaug 2018 (man, 67 %) and Applegate 1990 (dog, 65 %) agree.
+# A RATIO is pinned, not Bhella's absolute rise, because the model's older and female
+# LVs start too high on their filling curves (resting wedge 13.4 / 18.1 vs 10.9) and
+# over-respond in absolute terms (wedge +9.4 vs +4.4-5.5) whatever the sac does.
+# Sweep (cohort-weighted): slope 0.025 / 0.05 / 0.09 / 0.11 / 0.14 / 0.18 gives
+# dRAP/dPCWP 0.41 / 0.50 / 0.58 / 0.62 / 0.66 / 0.69 -> 0.11 (range 0.09-0.14).
+# GRADE C. Was 0.18, the dog value (Banchero via Holt 1967, grade D). vk stays E.
+# TESTED: Sejersen 20 deg head-down dSV +5.9 (~0, n.s.) passes; Schafers phenylephrine
+# does not depend on it; Borlaug's sac-opening direction FAILS — the left-heart walls,
+# not the sac (validation log 2026-10-16).
+PERI_K = 0.11 * PERI_VK  # mmHg — GRADE C: slope at the knee 0.11 mmHg/mL, pinned on Bhella 2014
 # NUMERICAL GUARD, NOT PHYSIOLOGY. Above this sac pressure the curve continues as
 # a straight line at its own slope there (continuous value and slope). Without
 # it, an effusion the heart cannot make room for (300 mL into a 305 mL sac)
@@ -445,7 +498,16 @@ RV_EMIN = 0.04   # mmHg/mL  right ventricle diastolic elastance
 # 5.20 -> 4.89 on the default patient with reflexes off, and 6.0 -> 5.7 on the 175/75
 # fixture that test_cvp_baseline_calibration uses. That is not why the value was chosen
 # and it does not close the CVP gap; see backlog item 28.
-RA_EMAX = 0.45   # mmHg/mL  right atrium peak systolic elastance
+# 0.45 -> 0.25 (2026-10-16), PINNED on Järvinen 1994's right-atrial EJECTION
+# FRACTION, 24 ± 5 % (atrial stroke volume / volume at onset of atrial systole).
+# The derivation above used Gao's TOTAL emptying fraction, treating all emptying
+# as contraction. With the AV-plane coupling most emptying is the plane returning
+# in early diastole (reservoir), so 0.45 double-counted: EF 34 %, atrial kick 41 %
+# of SV against Järvinen's 22 ± 4. At 0.25: EF ~24, reservoir / conduit / stroke
+# 48 / 24 / 27 % of SV (57 ± 12 / 20 ± 9 / 22 ± 4), and the RA waveform's a wave
+# falls from +3.5 to +2.1 above the mean (Condos 1987: ~+2), the x descent no
+# longer clamps at zero. GRADE A source; separable from V0 (RAmax barely moves).
+RA_EMAX = 0.25   # mmHg/mL  right atrium peak systolic elastance
 # RA_EMIN IS SET BY VOLUME, NOT BY PRESSURE — do not lower it to chase CVP.
 #
 # The comments here used to derive RA_EMIN from an "equilibrium RA pressure ≈ 3.8 mmHg",
@@ -466,7 +528,13 @@ RA_EMAX = 0.45   # mmHg/mL  right atrium peak systolic elastance
 # 0.200 is the best volume match of the sweep; test_atrial_volumes_are_physiological
 # (RAVmax band 20-48 mL/m2) fails at 0.097 and below.
 RA_EMIN = 0.20   # mmHg/mL  right atrium diastolic elastance
-LA_EMAX = 0.45   # mmHg/mL  left atrium
+# LEFT ATRIAL CONTRACTION — PINNED 2026-10-16 on Järvinen 1994 AJC's left-atrial
+# EJECTION FRACTION, 28 ± 7 %. Was 0.45 with no recorded source. With the AV-plane
+# coupling it gave EF 16.7 % and an atrial kick of 12 % of SV (Järvinen 1996: 20 ±
+# 5) — too WEAK, the opposite of the right atrium. At 0.72: EF ~28, kick ~19 %, LA
+# min ~24 mL/m2 (24 ± 5); total emptying ~59 % (52-53 ± 5, +1.3 SD) and reservoir
+# ~51 % (43 ± 7) run high. GRADE A source.
+LA_EMAX = 0.72   # mmHg/mL  left atrium
 
 # LEFT ATRIAL DIASTOLIC ELASTANCE — DERIVED FROM GAO, NOT FITTED (2026-08-31).
 #

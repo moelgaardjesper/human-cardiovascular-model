@@ -174,9 +174,6 @@ def apply_cardiac(params, cardiac: dict) -> None:
     k = cardiac.get("lv_dia_volume_factor", 1.0)
     params.lv_v0_dia = LV_V0_DIA * k
     params.lv_v30 = LV_V30 * k
-    # The pericardial sac's capacity scales with the heart it holds.
-    from .heart import PERI_CAPACITY
-    params.pericardial_capacity_ml = PERI_CAPACITY * k
     if "hr_bpm" in cardiac:
         params.hr_bpm = cardiac["hr_bpm"]
     # Reflex end-organ responsiveness by age — backlog item 51. Applied here
@@ -192,6 +189,9 @@ def apply_cardiac(params, cardiac: dict) -> None:
         if tag in base_min:
             setattr(params, f"{tag}_emin",
                     base_min[tag] * cardiac.get(f"{tag}_emin_factor", 1.0))
+    # The pericardium is sized by THIS patient's walls, just set (heart.py
+    # pericardial_capacity): calculated anatomy, not measured from a run.
+    params.set_pericardial_capacity()
 
 
 def bsa_mosteller(height_cm: float, weight_kg: float) -> float:
@@ -425,7 +425,7 @@ def build_patient_params(
     """
     bsa = bsa_mosteller(height_cm, weight_kg)
     compartments = default_compartments()
-    return scale_compartments(
+    scaled, cardiac = scale_compartments(
         compartments, bsa,
         map_mmhg=map_mmhg,
         hr_bpm=hr_bpm,
@@ -438,6 +438,7 @@ def build_patient_params(
         age_years=age_years,
         height_cm=height_cm,
     )
+    return scaled, cardiac
 
 
 # ---------------------------------------------------------------------------
