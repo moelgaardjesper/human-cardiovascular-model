@@ -580,19 +580,18 @@ def test_graded_hut_monotonicity_sarafian2017(supine_175_75, hut20_175_75, hut30
     assert co_vals[-1] < co_vals[0], "CO at 30 deg not lower than supine"
 
 
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason=(
-    "KNOWN GAP, REOPENED 2026-10-17 — CPP 39.5 at 45 deg against the 40 floor. It passed on "
-    "2026-10-13 only because resting MAP was higher; the real defect never closed: MAP falls "
-    "~38 mmHg at 45 deg where man holds it near supine. Not the muscle pump: the same MAP "
-    "failure appears supine on -30 LBNP (Atherton 1997: MAP +3 +- 5; model -10), where no "
-    "muscle acts. Floor not moved."
-))
-# CLOSED 2026-10-13, BUT NOT FIXED — the strict xfail of 2026-10-11 (CPP 36.2)
-# XPASSED at 44.4 because resting pressure and SV rose with the AV-plane coupling and
-# the sac (MAP 101.6 supine in this fixture). MAP still falls ~38 mmHg at 45 deg
-# (101.6 -> 63.1) where man holds it near supine: the orthostatic collapse is still
-# open and this floor is not evidence against it. The muscle pump was the suspect
-# until 2026-10-17; supine LBNP (no muscle activity) shows the same MAP failure.
+# LIVE AGAIN 2026-10-18, AND THE HISTORY MATTERS MORE THAN THE PASS.
+# This floor has now crossed three times: strict xfail at 36.2 (2026-10-11), XPASS at
+# 44.4 (2026-10-13) reopened at 39.5 (2026-10-17), and XPASS at 45.0 today when the
+# vasomotor age law moved to Davy 1998 (the 55-year-old's net vasomotor factor rose
+# 0.347 -> 0.591, and the 45 deg MAP fall shrank from ~38 to 34.6 mmHg).
+# **THE PASS IS PARTLY REAL AND THE DEFECT IS NOT CLOSED.** Measured today: supine MAP
+# 98.3, 45 deg 63.8, so MAP still falls 34.6 mmHg where man holds it near supine
+# (Wieling 1998: +1 +- 7 at 90 deg). The floor is a SAFETY threshold (Pohl & Cullen:
+# risk below 50), not a measurement of defence, so it is kept live as a ratchet notch
+# and the real quantity is asserted separately in
+# `test_map_is_defended_on_head_up_tilt_wieling1998` below, which xfails.
+# Do not read this pass as evidence the orthostatic collapse has closed.
 def test_cerebral_perfusion_pressure_pohl_cullen2005(supine_175_75, upright45_175_75):
     """Cerebral perfusion pressure (Pohl/Cullen 2005).
 
@@ -605,6 +604,36 @@ def test_cerebral_perfusion_pressure_pohl_cullen2005(supine_175_75, upright45_17
         f"CPP_upright ({s_up45['cpp']:.1f}) not < CPP_supine ({s_sup['cpp']:.1f})"
     )
     assert s_up45["cpp"] > 40, f"CPP not viable at 45 deg: {s_up45['cpp']:.1f}"
+
+
+@pytest.mark.xfail(strict=True, raises=AssertionError, reason=(
+    "KNOWN GAP, 2026-10-18 — THE ORTHOSTATIC MAP COLLAPSE, asserted on the quantity that "
+    "is actually wrong rather than on the CPP floor above. Measured: supine MAP 98.3 -> "
+    "63.8 at 45 deg, a fall of 34.6 mmHg, where Wieling measured heart-level MAP changing "
+    "+1 +- 7 even at 90 deg. CAUSE (validation log 2026-10-18): the filling-pressure signal "
+    "is too small, so the reflex must trade MAP for vasoconstriction — the model's heart "
+    "converts filling PRESSURE into stroke volume 3-4x too efficiently (dSV/dPCWP 8.88 vs "
+    "Levine 1991 nonathletes 2.7 +- 1.5), so CVP falls -1.41 at -30 LBNP against man's -5.8. "
+    "Not the muscle pump (the same failure appears supine under LBNP) and not the chambers "
+    "(stiffness x3 moved dCVP by 0.04). Band not widened."
+))
+def test_map_is_defended_on_head_up_tilt_wieling1998(supine_175_75, upright45_175_75):
+    """[PMID 9640339 — Wieling 1998] Heart-level mean arterial pressure is defended on
+    head-up tilt: it changes by only +1 +/- 7 mmHg even at 90 deg, while leg arterial
+    pressure rises by the hydrostatic column.
+
+    The sibling CPP test above asserts a SAFETY FLOOR and currently passes; this one
+    asserts the PHYSIOLOGY and does not. Two different claims, so they are two tests —
+    a passing floor must not be mistaken for a defended pressure.
+
+    Band: 1 SD on Wieling's own figure, widened to 15 mmHg because the comparison is at
+    45 deg against his 90 deg measurement (a smaller tilt, so if anything an easier
+    target). The model fails it by more than twice that, so the band is not load-bearing."""
+    d = upright45_175_75["map"] - supine_175_75["map"]
+    assert abs(d) <= 15.0, (
+        f"MAP falls {d:+.1f} mmHg from supine to 45 deg head-up "
+        f"({supine_175_75['map']:.1f} -> {upright45_175_75['map']:.1f}); "
+        f"Wieling measured +1 +- 7 at 90 deg")
 
 
 def test_ankle_brachial_gradient_postural(
@@ -7331,3 +7360,97 @@ def test_opening_the_sac_reduces_the_filling_pressure_rise_borlaug2018(bhella_sa
     assert off < on, (
         f"opening the sac did not reduce the wedge rise on loading: {on:+.1f} -> {off:+.1f} "
         f"mmHg (Borlaug: -67 %)")
+
+
+# ===========================================================================
+# 52. THE VASOMOTOR REFLEX AGES IN TWO TERMS — Davy 1998 (pin), Tsutsui 2002 (test)
+# ===========================================================================
+
+
+def test_the_two_age_terms_reproduce_davys_measured_ratios():
+    """[PMID 9719058 — Davy, Seals & Tanaka 1998] 11 young (23) and 12 older (64)
+    healthy men, graded LBNP, peroneal microneurography with simultaneous forearm
+    plethysmography. The age effect on the vasomotor arm has TWO terms moving in
+    OPPOSITE directions, and the model's age law is derived from the two tabulated
+    slopes (not from the paper's prose — see the note in aging.py):
+
+        end organ   dFVR/dMSNA  0.020 -> 0.007   ratio 0.350
+        outflow     dMSNA/dPVP  implied          ratio 1.324
+        net         dFVR/dPVP   4.1 -> 1.9       ratio 0.463
+
+    This guards the DERIVATION, which is arithmetic and has no simulation in it;
+    the mechanism guard that the term is live is the next test."""
+    from model.aging import baroreflex_age_factors, vascular_outflow_scale_for_age
+    end = (baroreflex_age_factors(64)["svr"] / baroreflex_age_factors(23)["svr"])
+    out = (vascular_outflow_scale_for_age(64) / vascular_outflow_scale_for_age(23))
+    assert abs(end - 0.350) < 0.01, f"end-organ age ratio {end:.3f} != Davy's 0.350"
+    assert abs(out - 1.324) < 0.02, f"outflow age ratio {out:.3f} != Davy's implied 1.324"
+    assert abs(end * out - 0.463) < 0.01, (
+        f"net vasomotor age ratio {end * out:.3f} != Davy's measured 4.1 -> 1.9 = 0.463")
+    # THE TWO TERMS MUST MOVE IN OPPOSITE DIRECTIONS. A single net factor would
+    # satisfy the line above and lose the physiology.
+    assert end < 1.0 < out, (
+        f"the two age terms do not oppose: end organ {end:.3f}, outflow {out:.3f}")
+    # Identity at the calibration age, so the reference patient is untouched.
+    assert abs(baroreflex_age_factors(27.0)["svr"] - 1.0) < 1e-9
+    assert abs(vascular_outflow_scale_for_age(27.0) - 1.0) < 1e-9
+
+
+def test_the_vascular_outflow_term_is_live_in_the_model():
+    """The vasomotor outflow scale must reach the ODE, not just the parameter dict.
+
+    **SABOTAGE-VERIFIED BY CONSTRUCTION:** this drives `run_simulation` and
+    compares the model's own resistance response to an orthostatic stress at two
+    settings of the term. If the wiring is cut the two arms become identical and
+    this fails — the failure mode that hid a dead `venous_tone_factor` for months.
+
+    It asserts DIRECTION ONLY (more vasomotor outflow -> more vasoconstriction),
+    because the magnitude is Davy's and is asserted in the test above."""
+    def tpr_rise(scale):
+        p = cohort_params(178.0, 77.0, age_years=35.0, sex="male")
+        p.vascular_outflow_scale = scale
+        p.lbnp_mmhg, p.lbnp_start_s, p.lbnp_end_s = -30.0, 60.0, None
+        r = run_simulation(p, duration_s=240.0, dt=DT, output_every=10)
+        t = np.asarray(r["t"])
+        def win(k, a, b):
+            return float(np.mean(np.asarray(r[k])[(t >= a) & (t < b)]))
+        base = (win("map", 30, 60) - win("cvp", 30, 60)) / win("co", 30, 60)
+        late = (win("map", 210, 240) - win("cvp", 210, 240)) / win("co", 210, 240)
+        return 100.0 * (late / base - 1.0)
+    low, high = tpr_rise(0.6), tpr_rise(1.6)
+    assert high > low + 1.0, (
+        f"vascular_outflow_scale is not live: TPR rise on -30 LBNP {low:.1f} % at 0.6 "
+        f"vs {high:.1f} % at 1.6 — the term never reaches the vasomotor drive")
+
+
+@pytest.mark.xfail(strict=True, raises=AssertionError, reason=(
+    "KNOWN GAP, 2026-10-18 — THE FILLING-PRESSURE SIGNAL IS UPSTREAM AND TOO SMALL. "
+    "Davy 1998 and Tsutsui 2002 both measure older adults defending mean pressure on "
+    "LBNP at least as well as the young (Davy: the old RAISE diastolic and mean at -30 "
+    "and -40; Tsutsui: MAP flat to -60 in both groups, and the old tolerate more). The "
+    "model falls further with age. The two age terms are now Davy's and are NOT the "
+    "cause: the model's filling pressure falls only -1.41 mmHg at -30 against man's -4 "
+    "to -6, because mean systemic filling pressure moves too little (systemic compliance "
+    "118.5 vs Maas 64.3 +/- 32.7). Validation log 2026-10-18. Band not widened."
+))
+def test_older_adults_defend_pressure_at_least_as_well_davy1998_tsutsui2002(
+        ):
+    """[PMID 9719058 — Davy 1998; PMID 11961365 — Tsutsui 2002] Two labs, two
+    continents, two methods: healthy older adults hold mean arterial pressure on
+    lower-body suction at least as well as young adults, and tolerate more of it.
+
+    Asserted as a COMPARISON between two ages of the same model, so the absolute
+    level cancels and only the age ORDERING is tested — the quantity both papers
+    agree on."""
+    def dmap(age):
+        p = cohort_params(178.0, 77.0, age_years=age, sex="male")
+        p.lbnp_mmhg, p.lbnp_start_s, p.lbnp_end_s = -30.0, 120.0, None
+        r = run_simulation(p, duration_s=420.0, dt=DT, output_every=10)
+        t = np.asarray(r["t"])
+        def win(a, b):
+            return float(np.mean(np.asarray(r["map"])[(t >= a) & (t < b)]))
+        return win(360, 420) - win(60, 120)
+    young, older = dmap(23.0), dmap(64.0)
+    assert older >= young - 1.0, (
+        f"the older model defends MAP WORSE on -30 LBNP: {older:+.1f} vs {young:+.1f} mmHg "
+        f"(Davy/Tsutsui: older is equal or better)")

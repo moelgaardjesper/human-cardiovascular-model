@@ -458,6 +458,7 @@ class BaroreflexController:
         cp_hr_ref_cvp: float = CP_HR_REFERENCE_CVP_MMHG,
         sympathetic_outflow_scale: float = 1.0,
         vagal_outflow_scale: float = 1.0,
+        vascular_outflow_scale: float = 1.0,
         responsiveness: dict | None = None,
         venous_resting_tone: float = VENOUS_RESTING_TONE,
     ):
@@ -529,6 +530,12 @@ class BaroreflexController:
         # responsiveness acts AFTER it. All exactly 1.0 by default.
         self.sympathetic_outflow_scale = float(sympathetic_outflow_scale)
         self.vagal_outflow_scale       = float(vagal_outflow_scale)
+        # VASOMOTOR-ONLY outflow scale (Davy 1998, via aging.py). It multiplies
+        # the VASCULAR sympathetic drive and nothing else: Davy measured muscle
+        # sympathetic nerve activity, not cardiac sympathetic outflow, so the
+        # heart-rate limbs keep `sympathetic_outflow_scale` alone. 1.0 is the
+        # identity, so a run that does not set it is bit-for-bit unchanged.
+        self.vascular_outflow_scale    = float(vascular_outflow_scale)
         self.venous_resting_tone       = float(venous_resting_tone)
         if not 0.0 <= self.venous_resting_tone < 1.0:
             raise ValueError("venous_resting_tone must be in [0, 1); it is the FRACTION "
@@ -615,7 +622,11 @@ class BaroreflexController:
             sym_cp *= CP_HR_LOADING_FRACTION
         # SVR: slow sympathetic sustains vasoconstriction when MAP is chronically low
         svr_err  = -(self._symp_slow_map + self._symp_fast_cvp * 0.3)
-        sym_vasc = ks * svr_err
+        # The vasomotor limb carries BOTH outflow scales: the general one (a
+        # sympatholytic cuts all traffic) and the vascular-only age term
+        # (Davy 1998 — nerve traffic per unit stimulus RISES with age while the
+        # vessel's answer falls, and the two act at different stages).
+        sym_vasc = ks * self.vascular_outflow_scale * svr_err
         self.vagal_outflow                = vag
         self.cardiac_sympathetic_outflow  = -sym_hr
         self.vascular_sympathetic_outflow = sym_vasc

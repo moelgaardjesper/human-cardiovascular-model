@@ -27,7 +27,8 @@ does NOT, once both are in the model.]
 from dataclasses import replace
 
 from .aging import (REFERENCE_AGE_YEARS, arterial_compliance_factor,
-                    chamber_age_factors, baroreflex_age_factors)
+                    chamber_age_factors, baroreflex_age_factors,
+                    vascular_outflow_scale_for_age)
 
 import numpy as np
 from .compartments import default_compartments, Compartment, ARTERIOLAR_SEGMENTS
@@ -181,6 +182,11 @@ def apply_cardiac(params, cardiac: dict) -> None:
     # elsewhere is what silently dropped `p_stiffen` for months.
     if "reflex_responsiveness" in cardiac:
         params.reflex_responsiveness = cardiac["reflex_responsiveness"]
+    # The SECOND age term (Davy 1998): vasomotor nerve traffic per unit stimulus,
+    # which RISES with age while the end organ above FALLS. Applied here and
+    # nowhere else, per this function's own rule.
+    if "vascular_outflow_scale" in cardiac:
+        params.vascular_outflow_scale = cardiac["vascular_outflow_scale"]
     if "hip_height_m" in cardiac:
         params.hip_height_m = cardiac["hip_height_m"]
     for tag in ("lv", "rv", "la", "ra"):
@@ -313,12 +319,16 @@ def scale_compartments(
         # The hip pivot scales with stature exactly as every height_m does.
         "hip_height_m": HIP_HEIGHT_M * height_scale,
         "sex": sex,
-        # THE BAROREFLEX AGES — backlog item 51. End-organ responsiveness, not
-        # outflow: White 1997 found the older subjects reach a SMALLER response
-        # with MORE noradrenaline. Exactly 1.0 for every effector at the
-        # reference age, so the reference patient is untouched and only a
-        # patient of a different age moves. See aging.baroreflex_age_factors.
+        # THE BAROREFLEX AGES — backlog item 51, IN TWO TERMS since 2026-10-18.
+        # End-organ responsiveness FALLS (White 1997: the older subjects reach a
+        # SMALLER response with MORE noradrenaline; Davy 1998 measured the
+        # vascular half directly) while vasomotor OUTFLOW per unit stimulus
+        # RISES (Davy). The two act on opposite sides of the end-organ
+        # saturation, which is why they are two fields and not one product.
+        # Both are exactly 1.0 at the calibration age, so the reference patient
+        # is untouched and only a patient of a different age moves.
         "reflex_responsiveness": baroreflex_age_factors(age_years),
+        "vascular_outflow_scale": vascular_outflow_scale_for_age(age_years),
     }
     # E_min is divided by the volume factor so the chamber holds its scaled
     # volume at an UNCHANGED filling pressure (EDV = V0 + P/E_min); E_max carries

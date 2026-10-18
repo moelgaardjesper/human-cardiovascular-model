@@ -435,6 +435,73 @@ _GRIBBIN_LOG10_PER_YEAR = 0.0164
 _BRS_CALIBRATION_AGE = 27.0
 
 
+# ---------------------------------------------------------------------------
+# DAVY 1998 — THE VASOMOTOR ARM AGES DIFFERENTLY, AND IN TWO PARTS (2026-10-18)
+# ---------------------------------------------------------------------------
+# Gribbin above measured the CARDIAC VAGAL arm. Applying his slope to `svr` and
+# `venous` was labelled EXTRAPOLATION in `baroreflex_age_factors`, which asked
+# for "an age relation for the VASOMOTOR baroreflex (muscle sympathetic nerve
+# activity per mmHg, or forearm vascular resistance per mmHg, by decade)".
+#
+# Davy, Seals & Tanaka 1998 (PMID 9719058; Hypertension 32:298-304) is that
+# measurement: 11 young (23 +/- 1) and 12 older (64 +/- 1) healthy normotensive
+# men, graded LBNP -5 to -40, five minutes per level, peroneal microneurography
+# with simultaneous forearm plethysmography and filling pressure. GRADE A.
+#
+# **IT SPLITS THE AGE EFFECT INTO TWO TERMS THAT MOVE IN OPPOSITE DIRECTIONS**,
+# which a single factor cannot express:
+#   NERVE TRAFFIC PER UNIT STIMULUS goes UP      (dMSNA/dPVP)
+#   VESSEL RESPONSE PER UNIT TRAFFIC goes DOWN   (dFVR/dMSNA, 0.020 -> 0.007)
+# and the measured NET is dFVR/dPVP 4.1 +/- 0.6 -> 1.9 +/- 0.4. The mechanism for
+# the second is at the vessel, not the nerve: the MSNA-noradrenaline relation is
+# unchanged with age, and human resistance arteries contract less to noradrenaline
+# in vitro (Nielsen 1992, cited by Davy).
+#
+# **THE SLOPES ARE DERIVED FROM THE TABULATED RATIOS, NOT FROM THE PROSE.**
+# Davy's text says dMSNA/dPVP is "~150 % greater" in the old, which reads as a
+# 2.5x ratio; his own two tabulated slopes imply 0.463 / 0.350 = 1.32x. The table
+# carries standard errors and the prose does not, so the table is used and the
+# discrepancy is recorded (docs/source_conflicts.md section D).
+#   end organ  0.350 over 41 years -> log10 slope 0.01112 per year (a FALL)
+#   outflow    1.324 over 41 years -> log10 slope 0.00297 per year (a RISE)
+#   net        0.463 over 41 years -> 0.00815 per year, half of Gribbin's 0.0164
+#
+# **THE ANCHOR IS NOT CHANGED.** Both factors are 1.0 at `_BRS_CALIBRATION_AGE`,
+# exactly as Gribbin's is, so only the SLOPE of the vasomotor arm moves and the
+# young calibration (Schaefers 27, the LBNP series 22) is untouched. Davy gives
+# a ratio between two ages, like Gribbin; he does not set the level either.
+#
+# **WHY TWO TERMS AND NOT ONE NET FACTOR.** The controller saturates between the
+# two stages: outflow is scaled BEFORE the end-organ sigmoid, responsiveness
+# AFTER it (item 70 pass 2). A large drive through a weak end organ therefore
+# saturates earlier than a small drive through a strong one, even when the
+# product is identical. That is the physiology Davy describes, and collapsing it
+# to one number would throw away the only part of it the model can express.
+_DAVY_END_ORGAN_LOG10_PER_YEAR = 0.01112   # vascular end organ, FALLS with age
+_DAVY_OUTFLOW_LOG10_PER_YEAR   = 0.00297   # vasomotor nerve traffic, RISES
+
+
+def vasomotor_end_organ_factor(
+        age_years: float,
+        reference_age: float = _BRS_CALIBRATION_AGE) -> float:
+    """Vascular end-organ responsiveness at `age_years` (Davy 1998's dFVR/dMSNA).
+    1.0 at the calibration age, as `baroreflex_responsiveness_factor` is."""
+    a = min(max(float(age_years), 19.0), 70.0)
+    ref = min(max(float(reference_age), 19.0), 70.0)
+    return 10.0 ** (-_DAVY_END_ORGAN_LOG10_PER_YEAR * (a - ref))
+
+
+def vascular_outflow_factor(
+        age_years: float,
+        reference_age: float = _BRS_CALIBRATION_AGE) -> float:
+    """Vasomotor sympathetic OUTFLOW per unit stimulus at `age_years` (Davy
+    1998's dMSNA/dPVP). Greater than 1 above the calibration age — the one place
+    in this model where ageing makes a reflex arm STRONGER, and it is measured."""
+    a = min(max(float(age_years), 19.0), 70.0)
+    ref = min(max(float(reference_age), 19.0), 70.0)
+    return 10.0 ** (_DAVY_OUTFLOW_LOG10_PER_YEAR * (a - ref))
+
+
 def baroreflex_responsiveness_factor(
         age_years: float,
         reference_age: float = _BRS_CALIBRATION_AGE) -> float:
@@ -465,26 +532,51 @@ def baroreflex_age_factors(age_years: float,
                            reference_age: float = _BRS_CALIBRATION_AGE) -> dict:
     """Per-effector responsiveness for `BaroreflexController(responsiveness=...)`.
 
-    **EVERY EFFECTOR GETS THE SAME FACTOR, AND THAT IS PART SOURCED AND PART
-    EXTRAPOLATION. Both halves are stated because they are not equally strong.**
+    **THE EFFECTORS NO LONGER SHARE ONE FACTOR (2026-10-18). Each is labelled
+    with what measured it, because they are not equally strong.**
 
-    SOURCED, for the two heart-rate limbs. Gribbin measures the cardiac vagal
-    arm, and White 1997 found LF/HF unchanged between the age groups with total
+    `hr_vagal`, `hr_sympathetic` — GRIBBIN 1971. He measured the cardiac vagal
+    arm, and White 1997 found LF/HF unchanged between his age groups with total
     power falling in BOTH bands — the ageing reflex is globally quieter, not
-    shifted toward sympathetic dominance. So vagal and sympathetic chronotropic
-    responsiveness move together, and they move with Gribbin's slope.
+    shifted toward sympathetic dominance. So the two chronotropic limbs move
+    together on Gribbin's slope.
 
-    EXTRAPOLATION, for `svr`, `venous` and `emax`. **Gribbin measured pulse
-    interval against pressure. He did not measure the vasomotor arm at all**, so
-    applying his slope there assumes the two arms age alike. White supports the
-    DIRECTION — his diastolic tilt response falls from +7.0 to −2.5 mmHg across
-    the same ages — but not the rate. The check that this is not absurd is that
-    the resulting model lands White's diastolic endpoint within one SD; it is a
-    consistency check, not an independent measurement.
+    `svr`, `venous` — DAVY 1998, the measurement this docstring used to ask for.
+    These are the vascular end organ, and Davy measured it directly as forearm
+    resistance per unit nerve traffic. Its slope is about two thirds of
+    Gribbin's, and it is only HALF the age story: the matching rise in outflow
+    is `vascular_outflow_scale_for_age` and is applied at the other stage.
+    Davy's mechanism — less alpha-adrenergic contraction in human resistance
+    arteries — belongs to vascular smooth muscle, so it is applied to the venous
+    effector as well as the arteriolar one.
 
-    **WANTED: an age relation for the VASOMOTOR baroreflex** (muscle sympathetic
-    nerve activity per mmHg, or forearm vascular resistance per mmHg, by decade).
-    That would let the two arms age at their own rates instead of one.
+    `emax` — STILL EXTRAPOLATION, and now on its own. Davy measured vessels, not
+    myocardium, and Gribbin measured neither. Contractility is kept on Gribbin's
+    slope because the DIRECTION is established (beta-adrenergic responsiveness
+    falls with age) while the rate is not measured here. **A human age relation
+    for inotropic reserve is WANTED**; until then this is the weakest of the three.
     """
-    f = baroreflex_responsiveness_factor(age_years, reference_age)
-    return {k: f for k in REFLEX_EFFECTORS}
+    f_hr = baroreflex_responsiveness_factor(age_years, reference_age)
+    f_vaso = vasomotor_end_organ_factor(age_years, reference_age)
+    return {"svr": f_vaso, "venous": f_vaso, "emax": f_hr,
+            "hr_sympathetic": f_hr, "hr_vagal": f_hr}
+
+
+def vascular_outflow_scale_for_age(
+        age_years: float,
+        reference_age: float = _BRS_CALIBRATION_AGE) -> float:
+    """Age factor for `SimParams.vascular_outflow_scale` — Davy 1998's rise in
+    vasomotor nerve traffic per unit stimulus.
+
+    **This is the second of the two terms** and it acts at a DIFFERENT STAGE from
+    `baroreflex_age_factors`: outflow is scaled before the end-organ saturation,
+    responsiveness after it. Keeping them apart is the point — see the note on
+    `_DAVY_OUTFLOW_LOG10_PER_YEAR`.
+
+    **Scope caveat.** Davy measured MUSCLE sympathetic nerve activity, so this is
+    applied to the VASOMOTOR outflow only, never to the cardiac sympathetic limb.
+    Whether cardiac sympathetic outflow rises with age by the same law is not
+    measured here, and `sympathetic_outflow_scale` (which drives both the heart
+    and the vessels) is deliberately left alone.
+    """
+    return vascular_outflow_factor(age_years, reference_age)

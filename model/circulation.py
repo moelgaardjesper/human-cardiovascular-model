@@ -414,6 +414,11 @@ class SimParams:
         # answers less, as with age).
         self.sympathetic_outflow_scale = 1.0
         self.vagal_outflow_scale       = 1.0
+        # VASOMOTOR-ONLY outflow scale. Set by age (aging.vascular_outflow_scale_for_age,
+        # Davy 1998); 1.0 is the identity. It is the second of the two age terms —
+        # the first is `reflex_responsiveness` — and they act on OPPOSITE SIDES of
+        # the end-organ saturation and in OPPOSITE DIRECTIONS.
+        self.vascular_outflow_scale    = 1.0
         self.reflex_responsiveness     = None   # dict, keys as DEFAULT_REFLEX_RESPONSIVENESS
         # RESTING SYMPATHETIC VENOUS TONE — item 70 pass 2. The fraction of
         # DENERVATED mobilizable venous unstressed volume that resting tone holds
@@ -1480,6 +1485,7 @@ def run_simulation(
             cp_hr_enabled=bool(getattr(params, 'cardiopulmonary_hr_enabled', True)),
             sympathetic_outflow_scale=params.sympathetic_outflow_scale,
             vagal_outflow_scale=params.vagal_outflow_scale,
+            vascular_outflow_scale=getattr(params, "vascular_outflow_scale", 1.0),
             responsiveness=params.reflex_responsiveness,
             venous_resting_tone=getattr(params, "venous_resting_tone", 0.0),
         )
