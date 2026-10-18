@@ -81,7 +81,7 @@ Each chamber is a time-varying elastance. What has been rebuilt against human me
 - **Arterial baroreflex**, heart-rate arm from Fritsch 1989, plus resistance and venous-tone arms.
 - **Cardiopulmonary reflex**, reading the cycle-mean right atrial cavity pressure. It speeds the heart when filling falls (LBNP data). It does not slow it when filling rises, because four labs measured no slowing in healthy volunteers. No Bainbridge acceleration is modelled, because no human magnitude has been read.
 - **Limb venous reflex** with the transient time course Samueloff 1966 measured.
-- **Reflexes age** from Gribbin 1971's measured relation, a 5-fold fall in responsiveness from 25 to 68.
+- **Reflexes age, and the two arms age differently.** The heart-rate arms follow Gribbin 1971's measured relation, a 5-fold fall from 25 to 68. The vasoconstrictor arm follows Davy 1998, who measured it directly and found it splits in two: nerve traffic per unit stimulus **rises** with age while the vessel's response to that traffic **falls** further, for a net decline about half the heart-rate arm's. They are kept as separate terms because the reflex saturates between them.
 
 ### Slower processes and drugs
 
@@ -114,7 +114,7 @@ Patients scale from the reference by body surface area, sex (Luu 2022, Gao 2022 
 
 | tier | command | result |
 |---|---|---|
-| fast — the ratchet | `pytest` | **131 passed, 22 strict xfails, 0 failed** (8 slow tests deselected) |
+| fast — the ratchet | `pytest` | **133 passed, 22 strict xfails, 0 failed** (8 slow tests deselected) |
 | slow — minutes to hours | `pytest -m slow` | 7 passed at the v1.0.0 freeze; not re-run since |
 | overnight — 24 h refill | `pytest -m overnight` | 1 strict xfail, predicted before it was run |
 
@@ -124,7 +124,7 @@ The model cites **106 distinct sources: 65 asserted by a passing test, 9 appeari
 
 ## Validation results
 
-All values re-measured on **2026-10-17**, at the current commit, through the same helpers the tests use. Scenario rows use the test protocol (a 40 s run, averaging its second half), so a few posture responses read slightly larger than in a fully settled run.
+All values re-measured on **2026-10-18**, at the current commit, through the same helpers the tests use. Scenario rows use the test protocol (a 40 s run, averaging its second half), so a few posture responses read slightly larger than in a fully settled run.
 
 ### The resting operating point — reference patient (male, 55 y, 175 cm / 70 kg)
 
@@ -151,9 +151,9 @@ All values re-measured on **2026-10-17**, at the current commit, through the sam
 | 2 | −15° Trendelenburg | [Likhvantsev 2025](https://doi.org/10.1053/j.jvca.2024.10.001), meta-analysis n=333 | ΔCVP +4.13 (CI 2.42–5.84), ΔCO +0.33, ΔSV +8.27, ΔHR −1.65 | ΔCVP **+2.16**, ΔCO +0.63, ΔSV +12.9, ΔHR −2.0 | ✓ CVP inside the CI |
 | 3 | −30° Trendelenburg | Likhvantsev 2025; [Sibbald 1979](https://pubmed.ncbi.nlm.nih.gov/467083/) | as above; MAP maintained | ΔCVP +6.05, ΔCO +0.75, ΔSV +14.4, ΔMAP +10.1 | CVP just above the CI |
 | 4 | 6° head-down vs 20° upright | [Verdini 2019](https://doi.org/10.1038/s41598-019-39360-6), 17 men | HR lower head-down; MAP lower head-down | HR 66.3 vs 73.9 ✓; MAP 105.5 vs 85.6 (order opposite) | ✓ on HR |
-| 5 | 30° head-up | [Wieling 1998](https://doi.org/10.1042/cs0940347) | SV and CO fall, MAP defended (at 90°: MAP +1 ± 7) | ΔSV −44 %, ΔCO −36 %, ΔMAP −24.6 | direction ✓; MAP falls too far |
+| 5 | 30° head-up | [Wieling 1998](https://doi.org/10.1042/cs0940347) | SV and CO fall, MAP defended (at 90°: MAP +1 ± 7) | ΔSV −43 %, ΔCO −37 %, ΔMAP −18.5 | direction ✓; MAP falls too far |
 | 6 | Graded head-up 0 → 20 → 30° | [Sarafian 2017](https://doi.org/10.3389/fphys.2016.00656) | HR up, CO down, monotonic | HR 68 → 74 → 77, CO 6.29 → 4.79 → 4.05 | ✓ |
-| 7 | Cerebral perfusion at 45° upright | [Pohl & Cullen 2005](https://pubmed.ncbi.nlm.nih.gov/15983529/) | falls; risk below 50 | 90 → 40 mmHg | direction ✓; level a known gap |
+| 7 | Cerebral perfusion at 45° upright | [Pohl & Cullen 2005](https://pubmed.ncbi.nlm.nih.gov/15983529/) | falls; risk below 50 | 88 → 45 mmHg | above the 40 floor, but see the MAP limitation below |
 | 8 | Passive leg raise | [Monnet 2016](https://doi.org/10.1007/s00134-015-4134-1), 21 studies | responder ≥ +10 % CO; specificity 0.91 | normovolaemic +9.2 % (non-responder ✓); after 1200 mL +62 % ✓ | ✓ |
 | 9 | Pulse pressure variation, ventilated | [Michard & Teboul 2000](https://doi.org/10.1164/ajrccm.162.1.9905119) | > 13 % predicts fluid response | normovolaemic 8.8 % ✓; 1000 mL bleed 25.1 % ✓; after fluid CO +88 %, PPV 23.4 % | ✓ (the fall in PPV with fluid is small) |
 | 10 | Saline loading, external share | [Bhella 2014](https://pubmed.ncbi.nlm.nih.gov/25236519/), healthy seniors | ΔRAP / ΔPCWP 0.59–0.64; ΔPCWP +4.4–5.5, ΔRAP +2.6–3.5 | ratio 0.61, but ΔPCWP +8.8 and ΔRAP +5.3 | ratio right for the wrong reason |
@@ -188,7 +188,7 @@ The frozen list is in [`FREEZE.md`](FREEZE.md); if the two disagree, `FREEZE.md`
 - **The reference patient rescales itself** when entered by its own haemodynamics, and tier-3 calibration does not converge on entered values.
 
 **Posture**
-- **Orthostatic pressure falls too far.** MAP drops ~25 mmHg at 30° and ~40 at 45°, where people hold it near supine. Cerebral perfusion at 45° is therefore too low. This is not the absent leg muscle pump: the same failure appears lying flat under lower-body suction (Atherton 1997, −30 mmHg: MAP +3 ± 5 in man, −10 in the model), where no muscle acts. The pressure is not defended once central volume falls.
+- **Orthostatic pressure falls too far.** MAP drops ~18 mmHg at 30° and ~35 at 45°, where people hold it near supine. This is not the absent leg muscle pump: the same failure appears lying flat under lower-body suction (Atherton 1997, −30 mmHg: MAP +3 ± 5 in man, −10 in the model), where no muscle acts. The cause has been traced (October 2026) and it is neither the chambers nor the reflex gain: **the model's heart converts filling pressure into stroke volume three to four times too efficiently** (stroke volume per mmHg of wedge 8.9 against Levine 1991's 2.7 ± 1.5 in non-athletes), so filling pressure barely moves when blood is displaced — right atrial pressure falls 1.4 mmHg under −30 mmHg suction where five labs measure 4–6. The reflex is therefore starved of its filling signal and has to trade blood pressure for vasoconstriction. Stroke volume per unit *volume* is correct, so this is specifically the diastolic pressure–volume relation of the filling path.
 - **Tilt-response differences by age** (White 1997) and the limb venous reflex's time course under the new heart are open.
 - **Intracranial pressure** is clamped flat above about 29° head-up, so the model must not be used to rank two head-up postures against each other.
 
