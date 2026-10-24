@@ -537,6 +537,11 @@ class SimParams:
         self.hemorrhage_rate_mlmin  = 0.0
         self.hemorrhage_start_s     = 0.0
         self.hemorrhage_duration_s  = 0.0
+        # Further pulses, as ((start_s, duration_s, rate_mlmin), ...), ADDED to the
+        # one above and removed the same way. For staged protocols with holds
+        # between withdrawals (Johnson 2014: 3 x 333 mL, 5 min after each), where
+        # one continuous bleed would remove the holds — and the refill in them.
+        self.hemorrhage_pulses      = ()
 
         # Fluid bolus — constant-rate crystalloid infusion into the upper-body
         # venous compartment (peripheral/central IV access) over
@@ -669,6 +674,10 @@ def perturbation_times(params, duration_s: float) -> list[float]:
             getattr(params, "hemorrhage_rate_mlmin", 0.0) != 0:
         _add(params.hemorrhage_start_s)
         _add(params.hemorrhage_start_s + params.hemorrhage_duration_s)
+    for start, dur, rate in getattr(params, "hemorrhage_pulses", ()):
+        if dur > 0 and rate != 0:
+            _add(start)
+            _add(start + dur)
 
     if getattr(params, "fluid_bolus_duration_s", 0.0) > 0 and \
             getattr(params, "fluid_bolus_ml", 0.0) != 0:
@@ -1309,18 +1318,22 @@ def _odes(t: float, V: np.ndarray, params: SimParams, baro: BaroreflexController
     # -----------------------------------------------------------------------
     # Hemorrhage / fluid bolus — net volume change to the circulation
     # -----------------------------------------------------------------------
+    hem_rate = 0.0                                          # mL/s
     if params.hemorrhage_duration_s > 0:
-        t_end = params.hemorrhage_start_s + params.hemorrhage_duration_s
-        if params.hemorrhage_start_s <= t < t_end:
-            hem_rate = params.hemorrhage_rate_mlmin / 60.0  # mL/s
-            stressed = np.array([
-                max(0.0, V[i[name]] - comp[i[name]].unstressed_volume)
-                for name in VENOUS_RESERVOIR
-            ])
-            total_stressed = stressed.sum()
-            if total_stressed > 1e-6:
-                for name, s in zip(VENOUS_RESERVOIR, stressed):
-                    dV[i[name]] -= hem_rate * (s / total_stressed)
+        if params.hemorrhage_start_s <= t < params.hemorrhage_start_s + params.hemorrhage_duration_s:
+            hem_rate += params.hemorrhage_rate_mlmin / 60.0
+    for start, dur, rate in params.hemorrhage_pulses:
+        if start <= t < start + dur:
+            hem_rate += rate / 60.0
+    if hem_rate != 0.0:
+        stressed = np.array([
+            max(0.0, V[i[name]] - comp[i[name]].unstressed_volume)
+            for name in VENOUS_RESERVOIR
+        ])
+        total_stressed = stressed.sum()
+        if total_stressed > 1e-6:
+            for name, s in zip(VENOUS_RESERVOIR, stressed):
+                dV[i[name]] -= hem_rate * (s / total_stressed)
 
     if params.fluid_bolus_duration_s > 0:
         t_end = params.fluid_bolus_start_s + params.fluid_bolus_duration_s

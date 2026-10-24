@@ -59,6 +59,17 @@ PMC_RE = re.compile(r"\b(PMC[0-9]{6,8})\b", re.I)
 DOI_RE = re.compile(r"\b(10\.\d{4,5}/[A-Za-z0-9./_():;-]*[A-Za-z0-9)])")
 # A section header in the test file: "# ===..." then "# 28. Title — Source".
 SECTION_RE = re.compile(r"^#\s*={10,}\s*$")
+# The NUMBERED title line of a section ("# 54. CONTROLLED BLOOD LOSS ..."). A section is a
+# SCOPE: header citations cover the tests that follow only until the next numbered
+# section, not until the next section that happens to cite something. Without this, a
+# section whose header cites nothing (a mechanism guard) silently inherited the previous
+# section's sources and reported them as asserted by a passing test (found 2026-10-24:
+# Johnson 2014 credited to the hemorrhage-pulse liveness guard).
+NUMBERED_RE = re.compile(r"^#\s*\d+[a-z]?\.\s")
+# A numbered reference-list entry at column 0, "[14] Hamilton F et al. (2021) ...", and a
+# tag citing it, "[14] Hamilton", inside a test.
+REFLIST_RE = re.compile(r"^\[(\d+)\]\s")
+TAG_CITE_RE = re.compile(r"\[(\d+)\]\s+[A-Z][a-z]")
 
 
 def _clean(line):
@@ -174,9 +185,14 @@ def collect():
                             if not any(s[0] <= ln <= s[1] for s in spans)]
             blocks = citation_blocks(module_cites)
             block_window = {}
+            # A title only counts directly under a "# ====" rule: numbered lists inside
+            # a section's prose ("# 2. the second reason") are not sections.
+            headers = [n for n, l in enumerate(lines, 1)
+                       if n >= 2 and NUMBERED_RE.match(l) and SECTION_RE.match(lines[n - 2])]
             for bi, blk in enumerate(blocks):
                 start = blk[-1]
                 end = blocks[bi + 1][0] if bi + 1 < len(blocks) else 10 ** 9
+                end = min([end] + [h for h in headers if h > start])
                 for ln in blk:
                     block_window[ln] = (start, end)
 
@@ -206,6 +222,31 @@ def collect():
                     for s in spans:
                         if lo <= s[0] < hi:
                             rec["tests"].append((s[2], tuple(s[3])))
+
+            # NUMBERED REFERENCE TAGS. A file may open with a reference list ("[14]
+            # Hamilton F et al. (2021) DOI: ...") that its tests then cite by TAG
+            # ("[14] Hamilton 2021 — ..."). Those tags are resolved here. Before
+            # 2026-10-24 they were credited only by accident: the list's scope leaked
+            # over every test that followed it, crediting each listed paper to ~17
+            # unrelated tests. A tag counts only when followed by a capitalised name,
+            # so code such as `values[1]` is never read as a citation.
+            if sub == "tests":
+                ref_at = {}
+                for n, l in enumerate(lines, 1):
+                    m = REFLIST_RE.match(l)
+                    if m:
+                        ref_at[m.group(1)] = n
+                tag_keys = {}
+                for tag, n0 in ref_at.items():
+                    n1 = n0
+                    while n1 < len(lines) and lines[n1].strip() and not REFLIST_RE.match(lines[n1]):
+                        n1 += 1
+                    tag_keys[tag] = {key_for(i) for ln, _k, i in cites if n0 <= ln <= n1}
+                for s0, s1, name, marks in spans:
+                    body = "\n".join(lines[s0 - 1:s1])
+                    for m in TAG_CITE_RE.finditer(body):
+                        for k in tag_keys.get(m.group(1), ()):
+                            sources[k]["tests"].append((name, tuple(marks)))
 
     for rec in sources.values():
         rec["tests"] = sorted(set(rec["tests"]))

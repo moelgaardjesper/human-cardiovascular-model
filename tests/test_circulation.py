@@ -7286,10 +7286,20 @@ def test_atria_fill_during_ejection_carlsson2004():
 _BHELLA_SEDENTARY = (169.5, 74.7, 69.0)   # height cm, weight kg, age (Table 1)
 
 
+def _lv_edv(r, a, b):
+    """Mean LV end-diastolic volume over [a, b): the beat-by-beat volume peaks."""
+    t = np.asarray(r["t"])
+    lv = np.asarray(r["volumes"])[(t >= a) & (t < b), IDX["left_ventricle"]]
+    d = np.diff(lv)
+    peaks = np.where((d[:-1] > 0) & (d[1:] <= 0))[0] + 1
+    return float(np.mean(lv[peaks])) if len(peaks) else float(lv.max())
+
+
 def _saline_load(sex, sac=True):
     """Bhella 2014's loading step: warm saline 15 mL/kg at ~200 mL/min in a
-    supine sedentary senior. Returns (dPCWP, dRAP, dSV), end of infusion vs the
-    30 s before it. PCWP is the LA cavity pressure, RAP the reported CVP."""
+    supine sedentary senior. Returns (dPCWP, dRAP, dSV, fractional dLVEDV), end
+    of infusion vs the 30 s before it. PCWP is the LA cavity pressure, RAP the
+    reported CVP, LVEDV the mean of the beat-by-beat end-diastolic peaks."""
     h, w, age = _BHELLA_SEDENTARY
     p = cohort_params(h, w, age_years=age, sex=sex)
     p.pericardium_enabled = sac
@@ -7301,8 +7311,9 @@ def _saline_load(sex, sac=True):
     t = np.asarray(r["t"])
     def win(k, a, b):
         return float(np.mean(np.asarray(r[k])[(t >= a) & (t < b)]))
+    edv0, edv1 = _lv_edv(r, t0 - 30.0, t0), _lv_edv(r, t0 + dur, t0 + dur + 30.0)
     return tuple(win(k, t0 + dur, t0 + dur + 30.0) - win(k, t0 - 30.0, t0)
-                 for k in ("la_pressure", "cvp", "sv"))
+                 for k in ("la_pressure", "cvp", "sv")) + (edv1 / edv0 - 1.0,)
 
 
 @pytest.fixture(scope="module")
@@ -7454,3 +7465,245 @@ def test_older_adults_defend_pressure_at_least_as_well_davy1998_tsutsui2002(
     assert older >= young - 1.0, (
         f"the older model defends MAP WORSE on -30 LBNP: {older:+.1f} vs {young:+.1f} mmHg "
         f"(Davy/Tsutsui: older is equal or better)")
+
+
+# ===========================================================================
+# 53. BHELLA'S SIX-STAGE REPLAY — does the LV RECEIVE the right volume, and turn
+#     it into the right pressure? Unloading AND loading, one lab, one cohort.
+# ===========================================================================
+#
+# [PMID 25236519 — Bhella 2014, sedentary seniors, n 27, 44 % female] Supine,
+# Swan-Ganz, LVEDV by 2D echo scaled to each subject's cardiac MRI. Stages:
+# LBNP -30, LBNP -15, baseline 1, baseline 2, saline 15 and 30 mL/kg. Group means
+# DIGITISED from the figures (docs/reference_values.md, grade C, ~+/-0.3 mmHg and
+# ~+/-1 mL/m2 per point). RAP is DERIVED (PCWP minus Figure 4's PCWP-RAP), so it
+# carries both readings' error.
+#
+# WHY THIS EXISTS (validation log 2026-10-23). Every volume-sensitivity endpoint
+# used before was a single number, and one of them (Gauer) turned out to be a
+# second-hand LOADING coefficient scored against a BLEED. This replay asserts the
+# SHAPE across both directions, and separates the two halves of the question:
+#   * the BODY's job is to deliver volume to the LV  -> the LVEDV change
+#   * the HEART's job is to turn it into pressure     -> the PCWP and RAP change
+# At the time of writing the first passes and the other two do not, which is what
+# located the defect in the heart and pericardium rather than the body.
+#
+# BANDS. No per-stage SD is published, so the 1 SD convention cannot be applied.
+# Each band is spanned by Bhella's TWO baseline estimates (base 2, and the mean of
+# base 1 and base 2 — the same construction as constraint D of the pre-registered
+# map and the share test in section 51), widened by figure-reading precision:
+# +/-0.3 mmHg for PCWP, +/-0.45 for the derived RAP, +/-2.5 points for the
+# fractional volume change. Changes, not levels, so the transducer zero (5 cm below
+# the sternal angle) cancels. Each LBNP level is a separate 5 min run from rest; in
+# Bhella's protocol -30 followed 5 min at -15 (no stepped LBNP profile exists).
+
+_BHELLA_STAGE_BANDS = {
+    #            fractional dLVEDV     dPCWP mmHg      dRAP mmHg
+    "lbnp15":  ((-0.135, -0.074), (-4.50, -2.85), (-3.65, -1.85)),
+    "lbnp30":  ((-0.240, -0.181), (-6.40, -4.75), (-4.95, -3.15)),
+    "saline15": ((+0.042, +0.105), (+4.10, +5.75), (+2.15, +3.95)),
+}
+
+
+def _lbnp_stage(sex, level):
+    """One Bhella LBNP stage: 5 min at `level` mmHg from rest, read in the last 30 s
+    against the 30 s before suction. Returns (dPCWP, dRAP, dSV, fractional dLVEDV)."""
+    h, w, age = _BHELLA_SEDENTARY
+    p = cohort_params(h, w, age_years=age, sex=sex)
+    t0 = 120.0
+    p.lbnp_mmhg, p.lbnp_start_s, p.lbnp_end_s = level, t0, None
+    r = run_simulation(p, duration_s=t0 + 300.0 + 1.0, dt=DT, output_every=10)
+    t = np.asarray(r["t"])
+    def win(k, a, b):
+        return float(np.mean(np.asarray(r[k])[(t >= a) & (t < b)]))
+    a, b = t0 + 270.0, t0 + 300.0
+    edv0, edv1 = _lv_edv(r, t0 - 30.0, t0), _lv_edv(r, a, b)
+    return tuple(win(k, a, b) - win(k, t0 - 30.0, t0)
+                 for k in ("la_pressure", "cvp", "sv")) + (edv1 / edv0 - 1.0,)
+
+
+@pytest.fixture(scope="module")
+def bhella_stages(bhella_saline):
+    """{stage: (fractional dLVEDV, dPCWP, dRAP)} — the band order — as cohort
+    means (56 % M / 44 % F).
+    The saline stage REUSES section 51's runs (sac on)."""
+    runs = {("saline15", sex): bhella_saline[(sex, True)] for sex in ("male", "female")}
+    for level in (-15.0, -30.0):
+        for sex in ("male", "female"):
+            runs[(f"lbnp{int(-level)}", sex)] = _lbnp_stage(sex, level)
+    out = {}
+    for stage in _BHELLA_STAGE_BANDS:
+        m, f = runs[(stage, "male")], runs[(stage, "female")]
+        out[stage] = tuple(_cohort_mean({"male": m[i], "female": f[i]}) for i in (3, 0, 1))
+    return out
+
+
+def _stage_misses(bhella_stages, k, label, unit):
+    misses = []
+    for stage, bands in _BHELLA_STAGE_BANDS.items():
+        lo, hi = bands[k]
+        v = bhella_stages[stage][k]
+        if not lo <= v <= hi:
+            misses.append(f"{stage}: {label} {v:+.3g}{unit} outside [{lo:+.3g}, {hi:+.3g}]")
+    return misses
+
+
+def test_the_body_delivers_bhellas_filling_volumes_to_the_lv(bhella_stages):
+    """The LV's end-diastolic volume changes by Bhella's fraction at every stage:
+    LBNP -15 -11.0 / -9.9 %, LBNP -30 -21.5 / -20.6 %, saline +6.7 / +8.0 % (two
+    baseline estimates). A FRACTION, because the model's resting LVEDV (~128 mL
+    cohort mean) is larger than Bhella's MRI-corrected 104.5 — a level difference
+    recorded separately, which a ratio is robust to.
+
+    This is the BODY half: how much of the suction or the infusion reaches the left
+    ventricle is set by venous capacitance, pooling, filtration and the right heart.
+    It PASSED when written (2026-10-23: -10.1, -20.7, +6.4 %), and its passing is
+    what clears the body of the loading defect in this experiment. Sabotage-verified:
+    tripling venous-reservoir compliance moves it out of band (validation log)."""
+    misses = _stage_misses(bhella_stages, 0, "dLVEDV", "")
+    assert not misses, "LV filling volume does not follow Bhella: " + "; ".join(misses)
+
+
+@pytest.mark.xfail(strict=True, raises=AssertionError, reason=(
+    "KNOWN GAP, 2026-10-23 — THE LV IS STIFFER THAN MAN'S AROUND REST, ~1.4x ON UNLOADING "
+    "AND ~2x ON LOADING. It receives Bhella's volume at every stage (test above) and "
+    "turns it into too much pressure: wedge -5.1 / -8.5 on LBNP -15 / -30 against "
+    "-4.2 / -6.1, and +8.7 on saline against +4.4-5.5. Worst in the female run, which "
+    "also starts too high on its curve (resting wedge 13.7 vs Bhella 10.8). No "
+    "combination of 11 heart and body parameters reaches normal rest AND Bhella's "
+    "loading pressures (joint search, B+D 0/512). Validation log 2026-10-23."
+))
+def test_wedge_pressure_follows_bhellas_stages(bhella_stages):
+    """The HEART half, left side: given the volume it received, the LV's filling
+    pressure changes by Bhella's amount — LBNP -15 -4.2 / -3.15, LBNP -30 -6.1 /
+    -5.05, saline +4.4 / +5.45 mmHg (two baseline estimates)."""
+    misses = _stage_misses(bhella_stages, 1, "dPCWP", " mmHg")
+    assert not misses, "wedge pressure does not follow Bhella: " + "; ".join(misses)
+
+
+@pytest.mark.xfail(strict=True, raises=AssertionError, reason=(
+    "KNOWN GAP, 2026-10-23 — THE RIGHT ATRIUM HAS THE WRONG SHAPE AROUND REST. It falls "
+    "one-third to two-fifths of Bhella's value on suction (-0.9 / -1.7 against -3.2 / "
+    "-4.5) and rises twice it on saline (+5.3 against +2.6-3.5): slack below rest, steep "
+    "above. That is the signature of a sharp pericardial knee placed AT the resting "
+    "volume (option 1, heart.py). Man's pattern fits a sac already engaged at rest with "
+    "a softer knee (the Tyberg position, conflict H) — a HYPOTHESIS, not yet tested. "
+    "Validation log 2026-10-23."
+))
+def test_right_atrial_pressure_follows_bhellas_stages(bhella_stages):
+    """The HEART half, right side: RA pressure changes by Bhella's derived amount —
+    LBNP -15 -3.2 / -2.3, LBNP -30 -4.5 / -3.6, saline +2.6 / +3.5 mmHg (two
+    baseline estimates). The model's RAP is the catheter-mean CVP."""
+    misses = _stage_misses(bhella_stages, 2, "dRAP", " mmHg")
+    assert not misses, "RA pressure does not follow Bhella: " + "; ".join(misses)
+
+
+# ===========================================================================
+# 54. CONTROLLED BLOOD LOSS IN AWAKE MAN — Johnson 2014 replayed stage by stage
+# ===========================================================================
+#
+# [PMID 24876357 — Johnson BD ... Joyner MJ 2014, Mayo Clinic, Table 3] Healthy
+# men, supine, awake; the Table 3 subset n 8, 32 +/- 3 y, 185.3 cm, 91.3 kg. CVP by a
+# 16 G PICC from an antecubital vein, transducer at heart level. After a 5 min
+# baseline, three aliquots of 333 mL were drained by gravity (37, 43, 46 mL/min);
+# "a 5-min period separated each aliquot", and "data were analyzed and averaged
+# over the last 2 min of each stage". No fluid given.
+#   CVP, mean +/- SE:  baseline 5.9 +/- 0.8 | 333 mL 3.6 +/- 0.9 | 667 mL 2.2 +/- 1.1
+#                      | 1000 mL 1.2 +/- 1.1
+# i.e. -2.3, -3.7, -4.7 mmHg: 0.69, 0.56, 0.47 mmHg per 100 mL. STEEPEST FIRST.
+# An INDEPENDENT lab agrees: Rea 1991 (PMID 2033009, Iowa, n 9), 450 mL at 71 mL/min,
+# CVP 6.1 -> 3.7 (0.53 per 100 mL). Both bracket Gauer 1956's second-hand 0.51-0.70.
+#
+# WHY THIS EXISTS (validation log 2026-10-23). Section 53 tests FILLING on Bhella's
+# seniors; this tests BLEEDING on young men, on read modern data, replacing the
+# Gauer coefficient that had never been read. The holds are reproduced with
+# `hemorrhage_pulses`, because one continuous bleed would delete them — and the
+# transcapillary refill that happens in them.
+#
+# BAND — AN EXPLICIT EXCEPTION TO THE 1 SD CONVENTION, and why. Table 3 gives the
+# SE of each LEVEL, not the SD of the paired CHANGE. The SD of a level (SE x 2.83,
+# ~2.3-3.1 mmHg) includes the between-subject spread of BASELINE CVP, which cancels
+# in a paired change; using it would accept a model ~4x too insensitive (measured
+# 2026-10-23: the model's CVP at 1000 mL is 3.1, inside 1.2 +/- 3.1, while its
+# CHANGE is -1.3 against -4.7). So each band is the group-mean
+# change +/- sqrt(SE_base^2 + SE_stage^2): the SE of the change ASSUMING NO
+# within-subject correlation, which is an UPPER bound on the true SE of the mean
+# change. It asks whether the model reproduces the MEAN response — which is what a
+# typical patient at the group's mean anthropometry should do.
+
+_JOHNSON_SUBJECT = (185.3, 91.3, 32.0)            # height cm, weight kg, age (Table 3, n 8)
+_JOHNSON_RATES = (37.0, 43.0, 46.0)               # mL/min, aliquots 1-3 (removal by gravity)
+_JOHNSON_DCVP_BANDS = (                           # mmHg change from baseline, see above
+    (-2.3 - 1.20, -2.3 + 1.20),
+    (-3.7 - 1.36, -3.7 + 1.36),
+    (-4.7 - 1.36, -4.7 + 1.36),
+)
+
+
+def _johnson_bleed():
+    """Johnson 2014's blood-loss arm. Returns (baseline CVP, [dCVP per stage],
+    [dSV per stage]), each stage read over the last 2 min of its 5 min hold."""
+    h, w, age = _JOHNSON_SUBJECT
+    p = cohort_params(h, w, age_years=age, sex="male")
+    t, pulses, reads = 300.0, [], []
+    for rate in _JOHNSON_RATES:
+        dur = 333.0 / rate * 60.0
+        pulses.append((t, dur, rate))
+        t += dur + 300.0
+        reads.append((t - 120.0, t))
+    p.hemorrhage_pulses = tuple(pulses)
+    r = run_simulation(p, duration_s=t + 1.0, dt=DT, output_every=10)
+    tt = np.asarray(r["t"])
+    def win(k, a, b):
+        return float(np.mean(np.asarray(r[k])[(tt >= a) & (tt < b)]))
+    cvp0, sv0 = win("cvp", 180.0, 300.0), win("sv", 180.0, 300.0)
+    return (cvp0, [win("cvp", a, b) - cvp0 for a, b in reads],
+            [win("sv", a, b) - sv0 for a, b in reads])
+
+
+@pytest.fixture(scope="module")
+def johnson_bleed():
+    return _johnson_bleed()
+
+
+@pytest.mark.xfail(strict=True, raises=AssertionError, reason=(
+    "KNOWN GAP, 2026-10-23 — CVP FALLS ~4x TOO LITTLE ON BLEEDING. Measured: -0.50 / -0.91 / "
+    "-1.28 mmHg at 333 / 667 / 1000 mL against Johnson's -2.3 / -3.7 / -4.7. Meanwhile stroke "
+    "volume falls ~2x TOO MUCH (-13 / -24 / -34 mL against -5 / -11 / -18): the heart's output "
+    "answers volume loss that its filling pressure does not show — the cardiac function curve "
+    "slope, seen again. Same RA defect as section 53's RAP test, from the bleed side, on a "
+    "different lab and cohort. HYPOTHESIS, under test: the pericardial knee sits AT the resting "
+    "volume, so below it the RA is slack. Validation log 2026-10-23."
+))
+def test_cvp_falls_as_in_johnson2014_controlled_blood_loss(johnson_bleed):
+    """CVP falls by Johnson's mean change at each 333 mL stage, within the SE-of-
+    change band defined above."""
+    _, dcvp, _ = johnson_bleed
+    misses = [f"{333 * (k + 1)} mL: dCVP {d:+.2f} outside [{lo:+.2f}, {hi:+.2f}]"
+              for k, (d, (lo, hi)) in enumerate(zip(dcvp, _JOHNSON_DCVP_BANDS))
+              if not lo <= d <= hi]
+    assert not misses, "CVP does not follow Johnson 2014: " + "; ".join(misses)
+
+
+# ===========================================================================
+# 55. STAGED BLEEDING REACHES THE ODE — a mechanism guard, no literature target
+# ===========================================================================
+
+
+def test_hemorrhage_pulses_are_live_and_additive():
+    """The staged-bleed mechanism must reach the ODE: a 500 mL bleed given as one
+    `hemorrhage_pulses` entry must reproduce the single-pulse bleed exactly, and
+    must differ from no bleed. Drives run_simulation; if the pulse loop were cut,
+    the first assertion fails (verified by construction 2026-10-23: identical to
+    the last decimal with the loop present)."""
+    def cvp(kind):
+        p = cohort_params(175.0, 75.0, age_years=55.0, sex="male")
+        if kind == "single":
+            p.hemorrhage_rate_mlmin, p.hemorrhage_start_s, p.hemorrhage_duration_s = 250.0, 30.0, 120.0
+        elif kind == "pulse":
+            p.hemorrhage_pulses = ((30.0, 120.0, 250.0),)
+        r = run_simulation(p, duration_s=180.0, dt=DT, output_every=10)
+        return np.asarray(r["cvp"])
+    single, pulse, none = cvp("single"), cvp("pulse"), cvp("none")
+    assert np.max(np.abs(single - pulse)) < 1e-9, "a pulse does not reproduce the single bleed"
+    assert np.max(np.abs(pulse - none)) > 0.3, "hemorrhage_pulses has no effect on CVP"
