@@ -7707,3 +7707,32 @@ def test_hemorrhage_pulses_are_live_and_additive():
     single, pulse, none = cvp("single"), cvp("pulse"), cvp("none")
     assert np.max(np.abs(single - pulse)) < 1e-9, "a pulse does not reproduce the single bleed"
     assert np.max(np.abs(pulse - none)) > 0.3, "hemorrhage_pulses has no effect on CVP"
+
+
+# ===========================================================================
+# 56. LVEDP IS END-DIASTOLIC — a reporting guard (coronary perfusion depends on it)
+# ===========================================================================
+
+
+def test_reported_lvedp_is_the_passive_pressure_at_end_diastolic_volume():
+    """`lvedp` must be the passive LV pressure at each beat's END-DIASTOLIC volume, not
+    a cycle mean. Until 2026-10-25 it was the passive pressure at the CURRENT volume,
+    block-averaged — ~3 mmHg where the end-diastolic value is ~11 — so coronary
+    perfusion pressure (DBP - LVEDP) and the Buckberg index were overestimated.
+
+    Drives run_simulation and recomputes the expected value INDEPENDENTLY from the
+    volume trace (per-beat LV volume peaks through the patient's own Klotz curve), so
+    reverting the fix makes the first assertion fail."""
+    from model.heart import klotz_diastolic_pressure
+    p = cohort_params(175.0, 75.0, age_years=55.0, sex="male")
+    r = run_simulation(p, duration_s=40.0, dt=DT, output_every=10)
+    t = np.asarray(r["t"]); m = t >= 20.0
+    lv = np.asarray(r["volumes"])[m, IDX["left_ventricle"]]
+    d = np.diff(lv); peaks = lv[np.where((d[:-1] > 0) & (d[1:] <= 0))[0] + 1]
+    expected = np.mean([klotz_diastolic_pressure(v, p.lv_v0_dia, p.lv_v30) for v in peaks])
+    cycle_mean = np.mean([klotz_diastolic_pressure(v, p.lv_v0_dia, p.lv_v30) for v in lv])
+    reported = float(np.mean(np.asarray(r["lvedp"])[m]))
+    assert abs(reported - expected) < 0.75, (
+        f"reported LVEDP {reported:.2f} != passive pressure at end-diastolic volume {expected:.2f}")
+    assert reported > cycle_mean + 3.0, (
+        f"reported LVEDP {reported:.2f} looks like a cycle mean ({cycle_mean:.2f}), not end-diastolic")

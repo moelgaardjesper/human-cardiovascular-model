@@ -86,6 +86,7 @@ class LiveSimulator:
         self.baro    = BaroreflexController(dt=DT)
         self.t       = 0.0
         self._cardiac_phase = 0.0
+        self._lv_ed = float(self.V[IDX["left_ventricle"]])   # held LVEDV, set at each ventricular onset
 
         # Body-region baseline volumes (mL) for the fluid-distribution
         # avatar — region volumes are reported as % change from these.
@@ -187,6 +188,7 @@ class LiveSimulator:
         self.baro    = BaroreflexController(dt=DT)
         self.t       = 0.0
         self._cardiac_phase = 0.0
+        self._lv_ed = float(self.V[IDX["left_ventricle"]])   # held LVEDV, set at each ventricular onset
         self._state  = None
 
         win = max(100, int(2 * 60.0 / 70.0 / DT))
@@ -349,7 +351,10 @@ class LiveSimulator:
                 # Pressure monitoring (mirrors run_simulation monitoring loop)
                 p_ao  = (self.V[i["aorta"]] - ao_v0) / ao_c
                 p_ra  = max(0.0, RA_EMIN * (self.V[i["right_atrium"]] - ra_v0))
-                p_lvedp = klotz_diastolic_pressure(self.V[i["left_ventricle"]], params.lv_v0_dia, params.lv_v30)
+                # LVEDP at the last END-DIASTOLE, held for the beat (see circulation.py).
+                # This read the INSTANTANEOUS passive pressure, so the value the UI
+                # showed depended on where in the cycle the push happened to land.
+                p_lvedp = klotz_diastolic_pressure(self._lv_ed, params.lv_v0_dia, params.lv_v30)
 
                 self._cvp_win.append(p_ra)
                 self._map_win.append(p_ao)
@@ -402,7 +407,10 @@ class LiveSimulator:
                 if params.ventilation_mode != 'none':
                     hr_now = max(30.0, min(180.0, hr_now + respiratory_sinus_arrhythmia(
                         self.t, params.ventilation_mode, params.resp_rate_bpm, params.ie_ratio)))
+                _phase_prev = self._cardiac_phase
                 self._cardiac_phase = (self._cardiac_phase + hr_now / 60.0 * DT) % 1.0
+                if self._cardiac_phase < _phase_prev:          # ventricular onset = end-diastole
+                    self._lv_ed = float(self.V[i["left_ventricle"]])
 
             # ---- Extract state for this push ----
             tilt = smooth_tilt_profile(

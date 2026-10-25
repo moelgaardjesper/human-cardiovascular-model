@@ -110,11 +110,11 @@ Patients scale from the reference by body surface area, sex (Luu 2022, Gao 2022 
 - **Guards are sabotage-verified.** A new guard is trusted only after the mechanism it watches has been broken and the guard has fired.
 - **Blind validation.** Predictions for unseen studies are committed publicly before the result is known (see [Blind validation](#blind-validation-in-progress)).
 
-### Test suite (measured 2026-10-24)
+### Test suite (measured 2026-10-25)
 
 | tier | command | result |
 |---|---|---|
-| fast — the ratchet | `pytest` | **136 passed, 26 strict xfails, 0 failed** (8 slow tests deselected) |
+| fast — the ratchet | `pytest` | **137 passed, 26 strict xfails, 0 failed** (8 slow tests deselected) |
 | slow — minutes to hours | `pytest -m slow` | 7 passed at the v1.0.0 freeze; not re-run since |
 | overnight — 24 h refill | `pytest -m overnight` | 1 strict xfail, predicted before it was run |
 
@@ -163,7 +163,7 @@ All values re-measured on **2026-10-18**, at the current commit, through the sam
 | 14 | Vasopressin dose-response | [Patel 2002](https://doi.org/10.1097/00000542-200203000-00011) | MAP rises with dose; CO maintained | MAP 100 → 127 → 136; CO 6.29 → 5.73 | ✓ |
 | 15 | Adrenaline dose-response | [Freyschuss 1986](https://doi.org/10.1042/cs0700199) | CO rises with dose; MAP higher at high dose | asserted pattern passes in the suite | ✓ |
 | 16 | Spinal anaesthesia ~T4 | [Malmqvist 1987](https://doi.org/10.1111/j.1399-6576.1987.tb02605.x) | MAP falls; CO maintained | asserted pattern passes | ✓ |
-| 17 | Buckberg index with heart rate | [Buckberg 1972](https://pubmed.ncbi.nlm.nih.gov/4667030/) | falls with tachycardia | 1.39 at 70 bpm → 0.45 at 160 bpm | direction only (see limitations) |
+| 17 | Buckberg index with heart rate | [Buckberg 1972](https://pubmed.ncbi.nlm.nih.gov/4667030/) | falls with tachycardia | 1.15 at 70 bpm → 0.45 at 160 bpm | direction only (see limitations) |
 | 18 | Noradrenaline postcapillary constriction | Abboud & Eckstein 1968 | venous/arterial slope ratio 1.80 | 1.84 | ✓ |
 | 19 | Transcapillary refill, 2 h | Lister 1963 | incomplete at 2 h | passes (slow tier) | ✓ |
 
@@ -195,7 +195,7 @@ The frozen list is in [`FREEZE.md`](FREEZE.md); if the two disagree, `FREEZE.md`
 
 **Pressure waves**
 - **Pulse pressure amplification is inverted.** A lumped model has no wave travel or reflection, so central and peripheral pulse pressure cannot both be right. Brachial pulse pressure reads ~29 mmHg. Do not split the difference.
-- **The Buckberg index magnitude is biased high**, because brachial diastolic pressure is too high and systolic too low. Its fall with heart rate is supported; its absolute value is not, and it errs in the unsafe direction.
+- **The Buckberg index magnitude is biased high**, because brachial diastolic pressure is too high and systolic too low. Its fall with heart rate is supported; its absolute value is not, and it errs in the unsafe direction. *Corrected 2026-10-25:* until then LVEDP (which coronary perfusion pressure and the Buckberg index subtract) was read as a cycle mean of passive ventricular pressure, about 3 mmHg instead of the end-diastolic ~13, which inflated both further; the resting index fell from 1.39 to 1.15 when it was fixed.
 
 **Vessels and fluid**
 - **The venous return curve test** holds each airway pressure for 60 s, where Maas held briefly. The reflex acts during the hold, so the curve rotates. The fix is the protocol (short holds), not the band.

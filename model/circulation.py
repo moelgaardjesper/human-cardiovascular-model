@@ -1850,8 +1850,13 @@ def run_simulation(
         p_dbp = min(_dbp_win)
         p_sbp = max(_sbp_win)
 
-        # LVEDP: the passive (Klotz) pressure at the current LV volume
-        p_lvedp = klotz_diastolic_pressure(V[i["left_ventricle"]], params.lv_v0_dia, params.lv_v30)
+        # LVEDP: the passive (Klotz) pressure at the LV volume captured at the last
+        # END-DIASTOLE (ventricular onset, the phase wrap that also feeds the AV-plane
+        # coupling), held for the beat. Until 2026-10-25 this read the passive pressure
+        # at the CURRENT volume every step, so the reported value was a cycle mean
+        # including systole (~3 mmHg where the end-diastolic value is ~11), and coronary
+        # perfusion pressure (DBP - LVEDP) and the Buckberg index were OVERESTIMATED.
+        p_lvedp = klotz_diastolic_pressure(_av_ref["lv_ed"], params.lv_v0_dia, params.lv_v30)
 
         # Current tilt for perfusion calculations
         tilt_now = smooth_tilt_profile(
