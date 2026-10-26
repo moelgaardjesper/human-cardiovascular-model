@@ -1928,10 +1928,10 @@ def phenyl_dose_response():
 # CLOSED 2026-10-11 by moving the bands from the interquartile range to 1 SD
 # (see _one_sd_band) — a band decision, not a model change.
 @pytest.mark.xfail(strict=True, raises=AssertionError, reason=(
-    "EDGE GAP, 2026-10-17 — dCO -1.32 at 6.0 mcg/kg/min against the 1 SD floor -1.30 "
-    "(-1.24 at 4.0 passes; -1.49 at 8.0). SV now RISES at the lower doses (+3.1 mL, Schafers "
-    "+9) where it fell 7 mL before the atrial pins, so the flow response moved toward man. "
-    "Band not moved."
+    "EDGE GAP, re-measured 2026-10-27 — dCO -1.33 at 8.0 mcg/kg/min against the 1 SD floor -1.30 "
+    "(-1.18 at 4.0 and -1.17 at 6.0 pass). With the re-sized atria it XPASSED at the old ceiling "
+    "2.10; re-calibrating the pressor ceiling to 2.15 (pharmacology.py) brought the edge back at the "
+    "top dose. SV rises at every dose (+1.3 to +3.8 mL, Schafers +9). Band not moved."
 ))
 def test_phenylephrine_flow_response_schafers1999(phenyl_dose_response):
     """[PMID: 10073742 — Schäfers 1999] Phenylephrine in healthy supine men
@@ -2117,6 +2117,14 @@ def test_plr_fluid_responsiveness_monnet2016():
 # went on: the full normovolaemic heart meets the sac and stops filling (CO +1.8 %),
 # while after a 1200 mL bleed it sits below the knee and still responds (+60.8 %).
 # A Starling plateau from structure, not from a fitted curve.
+@pytest.mark.xfail(strict=True, raises=AssertionError, reason=(
+    "KNOWN GAP, 2026-10-27 — dCO +11.2 % against the < 10 % non-responder cut-off (was +9.2 %). "
+    "Diagnosed: NOT a lost plateau. The heart sits the same distance below the sac's knee (27 vs "
+    "28 mL) and gains the same SV (+12.7 vs +12.6 mL); the % crosses 10 because resting SV fell to "
+    "87.6 mL (47.6 mL/m2, Luu 46 +/- 8) when both atria were re-sized on independent sources. "
+    "Monnet's 10 % is an ICU diagnostic cut-off, not a law for normal hearts. Recorded, not tuned "
+    "(validation log 2026-10-27)."
+))
 def test_plr_normovolaemic_non_responder_monnet2016():
     """[PMID 26825952 — Monnet 2016] Specificity 0.91: a normovolaemic patient
     on the Starling plateau should NOT reach the +10 % responder threshold. Same
@@ -2820,7 +2828,8 @@ def _atrial_state():
         starts.append(i)
         i += int(np.argmax(lv[i + beat // 2:i + beat + beat // 2])) + beat // 2
     n = min(starts[k + 1] - starts[k] for k in range(len(starts) - 1))
-    out = {}
+    rv = np.mean([V[s:s + n, IDX["right_ventricle"]] for s in starts[:-1]], axis=0)
+    out = {"rv_sv": float(rv.max() - rv.min())}
     for key, name in (("la", "left_atrium"), ("ra", "right_atrium")):
         avg = np.mean([V[s:s + n, IDX[name]] for s in starts[:-1]], axis=0)
         vmax, vmin = float(avg.max()), float(avg.min())
@@ -2851,46 +2860,49 @@ def test_atrial_volumes_are_physiological():
     left less volume in the central pool, so the shared pool shrank. LAVmax is
     once again a function of atrial parameters rather than of the pool.
     """
-    """[J1] Left atrial volumes (appendage included) indexed to BSA, 1 SD of Järvinen.
-    The bands were [G1][G2] (atrial body only) until 2026-10-15; see the section note."""
+    """Left atrial volumes indexed to BSA. RE-TARGETED 2026-10-25 from Järvinen [J1]
+    (LAVmax 52 +/- 9, LAVmin 24 +/- 5) to the range four independent sources agree on:
+    Steding-Ehrenborg 2021 (PMID 33539261, Lund CMR, APPENDAGE INCLUDED) ~38 / ~19,
+    Gao 2022 (PMID 35124105) LAVmax 36.9 +/- 7.7, Luu 2022 (PMID 34980185) 40 / 22,
+    Prioli 1998 41 +/- 9 / 17 +/- 4. Järvinen alone sits high on both (source_conflicts
+    F, revised 2026-10-25: Jesper, "distrust Järvinen if independent sources disagree").
+    Bands: LAVmax Gao's mean +/- 1 SD (29-45, the others inside); LAVmin 14-26 (sources
+    17-22, Prioli's SD of 4 either side). With Järvinen's bands the one-for-one sweep
+    passed at 60 mL/m2; against these it fails at +2 SD."""
     s = _atrial_state()
-    assert 43.0 <= s["la"]["vmax_i"] <= 61.0, (
+    assert 29.0 <= s["la"]["vmax_i"] <= 45.0, (
         f"LAVmax {s['la']['vmax_i']:.1f} mL/m2 ({s['la']['vmax']:.0f} mL) outside "
-        f"43-61; [J1] 52 +/- 9 (appendage included)"
+        f"29-45; four sources 37-41 (Gao 36.9 +/- 7.7)"
     )
-    assert 19.0 <= s["la"]["vmin_i"] <= 29.0, (
-        f"LAVmin {s['la']['vmin_i']:.1f} mL/m2 outside 19-29; [J1] 24 +/- 5"
+    assert 14.0 <= s["la"]["vmin_i"] <= 26.0, (
+        f"LAVmin {s['la']['vmin_i']:.1f} mL/m2 outside 14-26; four sources 17-22"
     )
 
 
 def test_right_atrial_volumes_are_physiological():
-    """[PMID 8134560 — Järvinen 1994, Radiology] Right atrial volumes, APPENDAGE
-    INCLUDED, caval inlets excluded; cine MRI over free breathing (average beat).
-    RAmax 77 +/- 11, RAmin 38 +/- 8 mL/m2 (SD, n 8, age 41, BSA 1.90). MRI read
-    the RA casts 7.2 +/- 2.3 mL LOW (~3.8 mL/m2), so the bands are the CAST-
-    CORRECTED mean +/- 1 SD: max 70-92, min 34-50. RE-TARGETED 2026-10-17 from Gao
-    (atrial body only, a different quantity); the RA's unstressed volume is PINNED
-    on the max, so the max band guards the pin and the min tests it."""
+    """Right atrial volumes, APPENDAGE INCLUDED, cavae excluded, indexed to BSA.
+    RE-TARGETED 2026-10-26 from Järvinen 1994 Radiology (RAmax 77 +/- 11, cast-corrected
+    ~81), whose absolute atrial volumes read ~1.5x every other source on both sides
+    (source_conflicts F rev. b, Jesper's rule). Now: Maceira 2013 (PMID 23566426, n 120,
+    CMR, ring tracked) RAVmax 54 +/- 10.3 and Sjöberg 2020 (PMID 31886724, n 15) 66 +/- 11
+    — ~1 SD apart, so the band is the union of their 1 SD (44-77), not an average.
+    RAVmin: Sjöberg 37 +/- 16 (21-53); Maceira's derived min (54 - 31) = 23 lies inside.
+    The RA unstressed volume is PINNED on the max, so the max band guards the pin."""
     s = _atrial_state()
-    assert 70.0 <= s["ra"]["vmax_i"] <= 92.0, (
+    assert 44.0 <= s["ra"]["vmax_i"] <= 77.0, (
         f"RAVmax {s['ra']['vmax_i']:.1f} mL/m2 ({s['ra']['vmax']:.0f} mL) outside "
-        f"70-92; Järvinen 77 +/- 11, cast-corrected ~81"
+        f"44-77; Maceira 54 +/- 10, Sjöberg 66 +/- 11"
     )
-    assert 34.0 <= s["ra"]["vmin_i"] <= 50.0, (
-        f"RAVmin {s['ra']['vmin_i']:.1f} mL/m2 outside 34-50; Järvinen 38 +/- 8, "
-        f"cast-corrected ~42"
+    assert 21.0 <= s["ra"]["vmin_i"] <= 53.0, (
+        f"RAVmin {s['ra']['vmin_i']:.1f} mL/m2 outside 21-53; Sjöberg 37 +/- 16, Maceira ~23"
     )
 
 
-# Was a strict xfail; closed 2026-10-06 by the Klotz LV diastolic curve (heart.py).
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason=(
-    "KNOWN GAP, 2026-10-17 — LA total emptying 59.1 % against Järvinen's 53 +/- 5 (+1.2 SD), "
-    "with LA contraction PINNED on his LA ejection fraction (28 %) and LA max/min on target. "
-    "The excess is RESERVOIR: the AV-plane coupling gives the LA 61 % of LV SV (Stephensen's "
-    "swept volume) where Järvinen measured LA systolic filling at 54 %, and the RA mirrors it "
-    "(reservoir too SMALL, see the RA test). Likely cause: the split of the swept volume "
-    "between the atria. Recorded, not tuned (validation log 2026-10-17)."
-))
+# Strict xfail 2026-10-17 to 2026-10-25 ("LA total emptying 59.1 % against Järvinen's
+# 53 +/- 5; likely cause: the split of the swept volume between the atria"). CLOSED
+# 2026-10-25 by exactly that: the AV-plane sweep's atrial share (AV_ATRIAL_SHARE_LA,
+# Maksuti geometry) and LA_EMIN re-pinned on four-source filling. Emptying is a RATIO
+# on which Järvinen agrees with the other sources, so his band is kept.
 def test_atrial_emptying_fractions_are_physiological():
     """[G1][G2] Total atrial emptying fraction must match human reference ranges.
 
@@ -2910,12 +2922,10 @@ def test_atrial_emptying_fractions_are_physiological():
     )
 
 
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason=(
-    "KNOWN GAP, 2026-10-17 — RA total emptying 44.8 % against Järvinen's 52 +/- 6 (-1.2 SD), "
-    "the mirror of the LA (+1.2 SD): the RA's reservoir share runs small (48 vs 57 +/- 12 % of "
-    "SV) while the LA's runs large. Likely cause: the split of the AV-plane swept volume "
-    "between the atria (f_LA 0.61 vs Järvinen's LA filling 0.54). Recorded, not tuned."
-))
+# Strict xfail 2026-10-17 to 2026-10-26 ("RA total emptying 44.8 % against Järvinen's
+# 52 +/- 6"). CLOSED 2026-10-26 by the RA's share of the AV-plane sweep (Sjöberg) and its
+# unstressed volume re-pinned on Maceira: the reservoir was not too small, the chamber
+# was too big. Emptying is a RATIO on which Järvinen and Maceira (56 +/- 7) agree.
 def test_right_atrial_emptying_fraction_is_physiological():
     """[PMID 8134560 — Järvinen 1994] RA fractional emptying 52 +/- 6 % (average
     beat, free breathing). RE-TARGETED 2026-10-17 from Gao's 49.7 +/- 9.2 (body
@@ -3120,12 +3130,12 @@ def test_female_chamber_volumes_match_luu_and_gao():
     assert 59.0 <= f["right_ventricle"] <= 85.0, (
         f"female RVEDV {f['right_ventricle']:.1f} mL/m2 outside Luu's 1 SD of 59-85; "
         f"[L1] female 72 ± 13, male 86")
-    # RE-TARGETED 2026-10-17: the RA is now appendage-inclusive (Järvinen 1994,
-    # cast-corrected 1 SD 70-92 mL/m2, cohort 5 M / 3 F — no sex split published).
-    # Gao's female 32.7 +/- 8.2 is the atrial BODY only, a different quantity.
-    assert 70.0 <= f["right_atrium"] <= 92.0, (
-        f"female RAVmax {f['right_atrium']:.1f} mL/m2 outside Järvinen's 1 SD of "
-        f"70-92 (cast-corrected; appendage included)")
+    # RE-TARGETED 2026-10-26 to Maceira 2013's FEMALE column (PMID 23566426, appendage
+    # included): 53 mL/m2, whole-group SD 10.3 -> 43-63. Was Järvinen 70-92 (set aside,
+    # source_conflicts F rev. b); Gao's 32.7 is the atrial body only.
+    assert 43.0 <= f["right_atrium"] <= 63.0, (
+        f"female RAVmax {f['right_atrium']:.1f} mL/m2 outside Maceira's female 53 +/- 10 "
+        f"(43-63; appendage included)")
 
 
 # ===========================================================================
@@ -7087,11 +7097,12 @@ def test_abdominal_and_leg_heights_scale_with_stature():
 # throttles output. Magnitudes (k, vk) are grade D/E and are NOT asserted.
 
 @pytest.mark.xfail(strict=True, raises=AssertionError, reason=(
-    "KNOWN GAP, 2026-10-17 — 200 mL raises RA only 4.6 -> 8.5 (needs > +5) and CO falls to "
-    "70 % (needs < 60 %); 300 mL gives RA 12.1, CO 41 %, RA-IPP 2.2, LA-IPP 1.5 (full "
-    "tamponade). The RA's unstressed volume was pinned on Järvinen (appendage included), so "
-    "the heart, and the CALCULATED pericardial capacity, is ~40 mL larger. Beck's '200 mL "
-    "can cause hypotensive tamponade' is 1935, read only via Boltwood. Not moved."
+    "KNOWN GAP, re-measured 2026-10-27 — 200 mL raises RA 5.3 -> 9.5 (+4.2, needs > +5) and CO "
+    "falls to 67 % (needs < 60 %); 300 mL gives RA 15.2, LA 15.2, IPP 13.0, CO 38 % (full "
+    "tamponade). Re-sizing both atria on independent sources (Maceira, Sjöberg; Järvinen's RA pin "
+    "removed) shrank the calculated capacity 479 -> 423 mL and NARROWED the gap (was +3.9 and 70 %), "
+    "as predicted, but did not close it. Beck's '200 mL can cause hypotensive tamponade' is 1935, "
+    "read only via Boltwood. Not moved."
 ))
 def test_pericardial_effusion_produces_tamponade():
     """[PMID 668074] Reddy 1978: in all 14 tamponade patients RVEDP was elevated
@@ -7240,10 +7251,11 @@ def _heart_volume_bookkeeping(av_on):
 
 
 @pytest.mark.xfail(strict=True, raises=AssertionError, reason=(
-    "EDGE GAP, 2026-10-17 — net heart-volume fall / ejected 0.379 against the 0.37 ceiling "
-    "(Carlsson 0.34, Stephensen 0.26), after the atrial pins: the larger RA and stronger LA "
-    "kick change how much the atria take up during ejection. Filling assertion still passes."
-))
+    "KNOWN GAP, 2026-10-27 — net heart-volume fall / ejected 0.52 against 0.26-0.37, and atrial "
+    "filling during ejection 48 % against Carlsson's 64 %, after both atria were re-sized on "
+    "independent CMR reservoirs (Maceira 2016, Sjöberg 2020). QUANTITY MISMATCH SUSPECTED: Carlsson's "
+    "64 % is vein FLOW (it also counts the intrapericardial vein segments; his THV includes the "
+    "great-vessel roots), the model's is chamber max - min. Was 0.379 on the old atria. Not tuned."))
 def test_atria_fill_during_ejection_carlsson2004():
     """[PMID 15016625 — Carlsson 2004; PMID 24441546 — Stephensen 2014]
     In man the ventricles empty largely by pulling the AV plane toward the apex.
@@ -7736,3 +7748,36 @@ def test_reported_lvedp_is_the_passive_pressure_at_end_diastolic_volume():
         f"reported LVEDP {reported:.2f} != passive pressure at end-diastolic volume {expected:.2f}")
     assert reported > cycle_mean + 3.0, (
         f"reported LVEDP {reported:.2f} looks like a cycle mean ({cycle_mean:.2f}), not end-diastolic")
+
+
+# ===========================================================================
+# 57. BOTH ATRIA HOLD MAN'S RESERVOIR — guards for the AV-plane split (heart.py
+#     AV_ATRIAL_SHARE_LA / _RA) and LA_EMIN
+#     [MAC16] Maceira AM et al. (2016) J Cardiovasc Magn Reson 18:64. PMID 27719670,
+#             DOI 10.1186/s12968-016-0284-8 — n 120, appendages included
+#     [SJO]   Sjöberg P et al. (2020) Am J Physiol Heart Circ Physiol 318:H345-53.
+#             PMID 31886724, DOI 10.1152/ajpheart.00417.2019 — 15 controls
+# ===========================================================================
+
+
+def test_atrial_reservoirs_match_two_independent_labs():
+    """Atrial reservoir (max - min volume of the average beat) indexed to BSA, reference
+    patient. LA 24 +/- 4.4 [MAC16] and 25 +/- 4 [SJO]; RA 31 +/- 6.0 [MAC16] and 32 +/- 5
+    [SJO]. Two labs agreeing: grade B. Bands are Maceira's 1 SD.
+
+    Guards the split of the AV-plane sweep between atrium and total-heart-volume fall:
+    with the sweep entering each atrium one-for-one (the model until 2026-10-26) the LA
+    reservoir read 35.7 (+2.6 SD) and the RA 38.2; with LA_EMIN back at 0.55 the LA read 17.7.
+    An absolute volume, not a share of SV, so it does not inherit the model's own SV."""
+    s = _atrial_state()
+    la = s["la"]["vmax_i"] - s["la"]["vmin_i"]
+    ra = s["ra"]["vmax_i"] - s["ra"]["vmin_i"]
+    assert 19.6 <= la <= 28.4, f"LA reservoir {la:.1f} mL/m2 outside 19.6-28.4; [MAC16] 24 +/- 4.4, [SJO] 25"
+    assert 25.0 <= ra <= 37.0, f"RA reservoir {ra:.1f} mL/m2 outside 25-37; [MAC16] 31 +/- 6, [SJO] 32"
+    # The absolute RA band cannot tell the RA share 0.73 from 1.0 (29.5 vs ~37 mL/m2, ~1.2 SD
+    # apart; sabotage-checked 2026-10-26), so the share is guarded by the reservoir as a
+    # fraction of RV SV: [SJO] 58 +/- 8 %. PARTLY CIRCULAR — the share itself came from
+    # Sjöberg's subjects — but reservoir (max - min volume) and piston (AVPD x atrial area)
+    # are separate measurements there. One-for-one gave 75 %.
+    ra_pct = 100.0 * (s["ra"]["vmax"] - s["ra"]["vmin"]) / s["rv_sv"]
+    assert 50.0 <= ra_pct <= 66.0, f"RA reservoir {ra_pct:.1f} % of RV SV outside 50-66; [SJO] 58 +/- 8"

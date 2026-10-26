@@ -41,7 +41,7 @@ from .heart import (
     elastance_from_phase, frank_starling_emax,
     LV_EMAX, RV_EMAX, RV_EMIN, LV_V0_DIA, LV_V30,
     klotz_diastolic_pressure, _normalised_activation, ventricular_activation,
-    VENTRICULAR_T_MAX_SCALE, AV_PLANE_F_LA, AV_PLANE_F_RA,
+    VENTRICULAR_T_MAX_SCALE, AV_PLANE_F_LA, AV_PLANE_F_RA, AV_ATRIAL_SHARE_LA, AV_ATRIAL_SHARE_RA,
     RA_EMAX, RA_EMIN, LA_EMAX, LA_EMIN,
     atrial_phase_offset,
     pericardial_pressure, pericardial_capacity, PERI_K, PERI_VK,
@@ -351,8 +351,8 @@ class SimParams:
         # Only run_simulation carries the per-beat reference; api/live.py calls
         # _odes without it, so there the switch is inert.
         self.av_coupling_enabled = True
-        self.av_f_la = AV_PLANE_F_LA
-        self.av_f_ra = AV_PLANE_F_RA
+        self.av_f_la = AV_PLANE_F_LA * AV_ATRIAL_SHARE_LA   # sweep x atrial share (heart.py)
+        self.av_f_ra = AV_PLANE_F_RA * AV_ATRIAL_SHARE_RA   # sweep x atrial share (heart.py)
         self.rv_emax = RV_EMAX
         self.rv_emin = RV_EMIN
         self.la_emax = LA_EMAX

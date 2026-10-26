@@ -242,6 +242,13 @@ def phenylephrine(dose_mcg_kg_min: float) -> dict:
         THE WINDOW IS NARROW (about 2.05 to 2.15): above it heart rate falls
         past the band, because the model's reflex bradycardia per mmHg is a
         little steeper than measured. Recorded, not tuned away.
+      * RE-CALIBRATED 2026-10-27: 2.10 -> 2.15, the top of that window (Jesper's
+        decision). Re-sizing both atria on independent sources (heart.py
+        AV_ATRIAL_SHARE_LA/_RA, LA_EMIN, RA unstressed volume) lowered resting
+        SV ~5 mL and took the plateau dMAP to +20.9, 0.4 below the 1 SD floor.
+        Tested 2.12 (+21.0, fails) and 2.15 (passes); at 2.15 the flow arm's
+        dCO edge gap returns (it had XPASSED at 2.10 with the new atria). The
+        old atria were part of this calibration; it is still a calibration.
       * POTENCY: ec50 0.50 is UNCHANGED, and it is now sourced. Schaefers report
         a median DBP rise of +16.8 mmHg at 1 mcg/kg/min against +30 at the top
         dose, a ratio of 0.56; the model gives 0.53.
@@ -273,7 +280,7 @@ def phenylephrine(dose_mcg_kg_min: float) -> dict:
     that; it needs endogenous and exogenous agonism on a shared stage. Backlog
     item 70.
     """
-    svr_factor = 1.0 + _hill(dose_mcg_kg_min, ec50=0.50, e_max=2.10, n=0.9)
+    svr_factor = 1.0 + _hill(dose_mcg_kg_min, ec50=0.50, e_max=2.15, n=0.9)
     return {
         "svr_factor": svr_factor,
         "hr_factor": 1.0,          # baroreflex will decrease HR

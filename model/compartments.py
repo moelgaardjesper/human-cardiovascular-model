@@ -738,13 +738,16 @@ def default_compartments() -> list[Compartment]:
         # ---- Cardiac chambers (elastance model; R = valve resistance) ----
         # RA Vinit=155: at RA_EMIN=0.04 and P_ra_eq≈3.8 mmHg → V=60+3.8/0.04=155 mL.
         # End-diastolic (rolling-minimum) CVP ≈ 3 mmHg once RA partially empties ✓
-        # RA unstressed volume 16 -> 55 mL (2026-10-16), PINNED on Järvinen 1994
-        # (Radiology, PMID 8134560): cast-validated MRI, APPENDAGE INCLUDED, RAmax
-        # 148 ± 26 mL, read 7.2 mL low on casts -> ~155 mL (~81 mL/m2). The old 16
-        # was sized against Gao's atrial BODY (appendage excluded), a different
-        # quantity. TESTED on RAmin, fractional emptying, phase shares and RA:LA
-        # (validation log 2026-10-16). Unstressed volume moves volume, not pressure.
-        Compartment("right_atrium",        0.35, VALVE_R,  55,  0.0,   80),  # 15
+        # RA unstressed volume 55 -> 20 mL (2026-10-26), PINNED on RAVmax with the
+        # sweep's RA share fixed (heart.py AV_ATRIAL_SHARE_RA): Maceira 2013 (PMID
+        # 23566426, 120 healthy, CMR, appendage included, ring tracked) 54 +/- 10
+        # mL/m2 and Sjöberg 2020 66 +/- 11; at 20 mL the model reads ~55 and RA
+        # emptying ~54 % (Maceira 56 +/- 7). GRADE C (two sources ~1 SD apart).
+        # Was 55, pinned on Järvinen 1994 Radiology (~81 mL/m2), whose absolute
+        # atrial volumes read ~1.5x every other source on both sides and were set
+        # aside (source_conflicts F rev. b). Unstressed volume moves volume, not
+        # pressure. Pre-registered grid: validation log 2026-10-26.
+        Compartment("right_atrium",        0.35, VALVE_R,  20,  0.0,   80),  # 15
         # RV Vinit=163: at RV_EMIN=0.02, P_rv_dia=0.02×(163-80)=1.7 mmHg → CVP can be 2-3 mmHg.
         # ESV=V0+P_pa/E_max=80+15/1.15=93 mL; SV=163-93=70 mL (improved from 56 mL). ✓
         Compartment("right_ventricle",     0.10, VALVE_R,  38,  0.0,  161),  # 16 EDV≈163 mL

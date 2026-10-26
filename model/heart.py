@@ -139,9 +139,8 @@ def ventricular_activation(cardiac_phase: float, hr_bpm: float, legacy: bool = F
 # f IS THE VOLUME THE PLANE SWEEPS, as a share of stroke volume — Stephensen
 # 2014 (PMID 24441546, CMR, 45 healthy adults): longitudinal (AV-plane) share
 # of SV 61 ± 1 % for the LV, 79 ± 1 % for the RV (mean ± SE). GRADE A for that
-# quantity. That the swept volume appears on the ATRIAL side one-for-one is the
-# modelling ASSUMPTION (the outer contour is near-constant, so the volume has
-# to go somewhere; Carlsson finds it in the atria and appendages): grade C.
+# quantity. The swept volume does NOT appear in the atrium one-for-one (that was
+# the assumption here until 2026-10-25): see AV_ATRIAL_SHARE_LA below.
 # ATRIAL FILLING IS THEREFORE AN OUTCOME, NOT AN INPUT, and is tested against
 # Carlsson's direct inflow measurement (64 ± 2 % of SV, flow in all six veins).
 # An earlier prototype set f to the measured filling instead (Järvinen 0.54
@@ -150,6 +149,29 @@ def ventricular_activation(cardiac_phase: float, hr_bpm: float, legacy: bool = F
 # ON by default since 2026-10-11 (SimParams.av_coupling_enabled) — validation log.
 AV_PLANE_F_LA = 0.61
 AV_PLANE_F_RA = 0.79
+
+# THE ATRIAL SHARE OF THE SWEEP (2026-10-25). The AV plane is a piston with two
+# faces of different size: descending by d it removes VSA_epi x d from the
+# ventricle (what Stephensen calls longitudinal SV) and adds ASA x d to the
+# atrium. The share is therefore ASA / VSA_epi, a matter of geometry. Maksuti
+# 2017 (PMID 28256604, CMR, 10 healthy, age 24) measured both areas through the
+# cycle: the ratio runs 0.28 at end-diastole to 0.63 at end-systole, mean ~0.42
+# over systole. GRADE C (one lab, read from a figure; the largest atrial area is
+# an upper estimate of the area at the junction). The rest of the sweep is the
+# fall in total heart volume, which Carlsson 2004 finds at the AV-plane level.
+# Tested on its OUTCOME, the absolute LA reservoir 24 +/- 4.4 mL/m2 (Maceira 2016;
+# Sjöberg 25 +/- 4) — test §57; the one-for-one assumption gave 35.7 (+2.6 SD).
+AV_ATRIAL_SHARE_LA = 0.42
+# RIGHT SIDE (2026-10-26). Sjöberg 2020 (PMID 31886724, Lund CMR, 15 controls,
+# age 28) computes the RA's piston volume directly — RV AVPD x the end-systolic
+# area of the ATRIUM above the tricuspid plane — at 58 % of RV SV, and the RA
+# reservoir tracks it almost one-for-one (slope 0.88). Against Stephensen's
+# ventricular-side sweep of 79 %: share 0.58 / 0.79 = 0.73. GRADE C, an upper
+# estimate (the end-systolic atrial area is the cycle's largest). The RA's share
+# is larger than the LA's because the RA is broad relative to the crescent RV.
+# Tested on the OUTCOME, RA reservoir 31 +/- 6 mL/m2 (Maceira 2016, an
+# independent lab; Sjöberg 32 +/- 5) — test §57.
+AV_ATRIAL_SHARE_RA = 0.73
 
 
 def elastance_from_phase(
@@ -540,62 +562,26 @@ RA_EMIN = 0.20   # mmHg/mL  right atrium diastolic elastance
 # ~51 % (43 ± 7) run high. GRADE A source.
 LA_EMAX = 0.72   # mmHg/mL  left atrium
 
-# LEFT ATRIAL DIASTOLIC ELASTANCE — DERIVED FROM GAO, NOT FITTED (2026-08-31).
+# LEFT ATRIAL DIASTOLIC ELASTANCE — PINNED 2026-10-26 on the ABSOLUTE LA reservoir,
+# with the sweep's atrial share fixed by geometry (above).
 #
-# Was 0.28, unsourced. Gao 2022 (PMID 35124105) gives the compliance directly:
-# the left atrium accepts LAVmax - LAVmin = 68 - 26.5 = 41.5 mL while its
-# pressure rises from roughly 5 to 13 mmHg (v-wave), which is 5.19 mL/mmHg —
-# an elastance of 8/41.5 = 0.19 mmHg/mL. The model's atrium was ~1.5x too
-# stiff.
+# TARGET: LA reservoir (max - min, appendage included) 24 +/- 4.4 mL/m2 (Maceira
+# 2016, PMID 27719670, n 120) and 25 +/- 4 (Sjöberg 2020, PMID 31886724) — two
+# independent labs agreeing: GRADE B. An absolute volume, preferred to a share of
+# SV, which inherits the model's own SV. With the share fixed the reservoir
+# depends on E_min alone (LA unstressed volume does not move it): 23.7 mL/m2 at
+# 0.28, 20.5 at 0.40, 17.7 at 0.55. LAVmax then lands at ~42 (Maceira ~41,
+# Sjöberg 44 +/- 6). IDENTIFIABLE: E_min sets the reservoir, V0 (15, grade E)
+# sets LAVmax.
+# PRESSURE: Braunwald 1961 (PMID 17533672, direct transseptal LA) — mean 7.9,
+# v peak 12.8, a peak 10.4 — is met by the young-man waveform at every E_min
+# from 0.19 to 0.75 once the share is fixed, so it does not pin E_min.
+# Pre-registered grids and results: validation log 2026-10-25/26.
 #
-# WHY IT MATTERED, and it was not a small effect. At 0.28 the LA reached
-# 21.6 mmHg at peak volume against a real v-wave of 10-15. That over-pressure
-# filled the left ventricle completely during PASSIVE diastole: the LV hit
-# 10.1 mmHg — its full end-diastolic pressure — BEFORE the atrium contracted,
-# so the atrial kick added 1.7 mL. Measured consequences at 0.28 were LAEF
-# passive 56.6 % against Gao's 35.6, atrial contribution to LV filling 6.7 %
-# against Alhogbani's 22-38.5 (PMID 23097384), and E/A 21.5 against NORRE's
-# 1.22 (PMID 25896355). In a real heart pre-A pressure is 5-7 and the kick
-# raises it to 10-12.
-#
-# WHAT WAS RULED OUT FIRST, all recorded in the validation log: mitral
-# resistance (reaching the ACC band produces mitral stenosis — mean PA 30.8,
-# PCWP 23.0), LA_EMAX alone (moves the booster but LAEF passive is invariant),
-# LA unstressed volume (15 -> 45 mL leaves peak pressure and ACC completely
-# unchanged, because the closed loop imposes the pressure), and lv_emin
-# (hits LAEF passive exactly but drives LVEDP to 20.4 mmHg, which is failure).
-#
-# A MORE COMPLIANT 0.10 FITS MORE ENDPOINTS AND IS DELIBERATELY NOT USED. It
-# would give LAEF passive 37.8, ACC 36.1 and E/A 2.09, and would close both
-# currently-xfailed pulmonary assertions — but it is twice as compliant as
-# Gao's own volume-and-pressure data support, and it drives LAVmax to
-# 62.9 mL/m2 against Gao's 36.9 +/- 7.7. Fitting five numbers by adopting a
-# compliance the source contradicts is the failure mode this project keeps
-# catching.
-#
-# WHAT 0.19 DOES NOT FIX. The residual is a VOLUME DISTRIBUTION problem, not an
-# atrial one: LA peak pressure is IMPOSED BY THE CIRCULATION. Raising the
-# atrium's unstressed volume from 15 to 45 mL left peak pressure completely
-# unchanged, which is the direct evidence for that — the atrium finds a
-# different VOLUME at the pressure the loop dictates.
-#
-# THE DIAGNOSIS THAT USED TO BE HERE HAS BEEN OVERTAKEN, 2026-09-10. It read:
-# "the pulmonary vessels hold 365.8 mL where the literature has 450-500, so the
-# vessels are under-filled while the atrium is over-filled." Both halves have
-# since flipped. The pulmonary bed now holds 505 mL against Ugander's
-# 526 +/- 87 — corrected by the compliance work of 2026-09-03 and 2026-09-10 —
-# and the LEFT ATRIUM IS NOW UNDER-FILLED, at a volume index of 34.1 against
-# Gao's 37-48, with a peak pressure of 9.64 against Chemla's PAOP of 11 +/- 2.
-#
-# THAT RULES SOMETHING OUT. Fixing the pulmonary bed did NOT bring the atrium
-# up with it, so "the lungs are holding the atrium's volume" is not the
-# explanation. The missing ~10 mL is somewhere else.
-# AND IT RULES OUT A TEMPTING FIX: making the atrial law exponential or
-# collapsible-tube would change the VOLUME at which the imposed pressure is
-# reached, not the pressure — and since the volume is already low, a stiffening
-# law moves it further from target. See validation_log.md, 2026-09-10.
-# See backlog 25a.
-LA_EMIN = 0.19   # mmHg/mL
+# WAS 0.19 (2026-08-31), "derived from Gao": Gao measured VOLUMES only; the
+# 5 -> 13 mmHg pressure rise in that derivation was unsourced. With the sweep
+# one-for-one it gave an LA reservoir of 35.7 mL/m2 (+2.6 SD).
+LA_EMIN = 0.28   # mmHg/mL
 
 # ---------------------------------------------------------------------------
 # ATRIOVENTRICULAR DELAY — the PR interval, as a TIME rather than a fraction
