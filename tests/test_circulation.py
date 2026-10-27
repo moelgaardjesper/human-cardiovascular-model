@@ -7251,11 +7251,12 @@ def _heart_volume_bookkeeping(av_on):
 
 
 @pytest.mark.xfail(strict=True, raises=AssertionError, reason=(
-    "KNOWN GAP, 2026-10-27 — net heart-volume fall / ejected 0.52 against 0.26-0.37, and atrial "
-    "filling during ejection 48 % against Carlsson's 64 %, after both atria were re-sized on "
-    "independent CMR reservoirs (Maceira 2016, Sjöberg 2020). QUANTITY MISMATCH SUSPECTED: Carlsson's "
-    "64 % is vein FLOW (it also counts the intrapericardial vein segments; his THV includes the "
-    "great-vessel roots), the model's is chamber max - min. Was 0.379 on the old atria. Not tuned."))
+    "KNOWN GAP, 2026-10-27 — atrial filling 47 % of SV in the systolic window against Carlsson's 64 % "
+    "(SD ~5.7), and net heart-volume fall 0.52 against 0.26-0.37. The filling half: the same lab's "
+    "newer data (Sjöberg 2020, PMID 31886724) give RA systolic inflow 63 +/- 9 % (model 55.8) and an LA "
+    "reservoir of 47 % that caps both atria at ~55 % — Carlsson and Sjöberg disagree (conflict L). The "
+    "fall half: their THV includes myocardium and the intrapericardial great-vessel roots, which fill "
+    "during ejection; the model's THV is four chambers' blood. Not tuned (validation log 2026-10-27)."))
 def test_atria_fill_during_ejection_carlsson2004():
     """[PMID 15016625 — Carlsson 2004; PMID 24441546 — Stephensen 2014]
     In man the ventricles empty largely by pulling the AV plane toward the apex.
