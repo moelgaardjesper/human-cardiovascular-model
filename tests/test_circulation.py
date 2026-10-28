@@ -7782,3 +7782,36 @@ def test_atrial_reservoirs_match_two_independent_labs():
     # are separate measurements there. One-for-one gave 75 %.
     ra_pct = 100.0 * (s["ra"]["vmax"] - s["ra"]["vmin"]) / s["rv_sv"]
     assert 50.0 <= ra_pct <= 66.0, f"RA reservoir {ra_pct:.1f} % of RV SV outside 50-66; [SJO] 58 +/- 8"
+
+
+def test_right_atrium_fills_mostly_in_systole_sjoberg2020():
+    """[SJO] Sjöberg 2020 (PMID 31886724, 4D flow in the venae cavae, 15 controls age 28): 63 +/- 9 %
+    of the venous return to the right atrium arrives during VENTRICULAR SYSTOLE, when the AV plane
+    descends and the tricuspid valve is shut. Band 1 SD (54-72).
+
+    A matched quantity: with the tricuspid shut, caval inflow EQUALS the RA's volume change, so the
+    model's RA filling from RV end-diastole to RV end-systole, divided by RV stroke volume (the whole
+    beat's venous return in steady state), is what the 4D flow measures. Reference patient, beats from
+    30 s. Carlsson 2004's 64 % for both atria together (8 subjects, same lab) is not asserted: the
+    newer data cap the two atria near 55 % (source_conflicts L).
+
+    MEASURED 2026-10-27: 54.4 % — 0.96 SD below the mean, just inside the band. A validation test,
+    not the guard on the RA share (section 57 is): with AV_ATRIAL_SHARE_RA at 1.0 it reads 66.0 %,
+    NEARER Sjöberg's mean, while his RA reservoir (58 +/- 8 % of SV) favours 0.73 (61 %; 1.0 gives
+    75 %). The two measurements from the same subjects pull the share in opposite directions, both
+    within one SD — recorded, not tuned. Part of the gap is timing: the model's RA keeps filling for
+    ~7 points of SV after RV end-systole, until the tricuspid opens. With the coupling off
+    (share 0) this reads 20.7 % and fails, so the test does see the mechanism."""
+    p = SimParams()
+    r = run_simulation(p, duration_s=60.0, dt=DT, output_every=5)
+    t = np.asarray(r["t"]); m = np.where(t >= 30.0)[0]
+    V = np.asarray(r["volumes"])
+    rv, ra = V[:, IDX["right_ventricle"]], V[:, IDX["right_atrium"]]
+    d = np.diff(rv[m]); ed = m[np.where((d[:-1] > 0) & (d[1:] <= 0))[0] + 1]
+    shares = []
+    for a, b in zip(ed[:-1], ed[1:]):
+        es = a + int(np.argmin(rv[a:b]))
+        shares.append((ra[es] - ra[a]) / (rv[a] - rv[es]))
+    pct = 100.0 * float(np.mean(shares))
+    assert 54.0 <= pct <= 72.0, (
+        f"RA systolic inflow {pct:.1f} % of RV SV outside 54-72; [SJO] 63 +/- 9 (4D flow)")
