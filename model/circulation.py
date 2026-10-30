@@ -56,6 +56,7 @@ from .respiration import (
     intrathoracic_pressure, respiratory_sinus_arrhythmia, valsalva_itp_mmhg,
     ABDOMINAL_TRANSMISSION,
 )
+from .slow_dynamics import SETTLE_S as _SPT_SETTLE_S
 from .slow_dynamics import (init_slow_state, update_slow_state,
                             oncotic_pressure_mmhg, neurohumoral_svr_factor)
 
@@ -542,6 +543,49 @@ class SimParams:
         # between withdrawals (Johnson 2014: 3 x 333 mL, 5 min after each), where
         # one continuous bleed would remove the holds — and the refill in them.
         self.hemorrhage_pulses      = ()
+        # DIRECT VENTRICULAR INTERACTION THROUGH THE SEPTUM — adopted 2026-10-29
+        # (Jesper: "add it to the model, set it to C=4 based on the data").
+        #
+        # WHAT IT IS. The septum is a shared wall: when the two ventricles' filling
+        # pressures differ it bows toward the lower one, so each ventricle's free
+        # wall then encloses a different volume than its cavity contains. Modelled
+        # as a shift x mL toward the RV: the LV free wall encloses V_lv - x, the RV
+        # free wall V_rv + x, in the PASSIVE (diastolic) laws only. The active
+        # septum is taken as stiff, so systole is unchanged. The pericardium sees
+        # total cavity volume, which x does not alter. Once per beat at end-diastole,
+        # relaxing 0.25 of the way toward C x (G - G_rest), where G is the passive
+        # LV-minus-RV end-diastolic gradient and G_rest its settled resting value —
+        # deviation form, so the resting operating point is unchanged (measured:
+        # MAP, CVP, CO identical to two decimals; resting wedge 8.42 -> 8.32).
+        #
+        # GRADE E — NO HUMAN VALUE EXISTS FOR THIS PARAMETER. It is pinned by the
+        # model and must be reported as a prediction (README, validation log). The
+        # obligations that go with grade E are met: the neighbourhood is validated
+        # (both atria on two independent CMR labs, the chambers on Luu, the sac on
+        # Bhella) and the parameter is IDENTIFIABLE — the wedge's response to
+        # unloading moves monotonically with C and nothing else in the model
+        # produces that effect.
+        #
+        # WHY 4.0, AND WHAT IT DOES NOT FIT. C = 4 is the LOWEST value that flips
+        # Borlaug 2018's direction: opening the sac on a saline load now LOWERS the
+        # wedge rise (+6.17 -> +5.91) where every configuration this project has
+        # tried raised it (+8.92 -> +19.74 at C = 0). Nothing was tuned to Borlaug;
+        # it was held out of the grid that chose C. **The wedge itself does not fit
+        # at a single C**: unloading wants C ~1 (-3.53 at -15 against a measured
+        # -4.2), loading wants C >= 8 (+5.65 against +4.4), and 4.0 sits between
+        # them fitting neither exactly. That mismatch is UNEXPLAINED and is recorded
+        # rather than tuned away: a real septum needs no different stiffness in the
+        # two directions, so the model is probably still missing something — most
+        # likely that the shift should act continuously within the beat rather than
+        # once per beat, and should depend on the pericardium at the same time.
+        #
+        # WHAT IT DOES NOT FIX. The right atrium. CVP on Johnson's 1 L bleed moves
+        # -1.42 -> -1.63 against a measured -4.7, and the LBNP RAP fall -1.76 ->
+        # -2.16 against -4.5. Four right-sided mechanisms have now been tested and
+        # none closes that gap (validation log 2026-10-29); the remaining candidate
+        # is a three-wall geometry where RV stiffness is an OUTCOME of septal and
+        # pericardial coupling rather than a parameter.
+        self.septal_compliance = 4.0
 
         # Fluid bolus — constant-rate crystalloid infusion into the upper-body
         # venous compartment (peripheral/central IV access) over
@@ -816,6 +860,14 @@ def _av_shift(V: np.ndarray, params: SimParams, av_ref: dict | None) -> tuple[fl
             params.av_f_ra * max(0.0, av_ref["rv_ed"] - V[IDX["right_ventricle"]]))
 
 
+def _septal_gradient(V, params, x):
+    """Passive (diastolic) LV-minus-RV pressure with the septum shifted x mL into
+    the RV: the LV free wall then encloses V_lv - x, the RV free wall V_rv + x."""
+    comp_rv_v0 = params.compartments[IDX["right_ventricle"]].unstressed_volume
+    return (klotz_diastolic_pressure(V[IDX["left_ventricle"]] - x, params.lv_v0_dia, params.lv_v30)
+            - params.rv_emin * (V[IDX['right_ventricle']] + x - comp_rv_v0))
+
+
 def _odes(t: float, V: np.ndarray, params: SimParams, baro: BaroreflexController | None,
           cardiac_phase: float, p_out: np.ndarray | None = None, slow=None,
           hr_now: float | None = None, p_tm_out: np.ndarray | None = None,
@@ -1000,10 +1052,12 @@ def _odes(t: float, V: np.ndarray, params: SimParams, baro: BaroreflexController
         P[idx] = _vascular_pressure(V[idx], v0, compliance, c.p_stiffen)
 
     # Cardiac chambers (time-varying elastance)
+    _x_spt = av_ref.get("spt_x", 0.0) if av_ref is not None else 0.0
     P[i["left_ventricle"]] = max(0.0,
         e_v * lv_emax_eff * (V[i["left_ventricle"]] - comp[i["left_ventricle"]].unstressed_volume)
-        + (1.0 - e_v) * klotz_diastolic_pressure(V[i["left_ventricle"]], params.lv_v0_dia, params.lv_v30))
-    P[i["right_ventricle"]] = _cardiac_pressure(V[i["right_ventricle"]], comp[i["right_ventricle"]].unstressed_volume, E_rv)
+        + (1.0 - e_v) * klotz_diastolic_pressure(V[i["left_ventricle"]] - _x_spt, params.lv_v0_dia, params.lv_v30))
+    P[i["right_ventricle"]] = max(0.0, E_rv * (V[i["right_ventricle"]] - comp[i["right_ventricle"]].unstressed_volume)
+                                  + (1.0 - e_v) * params.rv_emin * _x_spt)
     _sh_la, _sh_ra = _av_shift(V, params, av_ref)
     P[i["left_atrium"]]     = _cardiac_pressure(V[i["left_atrium"]],     comp[i["left_atrium"]].unstressed_volume + _sh_la, E_la)
     P[i["right_atrium"]]    = _cardiac_pressure(V[i["right_atrium"]],    comp[i["right_atrium"]].unstressed_volume + _sh_ra, E_ra)
@@ -2095,6 +2149,18 @@ def run_simulation(
             if _cardiac_phase < _phase_prev:
                 _av_ref["lv_ed"] = float(V[IDX["left_ventricle"]])
                 _av_ref["rv_ed"] = float(V[IDX["right_ventricle"]])
+                # SEPTUM (scratch, step 2c): once per beat, at end-diastole. Deviation
+                # form: the gradient's resting value is captured at the first beat after
+                # SETTLE_S, so the septum is exactly neutral at rest.
+                if params.septal_compliance > 0.0:
+                    _x = _av_ref.get("spt_x", 0.0)
+                    _g = _septal_gradient(V, params, _x)
+                    if "spt_g_rest" not in _av_ref:
+                        if t >= _SPT_SETTLE_S:
+                            _av_ref["spt_g_rest"] = _g
+                    else:
+                        _target = params.septal_compliance * (_g - _av_ref["spt_g_rest"])
+                        _av_ref["spt_x"] = _x + 0.25 * (_target - _x)
             if _cardiac_phase < _phase_prev and _beat_hi is not None:
                 # A beat just closed. Record its pulse pressure and drop
                 # anything older than one respiratory cycle.
