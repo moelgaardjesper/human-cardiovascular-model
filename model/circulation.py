@@ -39,7 +39,7 @@ from .compartments import (
 )
 from .heart import (
     elastance_from_phase, frank_starling_emax,
-    LV_EMAX, RV_EMAX, RV_EMIN, LV_V0_DIA, LV_V30,
+    LV_EMAX, RV_EMAX, RV_EMIN, LV_V0_DIA, LV_V30, rv_diastolic_pressure,
     klotz_diastolic_pressure, _normalised_activation, ventricular_activation,
     VENTRICULAR_T_MAX_SCALE, AV_PLANE_F_LA, AV_PLANE_F_RA, AV_ATRIAL_SHARE_LA, AV_ATRIAL_SHARE_RA,
     RA_EMAX, RA_EMIN, LA_EMAX, LA_EMIN,
@@ -865,7 +865,7 @@ def _septal_gradient(V, params, x):
     the RV: the LV free wall then encloses V_lv - x, the RV free wall V_rv + x."""
     comp_rv_v0 = params.compartments[IDX["right_ventricle"]].unstressed_volume
     return (klotz_diastolic_pressure(V[IDX["left_ventricle"]] - x, params.lv_v0_dia, params.lv_v30)
-            - params.rv_emin * (V[IDX['right_ventricle']] + x - comp_rv_v0))
+            - rv_diastolic_pressure(V[IDX['right_ventricle']] + x, comp_rv_v0, params.rv_emin))
 
 
 def _odes(t: float, V: np.ndarray, params: SimParams, baro: BaroreflexController | None,
@@ -915,12 +915,12 @@ def _odes(t: float, V: np.ndarray, params: SimParams, baro: BaroreflexController
     # -----------------------------------------------------------------------
     t_n_v = cardiac_phase % 1.0
     # LV: systolic elastance line blended with the Klotz diastolic curve by the
-    # activation e(t) — see heart.py, VENTRICULAR DIASTOLE. RV: straight line.
+    # activation e(t) — see heart.py, VENTRICULAR DIASTOLE. RV: the same blend
+    # with Rommel's exponential (heart.py rv_diastolic_pressure).
     e_v = ventricular_activation(cardiac_phase,
                                  hr_now if hr_now is not None else params.hr_bpm,
                                  legacy=params.legacy_ventricular_activation,
                                  t_max_scale=params.ventricular_t_max_scale)
-    E_rv = (rv_emax_eff - params.rv_emin) * e_v + params.rv_emin
 
     # Atria fire one PR interval before the ventricles. The offset is derived
     # from a fixed PR TIME at the current rate, not a fixed fraction of the
@@ -1056,8 +1056,12 @@ def _odes(t: float, V: np.ndarray, params: SimParams, baro: BaroreflexController
     P[i["left_ventricle"]] = max(0.0,
         e_v * lv_emax_eff * (V[i["left_ventricle"]] - comp[i["left_ventricle"]].unstressed_volume)
         + (1.0 - e_v) * klotz_diastolic_pressure(V[i["left_ventricle"]] - _x_spt, params.lv_v0_dia, params.lv_v30))
-    P[i["right_ventricle"]] = max(0.0, E_rv * (V[i["right_ventricle"]] - comp[i["right_ventricle"]].unstressed_volume)
-                                  + (1.0 - e_v) * params.rv_emin * _x_spt)
+    # RV: systolic elastance line blended with Rommel's measured exponential
+    # filling curve (heart.py rv_diastolic_pressure), the septal shift acting on the
+    # passive law only, as on the left.
+    _rv_v0 = comp[i["right_ventricle"]].unstressed_volume
+    P[i["right_ventricle"]] = max(0.0, e_v * rv_emax_eff * (V[i["right_ventricle"]] - _rv_v0)
+                                  + (1.0 - e_v) * rv_diastolic_pressure(V[i["right_ventricle"]] + _x_spt, _rv_v0, params.rv_emin))
     _sh_la, _sh_ra = _av_shift(V, params, av_ref)
     P[i["left_atrium"]]     = _cardiac_pressure(V[i["left_atrium"]],     comp[i["left_atrium"]].unstressed_volume + _sh_la, E_la)
     P[i["right_atrium"]]    = _cardiac_pressure(V[i["right_atrium"]],    comp[i["right_atrium"]].unstressed_volume + _sh_ra, E_ra)

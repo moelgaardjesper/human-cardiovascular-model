@@ -8,6 +8,8 @@ where e_n(t_n) is a normalised activation function that rises and falls
 over the cardiac cycle, scaled to the current RR interval.
 """
 
+import math
+
 import numpy as np
 
 
@@ -275,7 +277,8 @@ def frank_starling_emax(
 #           + 1.47 = 12.47 transmural
 #   RV  EDV Luu male 86 mL/m2 x 1.909 = 164.2 mL
 #       EDP Richter 2021 RVEDP 4 [3-5] mmHg + 1.47 = 5.47 transmural
-# LEFT VENTRICLE ONLY. The RV was tried on the same curve (Jesper's assumption,
+# LEFT VENTRICLE ONLY (the RV has its own measured exponential since 2026-10-31,
+# rv_diastolic_pressure below). The RV was tried on the same curve (Jesper's assumption,
 # 2026-10-06) and it FAILED: below its V0 (~95 mL) the curve gives no wall
 # pressure, the RV ejects down to ~77 mL, so early in every diastole the right
 # atrium drained into an unresisting chamber and RA pressure fell to 0.9 mmHg
@@ -503,11 +506,44 @@ LV_EMAX = 3.00   # mmHg/mL  left ventricle peak systolic elastance
 # the direction of this change is safe even though the cohort is not ideal. A
 # healthy-volunteer RV Ees is on the WANTED list in docs/reference_values.md.
 RV_EMAX = 0.72   # mmHg/mL  right ventricle peak systolic elastance
-# The RV is highly compliant in diastole (thin wall). STILL A STRAIGHT LINE: the
-# Klotz curve was tried here on 2026-10-06 and failed (see VENTRICULAR DIASTOLE).
-# 0.04 sits between the values implied by Richter's RVEDP 4 and Hoff's RAP with
-# Petersen's CMR RVEDV (0.031-0.053; reference_values.md) — a BOUND, GRADE C.
-RV_EMIN = 0.04   # mmHg/mL  right ventricle diastolic elastance
+# The RV is highly compliant in diastole (thin wall). RV_EMIN no longer sets the
+# shape of the filling law — only WHERE it sits: the RV reaches its sourced
+# end-diastolic pressure P_RIGHT_ED_TM at V0 + P_RIGHT_ED_TM / RV_EMIN, the same
+# volume the pericardial capacity uses, so patient scaling (rv_emin_factor) moves
+# the curve exactly as it moved the old line. 0.04 sits between the values implied
+# by Richter's RVEDP 4 and Hoff's RAP with Petersen's CMR RVEDV (0.031-0.053;
+# reference_values.md) — a BOUND, GRADE C.
+RV_EMIN = 0.04   # mmHg/mL  right ventricle diastolic placement (see above)
+
+# THE SHAPE — Rommel 2018 (PMID 29449367), adopted 2026-10-31. Until then the RV
+# filled along a STRAIGHT line pinned to one pressure-volume point. Rommel measured
+# the human RV filling curve directly: conductance catheter, multi-beat inferior
+# vena cava occlusion, about ten end-diastolic P-V points per subject, fitted
+# EDP = C exp(beta EDV). Controls (n 9, risk-factor patients after 500 mL saline):
+# beta 0.012 +/- 0.003 /mL at EDV 137 mL. The transferable quantity is
+# dimensionless, k = beta x EDV = 1.64 (1.23-2.05 at 1 SD): a bigger ventricle of
+# the same tissue has a proportionally smaller beta. GRADE C — one lab, n 9.
+# A PURE exponential never reaches zero, so the failure of the Klotz curve here
+# (slack below V0 ~95 mL, RA pressure 0.9; see VENTRICULAR DIASTOLE) cannot recur.
+# Slope at the placement point k P / V = 0.051 mmHg/mL, inside the bound above:
+# two independent routes agree at rest. Trip 2015's single-beat 0.20-0.23 (an
+# origin-forced three-point fit) disagrees ~4x; recorded, not averaged.
+# WHAT IT DOES. Rest is unchanged (all within 0.05). Below rest the curve is
+# SOFTER than the old line, so CVP falls a little LESS on unloading (-30 LBNP
+# -2.03 -> -1.70, man -5.1) and the wedge a little more. Adopted anyway: the shape
+# is chosen on physiology, not on what it does to CVP (validation log 2026-10-31).
+# Rommel's own curve says a 20 % RVEDV fall lowers RV pressure by only ~1.5 mmHg,
+# so man's ~5 mmHg CVP fall is NOT in the RV wall (conflict M).
+RV_DIA_K = 1.64   # dimensionless, beta x EDV
+
+
+def rv_diastolic_pressure(v: float, rv_v0: float, rv_emin: float,
+                          k: float = RV_DIA_K) -> float:
+    """Passive RV wall pressure (mmHg, transmural) at volume v (mL):
+    P_a exp(k (v / V_a - 1)), through V_a = rv_v0 + P_a / rv_emin, P_a the
+    sourced end-diastolic pressure P_RIGHT_ED_TM."""
+    v_a = rv_v0 + P_RIGHT_ED_TM / rv_emin
+    return P_RIGHT_ED_TM * math.exp(k * (v / v_a - 1.0))
 # RA_EMAX 0.30 -> 0.45 (2026-08-26), derived from Gao 2022's RA emptying fraction.
 # E_max/E_min is the RATIO that sets emptying fraction, which is why it is derivable even
 # though the atrium's absolute stiffness is not (see RA_EMIN below, and the note on

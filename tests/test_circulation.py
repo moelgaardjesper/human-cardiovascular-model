@@ -1636,8 +1636,14 @@ def test_central_pressures_mceniery2005(central_pressures):
     "STRUCTURAL LIMITATION OF A LUMPED MODEL — NOT A CALIBRATION GAP. "
     "In humans brachial pulse pressure EXCEEDS central: McEniery 2005 measures "
     "the ratio at 1.33 +/- 0.16 in males 50-59, falling from 1.72 at age 20 to "
-    "1.24 at 70. The model reads about 0.88 — INVERTED — and raising arterial "
-    "compliance makes it worse (0.94 -> 0.88 -> 0.84 across the sweep), so it "
+    "1.24 at 70. The model read about 0.88 when this was written and reads 0.50 "
+    "on 2026-11-01. BISECTED to 77a9990 (2026-10-11), which moved central SBP/DBP to "
+    "the aortic root behind the characteristic impedance while brachial stayed: the "
+    "ratio now divides by a CATHETER-site central PP, where McEniery's is cuff-"
+    "calibrated tonometry (the same commit notes that convention reads ~15 mmHg low). "
+    "So 0.50 is partly a QUANTITY MISMATCH, not new physiology. Either way it is "
+    "INVERTED, and raising arterial compliance made it worse (0.94 -> 0.88 -> 0.84 "
+    "across the original sweep), so it "
     "cannot be calibrated away. "
     "WHY IT CANNOT BE FIXED HERE. Amplification arises from WAVE REFLECTION and "
     "impedance mismatch along a distributed arterial tree — the wave travels, "
@@ -2672,11 +2678,10 @@ def test_pulmonary_vascular_resistance_is_physiological():
     "KNOWN DEFECT, backlog item 22. There is NO VALVE and essentially no resistance "
     "between the pulmonary veins and the left atrium — [P1] treats pulmonary venous, "
     "wedge and left atrial pressure as the same number. The model connects them with "
-    "`comp[left_atrium].resistance`, which is VALVE_R = 0.08, and wraps the flow in "
-    "max(0, ...) so it cannot reverse. That manufactures a ~3.9 mmHg gradient and "
-    "inflates wedge pressure by that much on its own. It also pushes PVR computed the "
-    "clinical way, (mean PA - LA)/CO, to 2.31 — above [P1]'s normal range and "
-    "approaching the pulmonary-hypertension threshold of 3. "
+    "the pulmonary vein's drain_resistance, VENOATRIAL_R = 0.02 (compartments.py; "
+    "when written it was VALVE_R 0.08), and wraps the flow in max(0, ...) so it cannot "
+    "reverse. Re-measured 2026-11-01 (breathing off, both transmural, so no pleural "
+    "artefact): +1.76 mmHg (8.01 vs 6.25), down from the ~3.9 first recorded. "
     "Same class of error as backlog item 20: a resistance in a place with no anatomy "
     "to justify it. strict=True so this flips to a FAILURE the day it is fixed."
 ))
@@ -3917,10 +3922,11 @@ def test_patient_age_scales_only_the_elastic_arteries():
 
 
 @pytest.mark.xfail(strict=True, raises=AssertionError, reason=(
-    "KNOWN GAP, 2026-10-06, NOT YET DIAGNOSED. Since the Klotz LV diastolic curve "
-    "MAP moves 4.8 mmHg as pulse pressure widens 10.4 with age, where Franklin has "
-    "MAP nearly flat. Suspected: the stiffer LV now passes arterial ageing on to "
-    "mean pressure. To be diagnosed with the baroreflex work."
+    "KNOWN GAP, 2026-10-06, NOT YET DIAGNOSED. When written: MAP moved 4.8 mmHg as "
+    "pulse pressure widened 10.4 with age, where Franklin has MAP nearly flat. "
+    "RE-MEASURED 2026-11-01 THE FAILURE IS A DIFFERENT ONE: pulse pressure stops "
+    "widening after 55 (45.3 / 49.2 / 49.0 at 30 / 55 / 80; the same on db1ed54), "
+    "where Franklin's keeps widening. Cause not traced."
 ))
 def test_age_widens_pulse_pressure_the_way_framingham_measured_it():
     """[PMID 9236450] The endpoint, not the parameter.
@@ -4700,11 +4706,13 @@ def white1997_arms():
 
 @pytest.mark.xfail(strict=True, raises=AssertionError, reason=(
     "KNOWN GAP, 2026-10-07, after the abdomen got its anatomical height (L1, "
-    "0.17 m). The tilt now moves more blood, and the heart — still without a "
-    "Starling plateau on the RV side or a pericardium — turns that into a larger "
-    "SV fall, so the young patient's full reflex drives HR +35.2 against the "
-    "older +7.8: difference -27.4 bpm against White's -11.4 +/- 8.8. Expected to "
-    "close with the heart's diastolic work (RV curve, in vivo Starling curves)."
+    "0.17 m). The tilt moves more blood and the heart turns it into a larger SV "
+    "fall, so the young patient's full reflex drives HR +35.2 against the older "
+    "+7.8: difference -27.4 bpm against White's -11.4 +/- 8.8. It was expected to "
+    "close with the heart's diastolic work. THAT WORK IS DONE AND IT DID NOT: with "
+    "the pericardium, the septum and Rommel's RV curve it reads -31.85 (young "
+    "+40.11, older +8.27), re-measured 2026-11-01. The heart's filling-pressure "
+    "signal on unloading is the open suspect (validation log 2026-11-01)."
 ))
 def test_orthostatic_tachycardia_is_blunted_with_age_white1997(white1997_arms):
     """[PMID 9404222 — White 1997] Orthostatic tachycardia falls with age.
@@ -6572,10 +6580,13 @@ def _tilt70_reflex_trace(duration_s=300.0, onset_s=60.0):
 
 
 @pytest.mark.xfail(strict=True, raises=AssertionError, reason=(
-    "KNOWN GAP, 2026-10-06, NOT YET DIAGNOSED. Since the Klotz LV diastolic curve "
-    "the limb venomotor arm is still 1.75 % of V0 at 133 s, where Samueloff found "
-    "it gone. The arm is a high-pass of sympathetic drive, so drive staying up "
-    "longer would do this. To be diagnosed with the baroreflex work."
+    "KNOWN GAP, 2026-10-06, NOT YET DIAGNOSED. When written the limb venomotor arm "
+    "was still 1.75 % of V0 at 133 s, where Samueloff found it gone. RE-MEASURED "
+    "2026-11-01 it is FAR larger: 7.66 % against a peak of 14.42 %, still 53 % of "
+    "maximum (6.61 % on db1ed54, so mostly earlier commits; Rommel's RV curve adds "
+    "~1 point). The arm is a high-pass of sympathetic drive, so drive staying up "
+    "longer would do this — consistent with a filling-pressure signal that falls "
+    "too little on unloading. To be diagnosed with the baroreflex work."
 ))
 def test_limb_venous_arm_is_transient_and_splanchnic_is_not_samueloff1966():
     """[S1] The limb arm must fade; the splanchnic and arterial arms must not.
@@ -7588,13 +7599,17 @@ def test_the_body_delivers_bhellas_filling_volumes_to_the_lv(bhella_stages):
 
 
 @pytest.mark.xfail(strict=True, raises=AssertionError, reason=(
-    "KNOWN GAP, 2026-10-23 — THE LV IS STIFFER THAN MAN'S AROUND REST, ~1.4x ON UNLOADING "
-    "AND ~2x ON LOADING. It receives Bhella's volume at every stage (test above) and "
-    "turns it into too much pressure: wedge -5.1 / -8.5 on LBNP -15 / -30 against "
-    "-4.2 / -6.1, and +8.7 on saline against +4.4-5.5. Worst in the female run, which "
-    "also starts too high on its curve (resting wedge 13.7 vs Bhella 10.8). No "
-    "combination of 11 heart and body parameters reaches normal rest AND Bhella's "
-    "loading pressures (joint search, B+D 0/512). Validation log 2026-10-23."
+    "KNOWN GAP — THE WEDGE HAS THE SAME SHAPE ERROR AS THE RIGHT ATRIUM: TOO LITTLE "
+    "FALL ON UNLOADING, TOO MUCH RISE ON LOADING. Re-measured 2026-11-01: -2.28 / -4.35 "
+    "on LBNP -15 / -30 against -4.2 / -6.1, and +6.12 on saline against +4.4-5.5. "
+    "WRITTEN 2026-10-23 THE UNLOADING HALF WAS THE OPPOSITE (-5.1 / -8.5, too much): "
+    "the septum (C 4, 2026-10-29) over-corrected it, while relieving the loading half "
+    "(+8.7 -> +6.1). Its own adoption note says unloading wants C ~1, loading >= 8. "
+    "The LV still receives Bhella's volume at every stage (test above). No combination "
+    "of 11 heart and body parameters reaches normal rest AND Bhella's loading "
+    "pressures, with or without the septum (joint searches 0/512, 0/256). Slack below "
+    "rest and steep above is the signature of a knee AT the resting volume (RA xfail "
+    "below; step 2g). Validation log 2026-11-01."
 ))
 def test_wedge_pressure_follows_bhellas_stages(bhella_stages):
     """The HEART half, left side: given the volume it received, the LV's filling
@@ -7866,3 +7881,55 @@ def test_septal_interaction_is_live_and_correctly_signed():
     assert on < mid, (
         f"the septal effect does not grow with its compliance: {off:+.2f} / {mid:+.2f} / "
         f"{on:+.2f} at C = 0 / 2 / 8 — if C is not identifiable it must not be pinned")
+
+
+# ===========================================================================
+# 59. THE RIGHT VENTRICLE FILLS ALONG ROMMEL'S MEASURED EXPONENTIAL
+#     (heart.py rv_diastolic_pressure, GRADE C)
+# ===========================================================================
+#
+# [PMID 29449367 — Rommel KP ... Lurz P 2018, Leipzig, Circ Heart Fail] RV
+# pressure-volume loops by conductance catheter in 9 controls (risk-factor patients
+# without heart failure, after 500 mL saline). Passive stiffness by MULTI-BEAT
+# inferior vena cava occlusion — about ten end-diastolic P-V points per subject —
+# fitted EDP = C exp(beta EDV): beta 0.012 +/- 0.003 /mL at RV EDV 137 mL.
+# Dimensionless k = beta x EDV = 1.64; 1 SD band 1.23-2.05.
+
+
+def test_rv_fills_along_rommels_measured_exponential_pmid29449367():
+    """The RV's passive filling curve has the SHAPE Rommel measured in human RVs:
+      (a) exponential — the same d(ln P)/dV below and above end-diastole (a straight
+          line through V0 gives a ratio near 1.5 here, which is what this guards
+          against: the RV filled along a straight line until 2026-10-31);
+      (b) curvature k = beta x EDV inside Rommel's 1 SD band, 1.23-2.05.
+    Read through `_odes` itself — the right-hand side `run_simulation` integrates —
+    at a late-diastolic phase where ventricular activation is zero, with breathing and
+    the pericardium off so only the wall speaks, at 0.7-1.3 x the settled RVEDV.
+    Sabotage-verified 2026-10-31: on the old straight line (a) reads 1.53 and fails."""
+    from model.circulation import _odes
+    p = SimParams()
+    p.ventilation_mode = "none"
+    p.pericardium_enabled = False
+    r = run_simulation(p, duration_s=40.0, dt=DT, output_every=5)
+    t = np.asarray(r["t"]); V = np.asarray(r["volumes"])
+    rv = V[:, IDX["right_ventricle"]]
+    m = np.where(t >= 20.0)[0]
+    d = np.diff(rv[m]); pk = m[np.where((d[:-1] > 0) & (d[1:] <= 0))[0] + 1]
+    edv = float(rv[pk].mean())
+
+    def p_rv(v):
+        s = V[-1].copy(); s[IDX["right_ventricle"]] = v
+        P = np.zeros_like(s)
+        _odes(float(t[-1]), s, p, None, 0.9, p_out=P)   # phase 0.9: activation zero
+        return float(P[IDX["right_ventricle"]])
+
+    lo, mid, hi = (p_rv(edv * f) for f in (0.7, 1.0, 1.3))
+    b_lo = float(np.log(mid / lo)) / (0.3 * edv)
+    b_hi = float(np.log(hi / mid)) / (0.3 * edv)
+    assert 0.9 <= b_lo / b_hi <= 1.1, (
+        f"RV filling law is not exponential: d(lnP)/dV {b_lo:.5f} below EDV vs "
+        f"{b_hi:.5f} above (ratio {b_lo / b_hi:.2f}); [ROMMEL] fits C exp(beta V)")
+    k = 0.5 * (b_lo + b_hi) * edv
+    assert 1.23 <= k <= 2.05, (
+        f"RV filling curvature k = beta x EDV = {k:.2f} outside 1.23-2.05; "
+        f"[ROMMEL] beta 0.012 +/- 0.003 /mL at EDV 137 mL")
