@@ -8038,3 +8038,45 @@ def test_mild_unloading_empties_the_atrium_not_the_ventricles_oren1993(oren_lbnp
     assert not misses, ("mild unloading does not follow Oren: " + "; ".join(misses)
                         + f". Also RVEDV {100 * drv:+.1f} % (Oren +0.6 %), dRAP {drap:+.2f}"
                         + " (Oren -2.1)")
+
+
+# ===========================================================================
+# 61. MEAN WEDGE SITS AT LVEDP IN HEALTHY HEARTS — Rahimtoola 1975
+# ===========================================================================
+#
+# [PMID 1200036 — Rahimtoola SH, Ehsani A, Sinno MZ, Loeb HS, Rosen KM, Gunnar RM 1975,
+# Cook County, Am J Med 59:686] Ten subjects investigated for heart disease and shown to
+# have none, 7 M / 3 F, mean age 29; simultaneous LV catheter and PCWP, zero at mid-chest.
+# LVEDP 10.4 +/- 2.0, mean PCWP 9.8 +/- 2.3; PAIRED LVEDP - mean PCWP 0.6 +/- 1.7 mmHg
+# (P > 0.2). Body size not reported: reference body. A difference, so the zero and the
+# pleural pressure cancel; the model's LVEDP is read as a catheter reads it — LV cavity
+# pressure at the volume peak, at 1 ms — not the passive `lvedp` output.
+
+def _rahimtoola_gap(sex):
+    p = cohort_params(175.0, 70.0, age_years=29.0, sex=sex)
+    r = run_simulation(p, duration_s=101.0, dt=DT, output_every=1)
+    t = np.asarray(r["t"]); m = np.where((t >= 80.0) & (t < 100.0))[0]
+    lv = np.asarray(r["volumes"])[m, IDX["left_ventricle"]]
+    pleural = (np.asarray(r["ra_intraluminal"]) - np.asarray(r["cvp"]))[m]
+    lv_tm = np.asarray(r["lv_pressure"])[m] - pleural       # transmural, like la_pressure
+    d = np.diff(lv); ed = np.where((d[:-1] > 0) & (d[1:] <= 0))[0] + 1
+    return float(lv_tm[ed].mean()), float(np.mean(np.asarray(r["la_pressure"])[m]))
+
+
+@pytest.mark.xfail(strict=True, raises=AssertionError, reason=(
+    "KNOWN GAP, 2026-11-03 — NEARLY CLOSED. Rahimtoola's healthy hearts hold mean wedge "
+    "0.6 +/- 1.7 below LVEDP; the model reads +2.55 (men +1.96, women +3.93), +1.15 SD, "
+    "with LVEDP (11.5) and mean LA (8.95) each inside 1 SD of his levels. On 2026-10-25 "
+    "the gap was +5.4 to +10.6; the RV curve, the septum and the removal of the pulmonary "
+    "venoatrial resistance closed most of it. What is left is mostly the women, whose LV "
+    "starts too high on its curve (LVEDP 14.6), and ~1 mmHg of the LA's systolic x descent "
+    "(the AV-plane share, grade A x C). Validation log 2026-11-03."
+))
+def test_mean_wedge_sits_at_lvedp_in_healthy_hearts_rahimtoola1975():
+    """[PMID 1200036] Catheter-equivalent LVEDP minus cycle-mean LA (wedge), cohort
+    7 M / 3 F at age 29, within 1 SD of Rahimtoola's paired 0.6 +/- 1.7: -1.1 to +2.3."""
+    (lm, am), (lf, af) = _rahimtoola_gap("male"), _rahimtoola_gap("female")
+    gap = 0.7 * (lm - am) + 0.3 * (lf - af)
+    assert -1.1 <= gap <= 2.3, (
+        f"LVEDP - mean wedge {gap:+.2f} mmHg (men {lm - am:+.2f}, women {lf - af:+.2f}) "
+        f"outside Rahimtoola's 1 SD band -1.1 to +2.3 (0.6 +/- 1.7, hearts without disease)")
