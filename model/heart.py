@@ -528,6 +528,12 @@ RV_EMIN = 0.04   # mmHg/mL  right ventricle diastolic placement (see above)
 # Slope at the placement point k P / V = 0.051 mmHg/mL, inside the bound above:
 # two independent routes agree at rest. Trip 2015's single-beat 0.20-0.23 (an
 # origin-forced three-point fit) disagrees ~4x; recorded, not averaged.
+# ROMMEL DISAGREES WITH HIMSELF (conflict N, 2026-11-01): his Figure 3 control curve,
+# digitised at full resolution, is P = 0.228 exp(0.0215 V) — beta 0.0215, k 2.95 — through
+# the same resting point (4.36 mmHg at 137 mL vs the table's 4.1). The HFpEF curve differs
+# by another factor (0.0279 vs 0.018). The TABULATED mean of individual fits is used here;
+# the figure's value is held by a strict xfail so the choice cannot change silently. At
+# k 2.95 the curve is steeper ABOVE rest; below rest it is flat either way.
 # WHAT IT DOES. Rest is unchanged (all within 0.05). Below rest the curve is
 # SOFTER than the old line, so CVP falls a little LESS on unloading (-30 LBNP
 # -2.03 -> -1.70, man -5.1) and the wedge a little more. Adopted anyway: the shape

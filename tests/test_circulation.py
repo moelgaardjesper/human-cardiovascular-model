@@ -1742,15 +1742,6 @@ def _venous_return_curve(bleed_ml=0.0, sympathetic_outflow_scale=1.0, baroreflex
 
 
 # CLOSED 2026-10-11 (XPASS on the systolic timing change), REOPENED 2026-10-15.
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason=(
-    "KNOWN PROTOCOL GAP, 2026-10-15 — ratio 0.855 with reflexes on, 1.123 with them OFF: "
-    "two effects of the SUSTAINED 60 s holds, pulling opposite ways. Reflex on: the reflex "
-    "acts during each hold (as 2026-10-10). Reflex off: with the AV-plane coupling, the bled "
-    "heart at the 35 cmH2O hold falls to CO 1.6 L/min — the low-flow, collapsing-vein regime "
-    "this docstring excludes. The sac is NOT involved (identical with it on and off: the holds "
-    "shrink the heart below the knee). Maas's holds were brief. Fix: short holds (backlog 47 "
-    "step 2), not a wider band. Validation log 2026-10-15."
-))
 def test_haemorrhage_shifts_venous_return_curve_without_rotating_it():
     """[PMID: 19237896 — Maas 2009] A moderate haemorrhage must lower Pmsf and
     leave the venous-return slope alone: resistance to venous return is a
@@ -1775,6 +1766,14 @@ def test_haemorrhage_shifts_venous_return_curve_without_rotating_it():
     Then 0.775 after the calf stiffening change of 2026-10-04 (a strict
     xfail). CLOSED 2026-10-06 by the Klotz LV diastolic curve, which the strict
     xfail caught as an XPASS. The floor is unchanged.
+
+    CLOSED 2026-11-03 — XPASSED when the pulmonary venoatrial resistance fell 0.02 -> 0.005. NOT
+    the target of that change, and NOT marginal: the ratio moved 0.894 -> 0.991 (band
+    0.90-1.10), so the venoatrial resistance was part of the rotation. Was a strict xfail; its
+    reason, kept for the record: "KNOWN PROTOCOL GAP, 2026-10-15 — ratio 0.855 with reflexes on,
+    1.123 with them OFF: two effects of the SUSTAINED 60 s holds, pulling opposite ways. Reflex
+    on: the reflex acts during each hold (as 2026-10-10). Reflex off: with the AV-plane
+    coupling, the bled heart at the 35 cmH2O hold falls to CO 1.6..."
     """
     base_slope, base_pmsf = _venous_return_curve(0.0)
     bled_slope, bled_pmsf = _venous_return_curve(500.0)
@@ -1933,12 +1932,6 @@ def phenyl_dose_response():
 # above is a different quantity and remains open: only the flow arm closed.
 # CLOSED 2026-10-11 by moving the bands from the interquartile range to 1 SD
 # (see _one_sd_band) — a band decision, not a model change.
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason=(
-    "EDGE GAP, re-measured 2026-10-27 — dCO -1.33 at 8.0 mcg/kg/min against the 1 SD floor -1.30 "
-    "(-1.18 at 4.0 and -1.17 at 6.0 pass). With the re-sized atria it XPASSED at the old ceiling "
-    "2.10; re-calibrating the pressor ceiling to 2.15 (pharmacology.py) brought the edge back at the "
-    "top dose. SV rises at every dose (+1.3 to +3.8 mL, Schafers +9). Band not moved."
-))
 def test_phenylephrine_flow_response_schafers1999(phenyl_dose_response):
     """[PMID: 10073742 — Schäfers 1999] Phenylephrine in healthy supine men
     LOWERS cardiac output, LOWERS heart rate and RAISES stroke volume.
@@ -1950,6 +1943,14 @@ def test_phenylephrine_flow_response_schafers1999(phenyl_dose_response):
     The direction matters as much as the magnitude: an alpha1 agonist raises
     afterload and recruits preload at the same time, and in a healthy supine
     subject with intact reflexes the afterload and the reflex bradycardia win.
+
+    CLOSED 2026-11-03 — XPASSED when the pulmonary venoatrial resistance fell 0.02 -> 0.005. NOT
+    the target of that change: an edge gap (-1.33 against the -1.30 floor) that tipped into
+    band; treat the pass as marginal. Was a strict xfail; its reason, kept for the record: "EDGE
+    GAP, re-measured 2026-10-27 — dCO -1.33 at 8.0 mcg/kg/min against the 1 SD floor -1.30
+    (-1.18 at 4.0 and -1.17 at 6.0 pass). With the re-sized atria it XPASSED at the old ceiling
+    2.10; re-calibrating the pressor ceiling to 2.15 (pharmacology.py) brought the edge back at
+    the top dose. SV rises a..."
     """
     base = phenyl_dose_response[0.0]
     for dose in _PHENYL_PLATEAU:
@@ -2123,18 +2124,19 @@ def test_plr_fluid_responsiveness_monnet2016():
 # went on: the full normovolaemic heart meets the sac and stops filling (CO +1.8 %),
 # while after a 1200 mL bleed it sits below the knee and still responds (+60.8 %).
 # A Starling plateau from structure, not from a fitted curve.
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason=(
-    "KNOWN GAP, 2026-10-27 — dCO +11.2 % against the < 10 % non-responder cut-off (was +9.2 %). "
-    "Diagnosed: NOT a lost plateau. The heart sits the same distance below the sac's knee (27 vs "
-    "28 mL) and gains the same SV (+12.7 vs +12.6 mL); the % crosses 10 because resting SV fell to "
-    "87.6 mL (47.6 mL/m2, Luu 46 +/- 8) when both atria were re-sized on independent sources. "
-    "Monnet's 10 % is an ICU diagnostic cut-off, not a law for normal hearts. Recorded, not tuned "
-    "(validation log 2026-10-27)."
-))
 def test_plr_normovolaemic_non_responder_monnet2016():
     """[PMID 26825952 — Monnet 2016] Specificity 0.91: a normovolaemic patient
     on the Starling plateau should NOT reach the +10 % responder threshold. Same
-    protocol as the test above (whole-body -20 deg, the pre-item-53 leg raise)."""
+    protocol as the test above (whole-body -20 deg, the pre-item-53 leg raise).
+
+    CLOSED 2026-11-03 — XPASSED when the pulmonary venoatrial resistance fell 0.02 -> 0.005. NOT
+    the target of that change: an edge gap (+11.2 % against the < 10 % cut-off) that tipped into
+    band; treat the pass as marginal. Was a strict xfail; its reason, kept for the record:
+    "KNOWN GAP, 2026-10-27 — dCO +11.2 % against the < 10 % non-responder cut-off (was +9.2 %).
+    Diagnosed: NOT a lost plateau. The heart sits the same distance below the sac's knee (27 vs
+    28 mL) and gains the same SV (+12.7 vs +12.6 mL); the % crosses 10 because resting SV fell
+    to 87.6 mL (47.6 mL/m2, Lu..."
+    """
     norm_supine = _run_plr(tilt_deg=0,   hem_ml=0)
     norm_plr    = _run_plr(tilt_deg=-20, hem_ml=0)
     dco_norm_pct = (norm_plr['co'] - norm_supine['co']) / norm_supine['co'] * 100
@@ -2674,19 +2676,16 @@ def test_pulmonary_vascular_resistance_is_physiological():
     )
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    "KNOWN DEFECT, backlog item 22. There is NO VALVE and essentially no resistance "
-    "between the pulmonary veins and the left atrium — [P1] treats pulmonary venous, "
-    "wedge and left atrial pressure as the same number. The model connects them with "
-    "the pulmonary vein's drain_resistance, VENOATRIAL_R = 0.02 (compartments.py; "
-    "when written it was VALVE_R 0.08), and wraps the flow in max(0, ...) so it cannot "
-    "reverse. Re-measured 2026-11-01 (breathing off, both transmural, so no pleural "
-    "artefact): +1.76 mmHg (8.01 vs 6.25), down from the ~3.9 first recorded. "
-    "Same class of error as backlog item 20: a resistance in a place with no anatomy "
-    "to justify it. strict=True so this flips to a FAILURE the day it is fixed."
-))
 def test_pulmonary_venous_pressure_equals_left_atrial():
-    """[P1] Pulmonary venous, wedge and left atrial pressure are the same number."""
+    """[P1] Pulmonary venous, wedge and left atrial pressure are the same number.
+
+    CLOSED 2026-11-03 — XPASSED when the pulmonary venoatrial resistance fell 0.02 -> 0.005
+    (anatomy: no valve, no meaningful resistance). This was the TARGET of the change. Was a
+    strict xfail; its reason, kept for the record: "KNOWN DEFECT, backlog item 22. There is NO
+    VALVE and essentially no resistance between the pulmonary veins and the left atrium — [P1]
+    treats pulmonary venous, wedge and left atrial pressure as the same number. The model
+    connects them with the pulmonary vein's drain_resistance, VENOATRIAL_R = 0.02 (c..."
+    """
     s = _pulmonary_state()
     gradient = s["pv"] - s["la"]
     assert abs(gradient) < 1.0, (
@@ -7896,16 +7895,13 @@ def test_septal_interaction_is_live_and_correctly_signed():
 # Dimensionless k = beta x EDV = 1.64; 1 SD band 1.23-2.05.
 
 
-def test_rv_fills_along_rommels_measured_exponential_pmid29449367():
-    """The RV's passive filling curve has the SHAPE Rommel measured in human RVs:
-      (a) exponential — the same d(ln P)/dV below and above end-diastole (a straight
-          line through V0 gives a ratio near 1.5 here, which is what this guards
-          against: the RV filled along a straight line until 2026-10-31);
-      (b) curvature k = beta x EDV inside Rommel's 1 SD band, 1.23-2.05.
-    Read through `_odes` itself — the right-hand side `run_simulation` integrates —
-    at a late-diastolic phase where ventricular activation is zero, with breathing and
-    the pericardium off so only the wall speaks, at 0.7-1.3 x the settled RVEDV.
-    Sabotage-verified 2026-10-31: on the old straight line (a) reads 1.53 and fails."""
+@pytest.fixture(scope="module")
+def rv_passive_curvature():
+    """d(ln P)/dV of the RV's passive wall law below and above the settled RVEDV, read
+    through `_odes` itself — the right-hand side `run_simulation` integrates — at a
+    late-diastolic phase where ventricular activation is zero, with breathing and the
+    pericardium off so only the wall speaks, at 0.7-1.3 x the settled RVEDV.
+    Returns (beta below, beta above, EDV)."""
     from model.circulation import _odes
     p = SimParams()
     p.ventilation_mode = "none"
@@ -7924,8 +7920,19 @@ def test_rv_fills_along_rommels_measured_exponential_pmid29449367():
         return float(P[IDX["right_ventricle"]])
 
     lo, mid, hi = (p_rv(edv * f) for f in (0.7, 1.0, 1.3))
-    b_lo = float(np.log(mid / lo)) / (0.3 * edv)
-    b_hi = float(np.log(hi / mid)) / (0.3 * edv)
+    return (float(np.log(mid / lo)) / (0.3 * edv),
+            float(np.log(hi / mid)) / (0.3 * edv), edv)
+
+
+def test_rv_fills_along_rommels_measured_exponential_pmid29449367(rv_passive_curvature):
+    """The RV's passive filling curve has the SHAPE Rommel measured in human RVs:
+      (a) exponential — the same d(ln P)/dV below and above end-diastole (a straight
+          line through V0 gives a ratio near 1.5 here, which is what this guards
+          against: the RV filled along a straight line until 2026-10-31);
+      (b) curvature k = beta x EDV inside Rommel's 1 SD band, 1.23-2.05, from his
+          TABULATED beta (the reported mean of individual multi-beat fits).
+    Sabotage-verified 2026-10-31: on the old straight line (a) reads 1.53 and fails."""
+    b_lo, b_hi, edv = rv_passive_curvature
     assert 0.9 <= b_lo / b_hi <= 1.1, (
         f"RV filling law is not exponential: d(lnP)/dV {b_lo:.5f} below EDV vs "
         f"{b_hi:.5f} above (ratio {b_lo / b_hi:.2f}); [ROMMEL] fits C exp(beta V)")
@@ -7933,3 +7940,101 @@ def test_rv_fills_along_rommels_measured_exponential_pmid29449367():
     assert 1.23 <= k <= 2.05, (
         f"RV filling curvature k = beta x EDV = {k:.2f} outside 1.23-2.05; "
         f"[ROMMEL] beta 0.012 +/- 0.003 /mL at EDV 137 mL")
+
+
+@pytest.mark.xfail(strict=True, raises=AssertionError, reason=(
+    "RECORDED SOURCE DISAGREEMENT, 2026-11-01 (conflict N) — ROMMEL'S FIGURE 3 DISAGREES "
+    "WITH HIS OWN TABLE. Digitised from the full-resolution figure, the control curve is "
+    "P = 0.228 exp(0.0215 V) (residual SD 1.7 % in ln P), through 4.36 mmHg at 137 mL "
+    "where the table has 4.1: beta 0.0215 against the tabulated 0.012 +/- 0.003, k 2.95 "
+    "against 1.64. The HFpEF curve disagrees too (0.0279 vs 0.018), by a different "
+    "factor, so it is not one convention. The model follows the TABLE (the reported mean "
+    "of individual fits; the test above). This test holds the figure's value so the "
+    "disagreement cannot be resolved silently: if the curve is ever moved to the figure, "
+    "this XPASSes and the test above fails, together."
+))
+def test_rv_curvature_matches_rommels_figure3_pmid29449367(rv_passive_curvature):
+    """[PMID 29449367, Figure 3, digitised 2026-11-01] Control RV EDPVR curvature
+    k = beta x EDV = 0.0215 x 137 = 2.95. No SD is drawn; the band borrows the table's
+    SD of beta (0.003 x 137 = 0.41): 2.54-3.36."""
+    b_lo, b_hi, edv = rv_passive_curvature
+    k = 0.5 * (b_lo + b_hi) * edv
+    assert 2.54 <= k <= 3.36, (
+        f"RV filling curvature k = {k:.2f} outside Rommel's Figure 3 band 2.54-3.36 "
+        f"(figure beta 0.0215 /mL at 137 mL)")
+
+
+# ===========================================================================
+# 60. MILD CENTRAL UNLOADING EMPTIES THE LEFT ATRIUM, NOT THE VENTRICLES — Oren 1993
+# ===========================================================================
+#
+# [PMID 8365967 — Oren RM, Schobel HP, Weiss RM, Stanford W, Ferguson DW 1993, Iowa,
+# J Appl Physiol 74:2672] Nine normal subjects, 8 M / 1 F, 26 +/- 2 (SE) y; height and
+# weight not reported. Supine, -10 mmHg LBNP. Cine CT (whole heart, end-expiration
+# breath-hold) and Swan-Ganz in the SAME subjects. Mean +/- SE, n 9:
+#   LVEDV 164 +/- 6 -> 167 +/- 7 (NS); individual absolute change 3 +/- 1 %, range 0-7 %
+#   RVEDV 174 +/- 6 -> 175 +/- 6 (NS); LV and RV stroke volume unchanged (CT and
+#     thermodilution); LA volume at end of ventricular systole 73 +/- 6 -> 53 +/- 6,
+#     a fall of 23 +/- 3 % (range 10-48 %), in EVERY subject
+#   RAP 6.9 +/- 1.2 -> 4.8 +/- 1.1; PA diastolic 12 -> 9 (both P < 0.05)
+# SE -> SD by sqrt(9) = 3: LV absolute change SD 3 % -> 1 SD bound 6 %; LA fall SD 9 %
+# -> 1 SD band -32 to -14 %.
+
+_OREN_SUBJECT = (175.0, 75.0, 26.0)   # height and weight NOT reported: reference body
+
+
+def _oren_lbnp(sex):
+    """Oren's -10 mmHg LBNP: 5 min from rest, last 30 s against the 30 s before.
+    Returns fractional changes (LVEDV, RVEDV, end-systolic LA volume) and dRAP."""
+    h, w, age = _OREN_SUBJECT
+    p = cohort_params(h, w, age_years=age, sex=sex)
+    t0 = 120.0
+    p.lbnp_mmhg, p.lbnp_start_s, p.lbnp_end_s = -10.0, t0, None
+    r = run_simulation(p, duration_s=t0 + 300.0 + 1.0, dt=DT, output_every=5)
+    t = np.asarray(r["t"]); V = np.asarray(r["volumes"])
+
+    def win(a, b):
+        m = np.where((t >= a) & (t < b))[0]
+        lv, rv, la = (V[m, IDX[c]] for c in ("left_ventricle", "right_ventricle", "left_atrium"))
+        def peaks(v):
+            d = np.diff(v); return np.where((d[:-1] > 0) & (d[1:] <= 0))[0] + 1
+        d = np.diff(lv); es = np.where((d[:-1] < 0) & (d[1:] >= 0))[0] + 1   # LV end-systole
+        return (float(lv[peaks(lv)].mean()), float(rv[peaks(rv)].mean()),
+                float(la[es].mean()), float(np.mean(np.asarray(r["cvp"])[m])))
+
+    a, b = win(t0 - 30.0, t0), win(t0 + 270.0, t0 + 300.0)
+    return (b[0] / a[0] - 1.0, b[1] / a[1] - 1.0, b[2] / a[2] - 1.0, b[3] - a[3])
+
+
+@pytest.fixture(scope="module")
+def oren_lbnp10():
+    """Cohort mean, 8 M / 1 F: (dLVEDV, dRVEDV, dLA fractions, dRAP)."""
+    m, f = _oren_lbnp("male"), _oren_lbnp("female")
+    return tuple((8.0 * x + 1.0 * y) / 9.0 for x, y in zip(m, f))
+
+
+@pytest.mark.xfail(strict=True, raises=AssertionError, reason=(
+    "KNOWN GAP, 2026-11-01 — THE MODEL'S VOLUME BUFFER IS IN THE WRONG CHAMBERS. On "
+    "Oren's -10 mmHg LBNP man gives up volume from the LEFT ATRIUM (-23 %) while both "
+    "ventricles hold theirs and stroke volume is unchanged; the filling pressures still "
+    "fall 2-3 mmHg. The model gives it up from the VENTRICLES (LVEDV -8.7 %, RVEDV -9.2 %, "
+    "SV -10 mL) and the LA only -12 %. Oren's reading: the LA is the more compliant chamber "
+    "at rest; in the model the ranking is reversed. A pericardium pressing at rest moves "
+    "the ventricles toward Oren (capacity x0.70: LVEDV -3 mL) but the LA AWAY from it, so "
+    "two things are missing together: external pressure at rest (conflict H) and atria "
+    "that are the compliant, volume-giving chambers. Validation log 2026-11-01."
+))
+def test_mild_unloading_empties_the_atrium_not_the_ventricles_oren1993(oren_lbnp10):
+    """[PMID 8365967] At -10 mmHg LBNP the LV end-diastolic volume holds (absolute change
+    within 6 %, 1 SD of Oren's individual changes) and the LA end-systolic volume falls
+    by 14-32 % (1 SD around 23 %). Reported, not asserted: RVEDV (no individual SD
+    published; Oren +1 mL) and RAP (-2.1, paired SD not published)."""
+    dlv, drv, dla, drap = oren_lbnp10
+    misses = []
+    if abs(dlv) > 0.06:
+        misses.append(f"LVEDV {100 * dlv:+.1f} % (Oren holds within 6 %)")
+    if not -0.32 <= dla <= -0.14:
+        misses.append(f"LA {100 * dla:+.1f} % (Oren -14 to -32 %)")
+    assert not misses, ("mild unloading does not follow Oren: " + "; ".join(misses)
+                        + f". Also RVEDV {100 * drv:+.1f} % (Oren +0.6 %), dRAP {drap:+.2f}"
+                        + " (Oren -2.1)")

@@ -194,10 +194,17 @@ def orifice_k(valve: str) -> float:
 # above the 1 ms timestep.
 VALVE_DP_REG = 0.1         # mmHg
 
-# Great-vein -> atrium resistance. NOT A VALVE. See backlog item 23.
-# Kept for the PULMONARY venoatrial junction (pulmonary_vein -> LA), which is a
-# different circulation and was not part of the 2026-08-26 systemic rework.
-VENOATRIAL_R = 0.02
+# PULMONARY venoatrial junction (pulmonary_vein -> LA). NOT A VALVE.
+# Until 2026-11-03 this was 0.02, which held the pulmonary veins 1.66 mmHg above the
+# LA at rest — a gradient with no anatomy behind it: there is no valve and no
+# meaningful resistance between them, and the clinical literature treats pulmonary
+# venous, wedge and LA pressure as one number (backlog item 22, the xfail that
+# carried it). 0.005 is a NUMERICAL FLOOR, not a measurement (grade E for the value;
+# the claim "about zero" is anatomy): it closes the gap (-0.20 mmHg) while keeping
+# R x C well above the 1 ms Euler step. Tried with the other trustworthy values of
+# 2026-11-01 (validation log 2026-11-02): rest stays normal (wedge 8.98 -> 10.27, the
+# LA rising to meet the veins), responses unchanged, and four strict xfails XPASSED.
+VENOATRIAL_R = 0.005
 
 # Cava -> right atrium (SVC and IVC). Split out from VENOATRIAL_R and raised
 # 0.02 -> 0.04 on 2026-08-26 as part of the resistance-to-venous-return work,
