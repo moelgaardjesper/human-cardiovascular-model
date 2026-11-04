@@ -1932,6 +1932,16 @@ def phenyl_dose_response():
 # above is a different quantity and remains open: only the flow arm closed.
 # CLOSED 2026-10-11 by moving the bands from the interquartile range to 1 SD
 # (see _one_sd_band) — a band decision, not a model change.
+# STRICT XFAIL AGAIN 2026-11-04 (Jesper): the cardiopulmonary reflex reference was
+# re-measured by its own definition (4.32 -> 5.23, baroreflex.py), removing a 0.9 mmHg
+# dead band. The arm now answers phenylephrine's small fall in filling pressure, and
+# dCO at 8 mcg/kg/min goes -1.30 -> -1.33, 0.03 L/min past Schäfers' 1 SD edge. It sat
+# inside by 0.003 before; the LA contraction re-pin broke it the same way. The test is
+# on its band edge under every recent change: a finding about the drug-reflex coupling
+# to investigate, not a band to widen.
+@pytest.mark.xfail(strict=True, reason=(
+    "phenylephrine 8 mcg/kg/min dCO -1.33 against Schäfers' 1 SD edge -1.30 once the "
+    "cardiopulmonary reference stopped hiding a 0.9 mmHg dead band (2026-11-04)"))
 def test_phenylephrine_flow_response_schafers1999(phenyl_dose_response):
     """[PMID: 10073742 — Schäfers 1999] Phenylephrine in healthy supine men
     LOWERS cardiac output, LOWERS heart rate and RAISES stroke volume.
@@ -5991,10 +6001,10 @@ def test_the_reference_operating_point_is_stated_once_and_consistently():
     # mean - trough offset 1.540 mmHg. The deliberate gap is kept (1.27 -> 1.28).
     # 2026-10-11: re-measured by the same definition after the AV-plane coupling
     # and the sac went on (resting mean RA fell); gap kept at 1.28.
-    assert CVP_SETPOINT == 3.04 and CP_HR_REFERENCE_CVP_MMHG == 4.32, (
+    assert CVP_SETPOINT == 3.95 and CP_HR_REFERENCE_CVP_MMHG == 5.23, (
         f"A FILLING-PRESSURE REFERENCE CHANGED: CVP_SETPOINT={CVP_SETPOINT} "
-        f"(was 3.04, uncited, used by the SVR arm), CP_HR_REFERENCE_CVP_MMHG="
-        f"{CP_HR_REFERENCE_CVP_MMHG} (was 4.32, the cardiopulmonary arm's reference, "
+        f"(was 3.95, uncited, used by the SVR arm), CP_HR_REFERENCE_CVP_MMHG="
+        f"{CP_HR_REFERENCE_CVP_MMHG} (was 5.23, the cardiopulmonary arm's reference, "
         f"chosen to sit at the model's own settled filling pressure). THEY ARE "
         f"DELIBERATELY DIFFERENT — read backlog item 39 before changing either, and "
         f"note that driving the HR arm from CVP_SETPOINT cost 6.0 bpm of spurious "
@@ -7205,22 +7215,39 @@ def test_cardiopulmonary_reflex_reads_mean_not_trough_right_atrial_pressure():
     as hypovolaemia (HR 68.6 -> 80.2 in the prototype; validation log
     2026-10-09). Jesper: "Switch to mean RA."
 
-    A CONVENTION PROBE, not a physiological claim: a fourfold atrial
-    contraction changes the RA waveform shape (trough -1.0 mmHg) while barely
-    moving its mean (-0.12). Read as a mean the reflex barely responds
-    (measured +0.14 bpm); read as a trough it produced a phantom +3.17 bpm
-    (sabotage, measured). The arm's own gain (3.8 bpm/mmHg) on the mean change
-    predicts ~0.5 bpm, so 1.0 separates the honest response from the artefact."""
-    def hr(f):
+    A CONVENTION PROBE, not a physiological claim: a fourfold atrial contraction
+    changes the RA waveform. REDESIGNED 2026-11-04. The first version assumed the
+    probe barely moved the MEAN (-0.12 mmHg when written) and asserted |dHR| < 1.
+    By 2026-11-04 the same probe moved the mean -0.67 (trough -2.7), and the old
+    test passed only because the arm's reference had gone stale: the mean fell
+    inside a 0.9 mmHg dead band and HR did not respond at all. With the reference
+    corrected, HR rose an honest 1.4 bpm and the old threshold failed.
+
+    So the response is now judged against what each reading PREDICTS through the
+    arm's own gain: a mean reader moves HR by at most gain x dMEAN (open loop;
+    the closed loop attenuates it), a trough reader toward gain x dTROUGH, about
+    four times larger. The precondition keeps the probe a SHAPE change."""
+    from model.baroreflex import CP_HR_GAIN_BPM_PER_MMHG as G
+    def run(f):
         p = SimParams()
         p.ra_emax *= f
-        r = run_simulation(p, duration_s=200.0, dt=DT, output_every=10)
+        r = run_simulation(p, duration_s=200.0, dt=DT, output_every=1)
         t = np.asarray(r["t"])
-        return float(np.mean(np.asarray(r["hr"])[t > 160.0]))
-    h1, h4 = hr(1.0), hr(4.0)
-    assert abs(h4 - h1) < 1.0, (
-        f"a change in RA waveform SHAPE moved heart rate {h1:.2f} -> {h4:.2f} bpm: "
-        f"the cardiopulmonary reflex is reading the trough, not the mean")
+        m = t > 160.0
+        ra = np.asarray(r["ra_mean"])[m]
+        return (float(np.mean(np.asarray(r["hr"])[m])),
+                float(np.mean(np.asarray(r["cvp"])[m])), float(np.percentile(ra, 1)))
+    (h1, m1, t1), (h4, m4, t4) = run(1.0), run(4.0)
+    d_hr, d_mean, d_trough = h4 - h1, m4 - m1, t4 - t1
+    assert abs(d_trough) > 2.0 * abs(d_mean), (
+        f"the probe no longer changes waveform SHAPE more than level (mean {d_mean:+.2f}, "
+        f"trough {d_trough:+.2f}); it cannot separate the two readings")
+    assert abs(d_hr) <= G * abs(d_mean) + 0.5, (
+        f"heart rate moved {d_hr:+.2f} bpm, more than a MEAN reader can ({G} x "
+        f"{abs(d_mean):.2f} = {G * abs(d_mean):.2f})")
+    assert abs(d_hr) < 0.5 * G * abs(d_trough), (
+        f"heart rate moved {d_hr:+.2f} bpm, toward the TROUGH reading's "
+        f"{G * abs(d_trough):.1f}: the cardiopulmonary reflex is reading the trough")
 
 
 # ===========================================================================

@@ -82,7 +82,7 @@ from collections import deque
 # made a venous return curve slope come out POSITIVE.
 MAP_SETPOINT = 93.0   # mmHg, CENTRAL AORTIC — McEniery 2005 males 50-59 measure 95 +/- 7
 PP_SETPOINT  = 40.0   # mmHg, CENTRAL AORTIC
-CVP_SETPOINT =  3.04  # mmHg, CAVITY, CYCLE MEAN — keeps its 1.28 gap below CP_HR_REFERENCE (2026-10-11)
+CVP_SETPOINT =  3.95  # mmHg, CAVITY, CYCLE MEAN — keeps its 1.28 gap below CP_HR_REFERENCE (2026-11-04)
 
 # The reference patient's OPERATING POINT, used by `patient.py` to compute the
 # SVR a patient's measured numbers should be scaled against. This is NOT the
@@ -311,7 +311,17 @@ CP_HR_LOADING_FRACTION = 0.0
 # resting MEAN RA pressure (5.82 -> 4.32, fixed point with the arm at rest).
 # Leaving 5.82 made the reflex read the new resting state as blood loss (HR
 # 69 -> 72). CVP_SETPOINT moved by the same amount, keeping its gap.
-CP_HR_REFERENCE_CVP_MMHG = 4.32
+#
+# RE-MEASURED 2026-11-04, same definition: 4.32 -> 5.23 (fixed point 5.233 at
+# 5.23). Found by an audit of values fitted on an older model: the calculated
+# pericardial capacity, the re-sized atria, the septum, the Rommel RV and the
+# pulmonary-vein junction had each moved rest since 10-11, and nothing re-read
+# this. Stale, it left the one-sided arm a 0.9 mmHg DEAD BAND: the first 0.9
+# mmHg of any CVP fall produced no tachycardia at all. Rest barely moves when
+# corrected (HR 68.17 -> 68.02). CVP_SETPOINT moved by the same amount.
+# **Re-measure this whenever the resting heart changes** — it is a fixed point
+# of the model, not a constant of physiology.
+CP_HR_REFERENCE_CVP_MMHG = 5.23
 
 
 # ---------------------------------------------------------------------------

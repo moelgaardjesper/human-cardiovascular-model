@@ -111,11 +111,11 @@ Patients scale from the reference by body surface area, sex (Luu 2022, Gao 2022 
 - **Guards are sabotage-verified.** A new guard is trusted only after the mechanism it watches has been broken and the guard has fired.
 - **Blind validation.** Predictions for unseen studies are committed publicly before the result is known (see [Blind validation](#blind-validation-in-progress)).
 
-### Test suite (fast tier measured 2026-11-03, slow tier 2026-11-04)
+### Test suite (measured 2026-11-04)
 
 | tier | command | result |
 |---|---|---|
-| fast — the ratchet | `pytest` | **146 passed, 25 strict xfails, 0 failed** (8 slow tests deselected; the 25th, the left-atrial ejection fraction, was added 2026-11-04 and checked on its own) |
+| fast — the ratchet | `pytest` | **145 passed, 26 strict xfails, 0 failed** (8 slow tests deselected; measured 2026-11-04) |
 | slow — minutes to hours | `pytest -m slow` | **6 passed, 1 failed** (2026-11-04; first run since the v1.0.0 freeze). The failure is the stress-relaxation test's control arm, which reads 10 s after the bolus, while blood is still redistributing into the splanchnic veins. The mechanism itself dissipates 38 % of the CVP rise, inside its 15-50 % band |
 | overnight — 24 h refill | `pytest -m overnight` | 1 strict xfail, predicted before it was run |
 
@@ -160,7 +160,7 @@ All values re-measured on **2026-10-27**, at the current commit, through the sam
 | 9 | Pulse pressure variation, ventilated | [Michard & Teboul 2000](https://doi.org/10.1164/ajrccm.162.1.9905119) | > 13 % predicts fluid response | normovolaemic 8.3 % ✓; 1000 mL bleed 24.4 % ✓; after fluid CO +84 %, PPV 22.3 % | ✓ (the fall in PPV with fluid is small) |
 | 10 | Saline loading, external share | [Bhella 2014](https://pubmed.ncbi.nlm.nih.gov/25236519/), healthy seniors | ΔRAP / ΔPCWP 0.59–0.64; ΔPCWP +4.4–5.5, ΔRAP +2.6–3.5 | ratio 0.82; ΔPCWP +6.2 (was +8.9), ΔRAP +5.1 | wedge closer with the septum; the ratio left its band when one of two cancelling errors was fixed |
 | 11 | Microgravity CVP | [Buckey 1996](https://pubmed.ncbi.nlm.nih.gov/8853498/) | orbit ~2.5, above upright Earth | 5.23 vs 2.43 at 45° upright | ✓ order |
-| 12 | Phenylephrine, young men | [Schäfers 1999](https://pubmed.ncbi.nlm.nih.gov/10073742/) | ΔMAP +28 (21.3–34.7), ΔHR −16, ΔCO −1.15, ΔSV +9 | 4 µg/kg/min: ΔMAP +19.7, ΔHR −15.0, ΔCO −1.21, ΔSV +2.1 | pressor ✓ at plateau (+21.5; a calibration, re-set 2026-10-27); CO ✓ at every plateau dose since 2026-11-03, but only by 0.003 L/min at 6 µg/kg/min |
+| 12 | Phenylephrine, young men | [Schäfers 1999](https://pubmed.ncbi.nlm.nih.gov/10073742/) | ΔMAP +28 (21.3–34.7), ΔHR −16, ΔCO −1.15, ΔSV +9 | 4 µg/kg/min: ΔMAP +19.7, ΔHR −15.0, ΔCO −1.21, ΔSV +2.1 | pressor ✓ at plateau (+21.5; a calibration, re-set 2026-10-27); CO ✗ by 0.03 L/min at 8 µg/kg/min (−1.33 vs −1.30) since 2026-11-04, when the cardiopulmonary reflex reference was re-measured and a 0.9 mmHg dead band removed; carried as a strict xfail |
 | 13 | Noradrenaline vs phenylephrine, spinal | [Ngan Kee 2015](https://doi.org/10.1097/ALN.0000000000000601), n=104 | NE preserves CO better; NE HR higher | CO 5.83 vs 5.28; HR 65 vs 58 | ✓ |
 | 14 | Vasopressin dose-response | [Patel 2002](https://doi.org/10.1097/00000542-200203000-00011) | MAP rises with dose; CO maintained | MAP 95 → 103 → 105; CO 6.04 → 5.46 | ✓ |
 | 15 | Adrenaline dose-response | [Freyschuss 1986](https://doi.org/10.1042/cs0700199) | CO rises with dose; MAP higher at high dose | asserted pattern passes in the suite | ✓ |
