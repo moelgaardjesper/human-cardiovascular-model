@@ -2833,12 +2833,17 @@ def _atrial_state():
         i += int(np.argmax(lv[i + beat // 2:i + beat + beat // 2])) + beat // 2
     n = min(starts[k + 1] - starts[k] for k in range(len(starts) - 1))
     rv = np.mean([V[s:s + n, IDX["right_ventricle"]] for s in starts[:-1]], axis=0)
-    out = {"rv_sv": float(rv.max() - rv.min())}
+    lv_avg = np.mean([V[s:s + n, IDX["left_ventricle"]] for s in starts[:-1]], axis=0)
+    out = {"rv_sv": float(rv.max() - rv.min()), "lv_sv": float(lv_avg.max() - lv_avg.min())}
     for key, name in (("la", "left_atrium"), ("ra", "right_atrium")):
         avg = np.mean([V[s:s + n, IDX[name]] for s in starts[:-1]], axis=0)
         vmax, vmin = float(avg.max()), float(avg.min())
+        # PRESYSTOLIC volume (onset of atrial contraction), Järvinen's phase split:
+        # the largest volume in the late part of the beat after the atrial maximum.
+        tail = avg[int(np.argmax(avg)):]
+        pre = float(tail[int(0.55 * len(tail)):].max())
         out[key] = {
-            "vmax": vmax, "vmin": vmin,
+            "vmax": vmax, "vmin": vmin, "pre": pre,
             "vmax_i": vmax / REFERENCE_BSA, "vmin_i": vmin / REFERENCE_BSA,
             "ef": 100.0 * (vmax - vmin) / vmax,
         }
@@ -2937,6 +2942,30 @@ def test_right_atrial_emptying_fraction_is_physiological():
     s = _atrial_state()
     assert 46.0 <= s["ra"]["ef"] <= 58.0, (
         f"RA emptying fraction {s['ra']['ef']:.1f}% outside 46-58; Järvinen 52 +/- 6"
+    )
+
+
+# STALE PIN, found 2026-11-04 by the audit of values fitted on an older model. LA_EMAX
+# 0.72 was pinned on 2026-10-16 on exactly this quantity (EF 28 % then); the atria were
+# re-sized on 2026-10-26 and the pin was never re-measured. Re-pinning to ~1.05 restores
+# it but breaks Schäfers phenylephrine (dCO -1.34 vs -1.30) and Monnet's normovolaemic
+# PLR (+10.8 % vs < 10) — Jesper, 2026-11-04: keep 0.72 and guard the gap. The larger
+# defect beside it is the passive conduit share (~52 % of SV vs Järvinen 20 +/- 9), which
+# no LA_EMAX and no valve law moves (validation log 2026-11-04).
+@pytest.mark.xfail(strict=True, reason=(
+    "LA active ejection fraction ~20 % against Järvinen's 28 +/- 7: LA_EMAX was pinned "
+    "before the atria were re-sized (2026-10-26); re-pinning breaks Schäfers and Monnet"))
+def test_left_atrial_contraction_jarvinen1994():
+    """[J1] Järvinen 1994 AJC (PMID 8198044) LA active emptying (EJECTION) fraction
+    28 +/- 7 %: atrial stroke volume over the PRESYSTOLIC volume, average beat, free
+    breathing. Band 1 SD (21-35). Distinct from total emptying (tested above), which
+    is mostly the AV plane returning in early diastole."""
+    s = _atrial_state()
+    la = s["la"]
+    ef = 100.0 * (la["pre"] - la["vmin"]) / la["pre"]
+    assert 21.0 <= ef <= 35.0, (
+        f"LA ejection fraction {ef:.1f} % outside 21-35; Järvinen 28 +/- 7 "
+        f"(stroke {la['pre'] - la['vmin']:.1f} mL = {100 * (la['pre'] - la['vmin']) / s['lv_sv']:.1f} % of SV)"
     )
 
 
