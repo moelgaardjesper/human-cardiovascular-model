@@ -592,6 +592,9 @@ def test_graded_hut_monotonicity_sarafian2017(supine_175_75, hut20_175_75, hut30
 # and the real quantity is asserted separately in
 # `test_map_is_defended_on_head_up_tilt_wieling1998` below, which xfails.
 # Do not read this pass as evidence the orthostatic collapse has closed.
+# STRICT XFAIL 2026-11-06 — the closed-chest constraint adopted 2026-11-06 (step 3C, Xc 1.75, s 0.15; Jesper overrode the registered rule).
+@pytest.mark.xfail(strict=True, reason=(
+    'after the closed-chest constraint (2026-11-06): CPP at 45 deg 32.6 (> 40 required)'))
 def test_cerebral_perfusion_pressure_pohl_cullen2005(supine_175_75, upright45_175_75):
     """Cerebral perfusion pressure (Pohl/Cullen 2005).
 
@@ -1081,6 +1084,9 @@ def test_ppv_fluid_responsiveness_michard2000(ppv_scenarios):
     )
 
 
+# STRICT XFAIL 2026-11-06 — the closed-chest constraint adopted 2026-11-06 (step 3C, Xc 1.75, s 0.15; Jesper overrode the registered rule).
+@pytest.mark.xfail(strict=True, reason=(
+    'after the closed-chest constraint (2026-11-06): normovolaemic PPV 13.6 % (< 13 required; marginal)'))
 def test_ppv_normovolaemic_below_michard_threshold(ppv_scenarios):
     """[DOI 10.1164/ajrccm.162.1.9905119] Normovolaemic patient must not be
     flagged as fluid-responsive.
@@ -1742,6 +1748,8 @@ def _venous_return_curve(bleed_ml=0.0, sympathetic_outflow_scale=1.0, baroreflex
 
 
 # CLOSED 2026-10-11 (XPASS on the systolic timing change), REOPENED 2026-10-15.
+# STRICT XFAIL 2026-11-06 — the closed-chest constraint adopted 2026-11-06 (step 3C, Xc 1.75, s 0.15; Jesper overrode the registered rule).
+# CLOSED 2026-11-06 by the closed-chest constraint adopted 2026-11-06 (step 3C) with init volumes re-derived: slope ratio back above 0.9 once the start volumes were re-derived.
 def test_haemorrhage_shifts_venous_return_curve_without_rotating_it():
     """[PMID: 19237896 — Maas 2009] A moderate haemorrhage must lower Pmsf and
     leave the venous-return slope alone: resistance to venous return is a
@@ -1939,9 +1947,7 @@ def phenyl_dose_response():
 # inside by 0.003 before; the LA contraction re-pin broke it the same way. The test is
 # on its band edge under every recent change: a finding about the drug-reflex coupling
 # to investigate, not a band to widen.
-@pytest.mark.xfail(strict=True, reason=(
-    "phenylephrine 8 mcg/kg/min dCO -1.33 against Schäfers' 1 SD edge -1.30 once the "
-    "cardiopulmonary reference stopped hiding a 0.9 mmHg dead band (2026-11-04)"))
+# CLOSED 2026-11-06 by the closed-chest constraint adopted 2026-11-06 (step 3C, Xc 1.75, s 0.15; Jesper overrode the registered rule): dCO back inside Schäfers' 1 SD band.
 def test_phenylephrine_flow_response_schafers1999(phenyl_dose_response):
     """[PMID: 10073742 — Schäfers 1999] Phenylephrine in healthy supine men
     LOWERS cardiac output, LOWERS heart rate and RAISES stroke volume.
@@ -1987,8 +1993,7 @@ def test_phenylephrine_flow_response_schafers1999(phenyl_dose_response):
 # 1 SD floor 21.3 — inside, but by 0.5 at the plateau. A fragile pass, recorded as such.
 # STRICT XFAIL AGAIN 2026-11-05 (Jesper: adopt the capacity correction): plateau dMAP +19.1 against the 1 SD floor 21.3.
 # A fragile pass since 10-17 (inside by 0.5); a sac that engages as filling rises takes the rest. Not a band to widen.
-@pytest.mark.xfail(strict=True, reason=(
-    "phenylephrine dMAP +19.1 below Schäfers' 1 SD floor 21.3 after the pericardial capacity correction of 2026-11-05 (atria at end-of-contraction volume at ventricular end-diastole; the sac now meets the heart at end-diastole as designed, ~34 mL tighter)"))
+# CLOSED 2026-11-06 by the closed-chest constraint adopted 2026-11-06 (step 3C) with init volumes re-derived: plateau dMAP back inside the 1 SD band.
 def test_phenylephrine_pressor_response_schafers1999(phenyl_dose_response):
     """[PMID: 10073742 — Schäfers 1999] Phenylephrine in healthy supine men
     raises MAP by +28 mmHg (quartiles 23.5-32.5) and total peripheral
@@ -2138,6 +2143,9 @@ def test_plr_fluid_responsiveness_monnet2016():
 # went on: the full normovolaemic heart meets the sac and stops filling (CO +1.8 %),
 # while after a 1200 mL bleed it sits below the knee and still responds (+60.8 %).
 # A Starling plateau from structure, not from a fitted curve.
+# STRICT XFAIL 2026-11-06 — the closed-chest constraint adopted 2026-11-06 (step 3C; Jesper overrode the registered rule).
+@pytest.mark.xfail(strict=True, reason=(
+    'after the closed-chest constraint (2026-11-06): normovolaemic PLR CO +10.7 % (non-responder threshold < 10 %; was +9.7 % when closed on 2026-11-03)'))
 def test_plr_normovolaemic_non_responder_monnet2016():
     """[PMID 26825952 — Monnet 2016] Specificity 0.91: a normovolaemic patient
     on the Starling plateau should NOT reach the +10 % responder threshold. Same
@@ -3108,6 +3116,9 @@ def test_male_patient_is_bit_for_bit_the_reference():
 # right-atrial band already uses Gao's. A strict xfail opened the same day
 # (female LVEDV 58.3 < 60) is closed by this, and the closure is BY the re-set,
 # not by the model moving — stated so nobody reads it as a fix.
+# STRICT XFAIL 2026-11-06 — the closed-chest constraint adopted 2026-11-06 (step 3C, Xc 1.75, s 0.15; Jesper overrode the registered rule).
+@pytest.mark.xfail(strict=True, reason=(
+    "after the closed-chest constraint (2026-11-06): female RAVmax 42.5 mL/m2 just below Maceira's 43 (marginal)"))
 def test_female_chamber_volumes_match_luu_and_gao():
     """Female chamber volumes are smaller than male, and land in their sourced bands.
 
@@ -4868,8 +4879,7 @@ def test_brachial_diastolic_pressure_by_age_white1997(white1997_arms):
 
 
 # STRICT XFAIL 2026-11-05 (Jesper: adopt the capacity correction): PP widens +6.37 between 25 and 68 against the guard edge 6.42.
-@pytest.mark.xfail(strict=True, reason=(
-    'brachial PP widening 25 -> 68 +6.37 just below the 6.4-17.1 guard after the pericardial capacity correction of 2026-11-05 (atria at end-of-contraction volume at ventricular end-diastole; the sac now meets the heart at end-diastole as designed, ~34 mL tighter)'))
+# CLOSED 2026-11-06 by the closed-chest constraint adopted 2026-11-06 (step 3C, Xc 1.75, s 0.15; Jesper overrode the registered rule): PP widening back inside the guard.
 def test_age_slope_of_brachial_pulse_pressure_white1997(white1997_arms):
     """[PMID 9404222 — White 1997] The age slope of pulse pressure is RIGHT.
 
@@ -5021,6 +5031,9 @@ def test_resting_stroke_volume_in_young_adults_pmid27702883(lbnp_young_haemorrha
     )
 
 
+# STRICT XFAIL 2026-11-06 — the closed-chest constraint adopted 2026-11-06 (step 3C, Xc 1.75, s 0.15; Jesper overrode the registered rule).
+@pytest.mark.xfail(strict=True, reason=(
+    "after the closed-chest constraint (2026-11-06): young men, ~500 mL LBNP: male dCO -0.38 vs -1.00 measured — the chest term holds SV too well at mild unloading in the young (with Johnson's CVP: the young-heart placement, #34)"))
 def test_central_hypovolaemia_flow_and_rate_response_pmid27702883(lbnp_young_haemorrhage):
     """[PMID 27702883] Cardiac output and heart rate under -30 mmHg LBNP.
 
@@ -5323,6 +5336,9 @@ def test_phenylephrine_raises_stroke_volume_hojlund2024(phenylephrine_during_til
 
 
 # Was a strict xfail; closed 2026-10-06 by the Klotz LV diastolic curve (heart.py).
+# STRICT XFAIL 2026-11-06 — the closed-chest constraint adopted 2026-11-06 (step 3C, Xc 1.75, s 0.15; Jesper overrode the registered rule).
+@pytest.mark.xfail(strict=True, reason=(
+    'after the closed-chest constraint (2026-11-06): lowest SVV across doses 13.4 % (study target < 12 %)'))
 def test_phenylephrine_abolishes_preload_dependency_pmid31705432(phenylephrine_during_tilt):
     """[PMID 31705432] Phenylephrine brought stroke-volume variation from 24 to
     8.6 % (IQR 6.8 to 11) — below the study's own 12 % target.
@@ -5338,6 +5354,9 @@ def test_phenylephrine_abolishes_preload_dependency_pmid31705432(phenylephrine_d
     )
 
 
+# STRICT XFAIL 2026-11-06 — the closed-chest constraint adopted 2026-11-06 (step 3C, Xc 1.75, s 0.15; Jesper overrode the registered rule).
+@pytest.mark.xfail(strict=True, reason=(
+    'after the closed-chest constraint (2026-11-06): phenylephrine bradycardia in tilt -2..-6 % vs IQR -15..-6 %'))
 def test_phenylephrine_reflex_bradycardia_during_tilt_pmid31705432(phenylephrine_during_tilt):
     """[PMID 31705432] Phenylephrine slows the heart by 10 % (IQR -15 to -6).
 
@@ -8130,15 +8149,7 @@ def _rahimtoola_gap(sex):
     return float(lv_tm[ed].mean()), float(np.mean(np.asarray(r["la_pressure"])[m]))
 
 
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason=(
-    "KNOWN GAP, 2026-11-03 — NEARLY CLOSED. Rahimtoola's healthy hearts hold mean wedge "
-    "0.6 +/- 1.7 below LVEDP; the model reads +2.55 (men +1.96, women +3.93), +1.15 SD, "
-    "with LVEDP (11.5) and mean LA (8.95) each inside 1 SD of his levels. On 2026-10-25 "
-    "the gap was +5.4 to +10.6; the RV curve, the septum and the removal of the pulmonary "
-    "venoatrial resistance closed most of it. What is left is mostly the women, whose LV "
-    "starts too high on its curve (LVEDP 14.6), and ~1 mmHg of the LA's systolic x descent "
-    "(the AV-plane share, grade A x C). Validation log 2026-11-03."
-))
+# CLOSED 2026-11-06 by the closed-chest constraint adopted 2026-11-06 (step 3C, Xc 1.75, s 0.15; Jesper overrode the registered rule): mean wedge within Rahimtoola's band.
 def test_mean_wedge_sits_at_lvedp_in_healthy_hearts_rahimtoola1975():
     """[PMID 1200036] Catheter-equivalent LVEDP minus cycle-mean LA (wedge), cohort
     7 M / 3 F at age 29, within 1 SD of Rahimtoola's paired 0.6 +/- 1.7: -1.1 to +2.3."""

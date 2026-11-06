@@ -366,6 +366,24 @@ class SimParams:
         # the rest (heart.wall_rest_factors), so the resting heart is unchanged by
         # construction. Grade C/D: the closed-chest magnitude is not yet measured.
         self.pericardial_rest_mmhg = 0.0
+        # CLOSED-CHEST CONSTRAINT (adopted 2026-11-06, step 3C; Jesper overrode the registered
+        # rule, which failed on Johnson's CVP alone). An external pressure from lungs /
+        # mediastinum / chest wall on all four chambers, a function of the heart's CYCLE-MEAN
+        # contents (they do not follow the beat — why every single-sac variant collapsed):
+        #     P_chest = max(0, Xc + s (Vbar - Vref)),  Vbar filtered with tau, Vref at SETTLE.
+        # Xc 1.75 mmHg — GRADE C: Belenkie 2002 (PMID 12368929) within-patient sternal closure
+        # with the pericardium open shrank the LV at unchanged PCWP (~1.5-2 mmHg); ventilated
+        # surgical cohort, so healthy spontaneous breathing is probably lower.
+        # s 0.15 mmHg/mL — GRADE D, PINNED on ONE source (Oren 1993 LBNP -10 dRAP; the grid's
+        # closest value, -1.49 vs -2.1, at the grid's edge). tau 2 s — chosen, not tuned.
+        # Walls re-placed by Xc (wall_rest_factors), so rest is held. HELD OUT and moved toward
+        # man: Cléroux 2.0 vs 2.4 %/mmHg, Echt bleed side, Johnson SV, Oren ventricles, Blaber CO.
+        # **PERI_K (the sac's stiffness) was pinned WITHOUT this layer (Bhella's external share
+        # attributed to the sac alone): it is now a STALE PIN, to be re-pinned with sac + chest
+        # together** (validation log 2026-11-06).
+        self.chest_rest_mmhg = 1.75
+        self.chest_slope = 0.15
+        self.chest_tau_s = 2.0
         # Pericardial capacity from the walls just set (heart.py). apply_cardiac
         # recomputes it for a built patient.
         self.set_pericardial_capacity()
@@ -877,7 +895,7 @@ def _septal_gradient(V, params, x):
     """Passive (diastolic) LV-minus-RV pressure with the septum shifted x mL into
     the RV: the LV free wall then encloses V_lv - x, the RV free wall V_rv + x."""
     comp_rv_v0 = params.compartments[IDX["right_ventricle"]].unstressed_volume
-    f0, f30, frv = wall_rest_factors(params.pericardial_rest_mmhg)
+    f0, f30, frv = wall_rest_factors(params.pericardial_rest_mmhg + params.chest_rest_mmhg)
     return (klotz_diastolic_pressure(V[IDX["left_ventricle"]] - x, params.lv_v0_dia * f0, params.lv_v30 * f30)
             - frv * rv_diastolic_pressure(V[IDX['right_ventricle']] + x, comp_rv_v0, params.rv_emin))
 
@@ -1067,7 +1085,7 @@ def _odes(t: float, V: np.ndarray, params: SimParams, baro: BaroreflexController
 
     # Cardiac chambers (time-varying elastance)
     _x_spt = av_ref.get("spt_x", 0.0) if av_ref is not None else 0.0
-    _wf0, _wf30, _wfrv = wall_rest_factors(params.pericardial_rest_mmhg)
+    _wf0, _wf30, _wfrv = wall_rest_factors(params.pericardial_rest_mmhg + params.chest_rest_mmhg)
     P[i["left_ventricle"]] = max(0.0,
         e_v * lv_emax_eff * (V[i["left_ventricle"]] - comp[i["left_ventricle"]].unstressed_volume)
         + (1.0 - e_v) * klotz_diastolic_pressure(V[i["left_ventricle"]] - _x_spt, params.lv_v0_dia * _wf0, params.lv_v30 * _wf30))
@@ -1086,6 +1104,10 @@ def _odes(t: float, V: np.ndarray, params: SimParams, baro: BaroreflexController
         _pp = _pericardial_now(V, params)
         for _c in _CHAMBER_IDX:
             P[_c] += _pp
+    _pc = av_ref.get("p_chest", 0.0) if av_ref is not None else 0.0
+    if _pc:
+        for _c in _CHAMBER_IDX:
+            P[_c] += _pc
 
     # -----------------------------------------------------------------------
     # Tilt angle at current time  (computed first — needed for positional ITP)
@@ -1674,6 +1696,7 @@ def run_simulation(
     la_p_ts     = np.zeros(n_out)
     ra_mean_ts  = np.zeros(n_out)
     peri_p_ts   = np.zeros(n_out)
+    chest_p_ts  = np.zeros(n_out)   # closed-chest constraint (lungs/mediastinum), separate from the sac
     lv_p_ts     = np.zeros(n_out)
     rv_p_ts     = np.zeros(n_out)
     co_ts       = np.zeros(n_out)
@@ -1768,7 +1791,7 @@ def run_simulation(
         _series = [("t", None), ("aortic_p", aortic_p), ("map", None),
                    ("aortic_intraluminal", ao_intra_ts),
                    ("cvp", cvp_ts), ("la_pressure", la_p_ts), ("ra_mean", ra_mean_ts),
-                   ("pericardial_p", peri_p_ts), ("co", co_ts),
+                   ("pericardial_p", peri_p_ts), ("chest_p", chest_p_ts), ("co", co_ts),
                    ("hr", hr_ts), ("sv", sv_ts), ("dbp", dbp_ts),
                    ("sbp", sbp_ts), ("lvedp", lvedp_ts), ("cpp", cpp_ts),
                    ("cop", cop_ts), ("buckberg", buckberg_ts),
@@ -1856,8 +1879,18 @@ def run_simulation(
         # Sac pressure: added to the reported cavity pressures and to the
         # reflex input below.
         _pp_now = _pericardial_now(V, params)
-        _cvp_rep_sum += (p_ra + _pp_now) - _cvp_rep_win[0]
-        _cvp_rep_win.append(p_ra + _pp_now)
+        if params.chest_rest_mmhg > 0.0:
+            _hv = float(sum(V[k] for k in _CHAMBER_IDX))
+            _vb = _av_ref.get("vbar", _hv)
+            _vb += dt / params.chest_tau_s * (_hv - _vb)
+            _av_ref["vbar"] = _vb
+            if "vref" not in _av_ref and t >= _SPT_SETTLE_S:
+                _av_ref["vref"] = _vb
+            _av_ref["p_chest"] = (max(0.0, params.chest_rest_mmhg + params.chest_slope * (_vb - _av_ref["vref"]))
+                                  if "vref" in _av_ref else params.chest_rest_mmhg)
+        _pc_now = _av_ref.get("p_chest", 0.0)
+        _cvp_rep_sum += (p_ra + _pp_now + _pc_now) - _cvp_rep_win[0]
+        _cvp_rep_win.append(p_ra + _pp_now + _pc_now)
         p_cvp_rep = _cvp_rep_sum / _cvp_win_len
 
         # Update baroreflex — updates hr_delta, svr_factor etc. for NEXT ODE step
@@ -1873,7 +1906,7 @@ def run_simulation(
             # The reference points moved by the measured mean-trough offset
             # (baroreflex.py), so the resting state is unchanged.
             # reflex_cvp_offset re-zeroes the input when the sac is on.
-            _cvp_reflex = p_ra + _pp_now - params.reflex_cvp_offset
+            _cvp_reflex = p_ra + _pp_now + _pc_now - params.reflex_cvp_offset
             baro.update(p_ao, 40.0, _cvp_reflex)
         if params.ventilation_mode != 'none':
             rsa_now = respiratory_sinus_arrhythmia(
@@ -1929,7 +1962,7 @@ def run_simulation(
         # at the CURRENT volume every step, so the reported value was a cycle mean
         # including systole (~3 mmHg where the end-diastolic value is ~11), and coronary
         # perfusion pressure (DBP - LVEDP) and the Buckberg index were OVERESTIMATED.
-        _f0, _f30, _ = wall_rest_factors(params.pericardial_rest_mmhg)
+        _f0, _f30, _ = wall_rest_factors(params.pericardial_rest_mmhg + params.chest_rest_mmhg)
         p_lvedp = klotz_diastolic_pressure(_av_ref["lv_ed"], params.lv_v0_dia * _f0, params.lv_v30 * _f30)
 
         # Current tilt for perfusion calculations
@@ -2024,10 +2057,10 @@ def run_simulation(
         # right atrium got `ra_intraluminal` for exactly this reason; the
         # arterial side never did, because until Valsalva nothing exercised it.
         ao_intra_ts[_oi] += p_ao + itp_pos_now + _itp_resp_now + _itp_vals_now
-        la_p_ts[_oi]     += p_la + _pp_now + itp_pos_now + _itp_vals_now
+        la_p_ts[_oi]     += p_la + _pp_now + _pc_now + itp_pos_now + _itp_vals_now
         # MEAN right atrial cavity pressure over the OUTPUT block (instantaneous,
         # block-averaged); `cvp` is the same pressure averaged over ~2 beats.
-        ra_mean_ts[_oi]  += p_ra + _pp_now + itp_pos_now + _itp_vals_now
+        ra_mean_ts[_oi]  += p_ra + _pp_now + _pc_now + itp_pos_now + _itp_vals_now
         # Intrapericardial pressure as a pericardial catheter reads it: the sac's
         # own pressure plus the same thoracic terms as ra_mean, so the two compare
         # directly (tamponade equalisation, Reddy 1978). Zero sac -> pleural only.
@@ -2035,7 +2068,8 @@ def run_simulation(
         hr_ts[_oi]       += hr_eff
         dbp_ts[_oi]      += p_dbp
         sbp_ts[_oi]      += p_sbp
-        lvedp_ts[_oi]    += p_lvedp + _pp_now
+        lvedp_ts[_oi]    += p_lvedp + _pp_now + _pc_now
+        chest_p_ts[_oi]  += _pc_now
         cpp_ts[_oi]      += cerebral_perfusion_pressure(p_ao, tilt_now, params.gravity)
         cop_ts[_oi]      += coronary_perfusion_pressure(p_dbp, p_lvedp)
         buckberg_ts[_oi] += buckberg_index(p_dbp, p_lvedp, hr_eff, p_sbp)
@@ -2232,7 +2266,7 @@ def run_simulation(
     # Every series above was accumulated with += over its block; divide to get the
     # mean. With output_every=1 every block holds one sample and this is a no-op,
     # which is what makes that case bit-for-bit identical to the old behaviour.
-    for _arr in (aortic_p, ppv_acc, cvp_ts, ra_intra_ts, la_p_ts, ra_mean_ts, peri_p_ts, lv_p_ts, rv_p_ts,
+    for _arr in (aortic_p, ppv_acc, cvp_ts, ra_intra_ts, la_p_ts, ra_mean_ts, peri_p_ts, chest_p_ts, lv_p_ts, rv_p_ts,
                  co_ts, hr_ts, sv_ts,
                  dbp_ts, sbp_ts, brachial_sbp_ts, brachial_dbp_ts, lvedp_ts,
                  cpp_ts, cop_ts, buckberg_ts, ankle_p_ts, brachial_p_ts):
@@ -2308,6 +2342,7 @@ def run_simulation(
         "la_pressure": la_p_ts,
         "ra_mean":     ra_mean_ts,
         "pericardial_p": peri_p_ts,
+        "chest_p":     chest_p_ts,
         "lv_pressure": lv_p_ts,
         "rv_pressure": rv_p_ts,
         "co":          co_ts,

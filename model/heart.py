@@ -477,6 +477,9 @@ PERI_VK = 30.0         # mL — GRADE E, to be pinned
 # TESTED: Sejersen 20 deg head-down dSV +5.9 (~0, n.s.) passes; Schafers phenylephrine
 # does not depend on it; Borlaug's sac-opening direction FAILS — the left-heart walls,
 # not the sac (validation log 2026-10-16).
+# **STALE PIN since 2026-11-06:** Bhella's external share was attributed to the sac ALONE; the closed-chest
+# constraint adopted that day (circulation.SimParams.chest_*) takes part of it. Re-pin the sac's stiffness
+# with sac + chest together before using it for anything (validation log 2026-11-06).
 PERI_K = 0.11 * PERI_VK  # mmHg — GRADE D: slope at the knee 0.11 mmHg/mL, Bhella 2014 ratio (errors cancel)
 # NUMERICAL GUARD, NOT PHYSIOLOGY. Above this sac pressure the curve continues as
 # a straight line at its own slope there (continuous value and slope). Without

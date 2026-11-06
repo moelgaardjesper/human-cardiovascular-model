@@ -617,18 +617,18 @@ def default_compartments() -> list[Compartment]:
         # level), not the neck: with physiological compliance the hydrostatic term
         # C·ΔP dominates tilt redistribution, so a mid-neck height (0.15-0.20) would
         # pool ~200 mL into the upper body in head-down tilt and steal preload.
-        Compartment("upper_body_vein",    12.00, 3.75,  764,  0.05,  839,
+        Compartment("upper_body_vein",    12.00, 3.75,  764,  0.05,  850,
                     drain_resistance=0.100),  # 3  P0≈6 (R = arteriole + exchange segment)
-        Compartment("svc",                 8.00, 0.05,   70,  0.05,  119, drain_resistance=CAVOATRIAL_R),  # 4  P0≈4
+        Compartment("svc",                 8.00, 0.05,   70,  0.05,  123, drain_resistance=CAVOATRIAL_R),  # 4  P0≈4
         Compartment("abdominal_aorta",     0.40, 0.05,   60, ABDOMINAL_AORTA_HEIGHT_M,   92),  # 5  P0=88
         Compartment("renal_art",           0.08, 0.10,   20, L1_HEIGHT_M,   26),  # 6  P0=80 (conduit; arteriole moved to renal_vein)
         # renal_vein / splanchnic_vein: `resistance` is the artery→vein exchange
         # segment; `drain_resistance` is the vein→IVC drainage. These were a single
         # shared number until 2026-08-21 — see Compartment.drain_resistance.
-        Compartment("renal_vein",          7.20, 4.50,   60, L1_HEIGHT_M,  130,
+        Compartment("renal_vein",          7.20, 4.50,   60, L1_HEIGHT_M,  135,
                     drain_resistance=0.200),                                # 7  P0≈8
         Compartment("splanchnic_art",      0.19, 0.10,   50, L1_HEIGHT_M,   65),  # 8  P0=83 (conduit; arteriole moved to splanchnic_vein)
-        Compartment("splanchnic_vein",    52.00, 3.60,  542, L1_HEIGHT_M, 1010,
+        Compartment("splanchnic_vein",    52.00, 3.60,  542, L1_HEIGHT_M, 1044,
                     drain_resistance=0.140),  # 9  P0≈11 (dominant mobilizable reservoir)
         # LEG HEIGHTS FROM ANATOMY, 2026-10-05 (leg rebuild stage 3) — see the
         # LEG GEOMETRY note above default_compartments. Was -0.50 / -0.20 / -0.55
@@ -685,7 +685,7 @@ def default_compartments() -> list[Compartment]:
         # its old init_volume at its old settled pressure (21.5 / 23.0 / 23.9):
         # V0 = V_rest - C0·k·ln(1 + P_rest/k) -> 170 / 465 / 259 mL.
         # Old values for the record: thigh 3.20/381/12, calf 4.80/508/28, foot 4.00/254/8.
-        Compartment("thigh_vein",         15.71, 9.033, 170, -0.52,  416, p_stiffen=28.0,
+        Compartment("thigh_vein",         15.71, 9.033, 170, -0.52,  418, p_stiffen=28.0,
                     drain_resistance=0.600),  # 11
         # CALF p_stiffen 11 -> 28 ON 2026-10-04, leg rebuild stage 2. GRADE A for
         # the quantity: Halliwill, Minson & Joyner 1999 (PMID 10517791) measured
@@ -701,7 +701,7 @@ def default_compartments() -> list[Compartment]:
         # the LEG CAPACITY note above thigh_vein.)
         # init_volume 568 -> 589 re-derived from a settled run; the 21 mL came
         # mostly from splanchnic_vein (1064 -> 1047), total blood volume unchanged.
-        Compartment("calf_vein",           7.30, 6.950, 465, -0.95,  586, p_stiffen=28.0,
+        Compartment("calf_vein",           7.30, 6.950, 465, -0.95,  587, p_stiffen=28.0,
                     drain_resistance=0.100),  # 12
         Compartment("foot_vein",           2.28, 9.263, 259, -1.23,  298, p_stiffen=28.0,
                     drain_resistance=0.140),  # 13
@@ -741,7 +741,7 @@ def default_compartments() -> list[Compartment]:
         # (infra-renal longest, supra-hepatic shortest). Totals are UNCHANGED —
         # 12.00 mL/mmHg and 120 mL — so the IVC as a whole stores what it did.
         # GRADE D: an anatomical proportion, not a measurement.
-        Compartment("ivc",                 2.40, 0.04,   24, -0.08,   39, drain_resistance=CAVOATRIAL_R),  # 14 supra-hepatic
+        Compartment("ivc",                 2.40, 0.04,   24, -0.08,   40, drain_resistance=CAVOATRIAL_R),  # 14 supra-hepatic
         # ---- Cardiac chambers (elastance model; R = valve resistance) ----
         # RA Vinit=155: at RA_EMIN=0.04 and P_ra_eq≈3.8 mmHg → V=60+3.8/0.04=155 mL.
         # End-diastolic (rolling-minimum) CVP ≈ 3 mmHg once RA partially empties ✓
@@ -754,10 +754,10 @@ def default_compartments() -> list[Compartment]:
         # atrial volumes read ~1.5x every other source on both sides and were set
         # aside (source_conflicts F rev. b). Unstressed volume moves volume, not
         # pressure. Pre-registered grid: validation log 2026-10-26.
-        Compartment("right_atrium",        0.35, VALVE_R,  20,  0.0,   80),  # 15
+        Compartment("right_atrium",        0.35, VALVE_R,  20,  0.0,   38),  # 15
         # RV Vinit=163: at RV_EMIN=0.02, P_rv_dia=0.02×(163-80)=1.7 mmHg → CVP can be 2-3 mmHg.
         # ESV=V0+P_pa/E_max=80+15/1.15=93 mL; SV=163-93=70 mL (improved from 56 mL). ✓
-        Compartment("right_ventricle",     0.10, VALVE_R,  38,  0.0,  161),  # 16 EDV≈163 mL
+        Compartment("right_ventricle",     0.10, VALVE_R,  38,  0.0,  155),  # 16 EDV≈163 mL
         # ---- Pulmonary (PVR ≈ 0.08 mmHg·s/mL) ----
         # PULMONARY COMPLIANCES RAISED x5.0 ON 2026-09-03 (was 0.40/0.50/0.80,
         # whole bed 1.70 mL/mmHg). See PULMONARY_COMPLIANCE note above.
@@ -780,12 +780,12 @@ def default_compartments() -> list[Compartment]:
         # NOTE the compartment value is not the measured quantity: C = 6.0 here
         # produces an EFFECTIVE SV/PP of 8.36, because the artery drains during
         # ejection. Calibrate against the measurement, not the parameter.
-        Compartment("pulmonary_art",       6.00, PULMONIC_R, 100, 0.0, 175),  # 17
+        Compartment("pulmonary_art",       6.00, PULMONIC_R, 100, 0.0, 178),  # 17
         Compartment("pulmonary_cap",       2.50, 0.06,   80,  0.0,   106),  # 18
-        Compartment("pulmonary_vein",      4.00, 0.02,  160,  0.0,  199, drain_resistance=VENOATRIAL_R),  # 19
+        Compartment("pulmonary_vein",      4.00, 0.02,  160,  0.0,  200, drain_resistance=VENOATRIAL_R),  # 19
         # ---- Left heart ----
-        Compartment("left_atrium",         0.20, VALVE_R,  15,  0.0,   46),  # 20 EDP≈9
-        Compartment("left_ventricle",      0.08, VALVE_R,  10,  0.0,  147),  # 21 EDV≈160
+        Compartment("left_atrium",         0.20, VALVE_R,  15,  0.0,   32),  # 20 EDP≈9
+        Compartment("left_ventricle",      0.08, VALVE_R,  10,  0.0,  140),  # 21 EDV≈160
         # ---- Coronary ----
         Compartment("coronary",            0.10, 15.0,   20,  0.05,   21),  # 22 flow≈0.3 L/min
         # ---- The other two IVC segments — see the note at `ivc` above ----
@@ -804,8 +804,8 @@ def default_compartments() -> list[Compartment]:
         # adjusting starting volumes instead of re-deriving them.
         # `resistance` is not read by any flow for these two; it is set equal so the
         # two fields cannot silently diverge.
-        Compartment("ivc_renal",           3.60, 0.005,  36, L1_HEIGHT_M,   59, drain_resistance=0.005),  # 23
-        Compartment("ivc_infrarenal",      6.00, 0.005,  60, -0.20,  99, drain_resistance=0.005),  # 24
+        Compartment("ivc_renal",           3.60, 0.005,  36, L1_HEIGHT_M,   61, drain_resistance=0.005),  # 23
+        Compartment("ivc_infrarenal",      6.00, 0.005,  60, -0.20,  102, drain_resistance=0.005),  # 24
     ]
 
 
