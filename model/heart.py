@@ -320,6 +320,21 @@ def klotz_diastolic_pressure(vol: float, v0: float, v30: float) -> float:
 LV_V0_DIA, LV_V30 = klotz_placement(74.0 * _BSA_REF, 11.0 - _PLEURAL_END_EXPIRATION)
 
 
+def wall_rest_factors(x_mmhg: float) -> tuple[float, float, float]:
+    """Factors that re-place the ventricular walls when the pericardium carries
+    `x_mmhg` of the resting end-diastolic filling pressure (2026-11-05, step 3P
+    construction). The measured filling pressure is SPLIT, wall + sac, at the same
+    resting volumes: the LV Klotz curve is placed at (P_LEFT_ED_TM - x) and the RV
+    curve scaled by (P_RIGHT_ED_TM - x) / P_RIGHT_ED_TM. Returns (f_v0, f_v30, f_rv)
+    multiplying lv_v0_dia, lv_v30 and the RV passive pressure. x = 0 -> (1, 1, 1).
+    The atria are NOT re-placed: they fill in ventricular systole, when the sac is
+    nearly slack (step 3P smoke test, 2026-11-03)."""
+    if x_mmhg <= 0.0:
+        return 1.0, 1.0, 1.0
+    v0n, v30n = klotz_placement(74.0 * _BSA_REF, P_LEFT_ED_TM - x_mmhg)
+    return v0n / LV_V0_DIA, v30n / LV_V30, (P_RIGHT_ED_TM - x_mmhg) / P_RIGHT_ED_TM
+
+
 # ---------------------------------------------------------------------------
 # THE PERICARDIUM (2026-10-08) — a shared external pressure, not a compartment
 # ---------------------------------------------------------------------------
@@ -426,13 +441,21 @@ P_LEFT_ED_TM = 11.0 - _PLEURAL_END_EXPIRATION     # mmHg, Chemla wedge, transmur
 P_RIGHT_ED_TM = 4.0 - _PLEURAL_END_EXPIRATION     # mmHg, Richter RVEDP, transmural
 
 
-def pericardial_capacity(lv_v0_dia, lv_v30, rv_v0, rv_emin, la_v0, la_emin,
-                         ra_v0, ra_emin) -> float:
+def pericardial_capacity(lv_v0_dia, lv_v30, rv_v0, rv_emin, la_v0, la_emax,
+                         ra_v0, ra_emax) -> float:
     """Pericardial capacity (mL): the four chambers' volumes at their sourced
-    end-diastolic pressures, each from its own wall law."""
+    end-diastolic pressures, each from its own wall law, AT THE SAME INSTANT —
+    ventricular end-diastole.
+
+    CORRECTED 2026-11-05: the atria entered at their PASSIVE volume (V0 + EDP/E_min),
+    but at ventricular end-diastole they have just CONTRACTED, so they sit at their
+    end-of-contraction volume, V0 + EDP/E_max. The old term overstated the reference
+    capacity by ~33 mL (LA ~60 -> 32, RA ~47 -> 42): the sac sat ~34 mL slack at rest
+    instead of meeting the heart at end-diastole as designed (measured resting heart
+    at LV end-diastole 389 mL vs capacity 423 -> ~390)."""
     lv = lv_v0_dia + (lv_v30 - lv_v0_dia) * (P_LEFT_ED_TM / KLOTZ_AN) ** (1.0 / KLOTZ_BN)
-    return (lv + la_v0 + P_LEFT_ED_TM / la_emin
-            + rv_v0 + P_RIGHT_ED_TM / rv_emin + ra_v0 + P_RIGHT_ED_TM / ra_emin)
+    return (lv + la_v0 + P_LEFT_ED_TM / la_emax
+            + rv_v0 + P_RIGHT_ED_TM / rv_emin + ra_v0 + P_RIGHT_ED_TM / ra_emax)
 
 
 PERI_VK = 30.0         # mL — GRADE E, to be pinned

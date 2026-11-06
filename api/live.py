@@ -45,7 +45,7 @@ from model.pharmacology import combined_drug_factors, NEUTRAL_FACTORS
 from model.perfusion import (
     cerebral_perfusion_pressure, coronary_perfusion_pressure, buckberg_index
 )
-from model.heart import RA_EMIN, klotz_diastolic_pressure
+from model.heart import RA_EMIN, klotz_diastolic_pressure, wall_rest_factors
 from model.respiration import respiratory_sinus_arrhythmia
 
 live_bp = Blueprint("live", __name__)
@@ -354,7 +354,8 @@ class LiveSimulator:
                 # LVEDP at the last END-DIASTOLE, held for the beat (see circulation.py).
                 # This read the INSTANTANEOUS passive pressure, so the value the UI
                 # showed depended on where in the cycle the push happened to land.
-                p_lvedp = klotz_diastolic_pressure(self._lv_ed, params.lv_v0_dia, params.lv_v30)
+                _f0, _f30, _ = wall_rest_factors(params.pericardial_rest_mmhg)
+                p_lvedp = klotz_diastolic_pressure(self._lv_ed, params.lv_v0_dia * _f0, params.lv_v30 * _f30)
 
                 self._cvp_win.append(p_ra)
                 self._map_win.append(p_ao)

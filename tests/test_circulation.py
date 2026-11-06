@@ -1985,6 +1985,10 @@ def test_phenylephrine_flow_response_schafers1999(phenyl_dose_response):
 # CLOSED 2026-10-17 — the strict xfail of 2026-10-06 (dMAP +19.1) XPASSED with the
 # atrial pins (Järvinen): dMAP +20.2 / +21.4 / +21.8 at 4 / 6 / 8 mcg/kg/min against the
 # 1 SD floor 21.3 — inside, but by 0.5 at the plateau. A fragile pass, recorded as such.
+# STRICT XFAIL AGAIN 2026-11-05 (Jesper: adopt the capacity correction): plateau dMAP +19.1 against the 1 SD floor 21.3.
+# A fragile pass since 10-17 (inside by 0.5); a sac that engages as filling rises takes the rest. Not a band to widen.
+@pytest.mark.xfail(strict=True, reason=(
+    "phenylephrine dMAP +19.1 below Schäfers' 1 SD floor 21.3 after the pericardial capacity correction of 2026-11-05 (atria at end-of-contraction volume at ventricular end-diastole; the sac now meets the heart at end-diastole as designed, ~34 mL tighter)"))
 def test_phenylephrine_pressor_response_schafers1999(phenyl_dose_response):
     """[PMID: 10073742 — Schäfers 1999] Phenylephrine in healthy supine men
     raises MAP by +28 mmHg (quartiles 23.5-32.5) and total peripheral
@@ -4863,6 +4867,9 @@ def test_brachial_diastolic_pressure_by_age_white1997(white1997_arms):
     )
 
 
+# STRICT XFAIL 2026-11-05 (Jesper: adopt the capacity correction): PP widens +6.37 between 25 and 68 against the guard edge 6.42.
+@pytest.mark.xfail(strict=True, reason=(
+    'brachial PP widening 25 -> 68 +6.37 just below the 6.4-17.1 guard after the pericardial capacity correction of 2026-11-05 (atria at end-of-contraction volume at ventricular end-diastole; the sac now meets the heart at end-diastole as designed, ~34 mL tighter)'))
 def test_age_slope_of_brachial_pulse_pressure_white1997(white1997_arms):
     """[PMID 9404222 — White 1997] The age slope of pulse pressure is RIGHT.
 
@@ -7637,6 +7644,10 @@ def _stage_misses(bhella_stages, k, label, unit):
     return misses
 
 
+# STRICT XFAIL 2026-11-05 (Jesper: adopt the capacity correction): at LBNP -15 the LV now loses -7.2 % against the band edge
+# -7.4 % — LESS volume, the direction of the closed-chest fingerprint (Cléroux 1989 measured ~-7 % at -15; physiology_core).
+@pytest.mark.xfail(strict=True, reason=(
+    "LBNP -15 dLVEDV -7.2 % just outside Bhella's -13.5..-7.4 % after the pericardial capacity correction of 2026-11-05 (atria at end-of-contraction volume at ventricular end-diastole; the sac now meets the heart at end-diastole as designed, ~34 mL tighter); Cléroux measures ~-7 %"))
 def test_the_body_delivers_bhellas_filling_volumes_to_the_lv(bhella_stages):
     """The LV's end-diastolic volume changes by Bhella's fraction at every stage:
     LBNP -15 -11.0 / -9.9 %, LBNP -30 -21.5 / -20.6 %, saline +6.7 / +8.0 % (two

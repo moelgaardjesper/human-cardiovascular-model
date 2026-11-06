@@ -44,7 +44,7 @@ from .heart import (
     VENTRICULAR_T_MAX_SCALE, AV_PLANE_F_LA, AV_PLANE_F_RA, AV_ATRIAL_SHARE_LA, AV_ATRIAL_SHARE_RA,
     RA_EMAX, RA_EMIN, LA_EMAX, LA_EMIN,
     atrial_phase_offset,
-    pericardial_pressure, pericardial_capacity, PERI_K, PERI_VK,
+    pericardial_pressure, pericardial_capacity, PERI_K, PERI_VK, wall_rest_factors,
 )
 from .gravity import (hydrostatic_delta_mmhg, GravityEnvironment, smooth_tilt_profile,
                       positional_itp_mmhg, articulated_hydrostatic_delta_mmhg)
@@ -360,6 +360,12 @@ class SimParams:
         self.la_emin = LA_EMIN
         self.ra_emax = RA_EMAX
         self.ra_emin = RA_EMIN
+        # THE SAC'S SHARE OF RESTING FILLING PRESSURE, mmHg (2026-11-05). 0 = the
+        # walls carry all of it (option 1, 2026-10-11). > 0 = the sac carries X at the
+        # resting end-diastolic volumes and the ventricular walls are re-placed to carry
+        # the rest (heart.wall_rest_factors), so the resting heart is unchanged by
+        # construction. Grade C/D: the closed-chest magnitude is not yet measured.
+        self.pericardial_rest_mmhg = 0.0
         # Pericardial capacity from the walls just set (heart.py). apply_cardiac
         # recomputes it for a built patient.
         self.set_pericardial_capacity()
@@ -666,8 +672,15 @@ class SimParams:
         self.pericardial_capacity_ml = pericardial_capacity(
             self.lv_v0_dia, self.lv_v30,
             c[i["right_ventricle"]].unstressed_volume, self.rv_emin,
-            c[i["left_atrium"]].unstressed_volume, self.la_emin,
-            c[i["right_atrium"]].unstressed_volume, self.ra_emin)
+            c[i["left_atrium"]].unstressed_volume, self.la_emax,
+            c[i["right_atrium"]].unstressed_volume, self.ra_emax)
+        # Sac engaged at rest: lower the capacity so the sac presses X on the same
+        # contents (the walls are evaluated un-re-placed above, so the contents are the
+        # sourced resting volumes).
+        x = getattr(self, "pericardial_rest_mmhg", 0.0)
+        if x > 0.0:
+            self.pericardial_capacity_ml -= self.pericardial_vk_ml * math.log(
+                x / self.pericardial_k_mmhg + 1.0)
 
     # Raising here turns a silent no-op into an immediate, named failure.
     def __setattr__(self, name: str, value) -> None:
@@ -864,8 +877,9 @@ def _septal_gradient(V, params, x):
     """Passive (diastolic) LV-minus-RV pressure with the septum shifted x mL into
     the RV: the LV free wall then encloses V_lv - x, the RV free wall V_rv + x."""
     comp_rv_v0 = params.compartments[IDX["right_ventricle"]].unstressed_volume
-    return (klotz_diastolic_pressure(V[IDX["left_ventricle"]] - x, params.lv_v0_dia, params.lv_v30)
-            - rv_diastolic_pressure(V[IDX['right_ventricle']] + x, comp_rv_v0, params.rv_emin))
+    f0, f30, frv = wall_rest_factors(params.pericardial_rest_mmhg)
+    return (klotz_diastolic_pressure(V[IDX["left_ventricle"]] - x, params.lv_v0_dia * f0, params.lv_v30 * f30)
+            - frv * rv_diastolic_pressure(V[IDX['right_ventricle']] + x, comp_rv_v0, params.rv_emin))
 
 
 def _odes(t: float, V: np.ndarray, params: SimParams, baro: BaroreflexController | None,
@@ -1053,15 +1067,16 @@ def _odes(t: float, V: np.ndarray, params: SimParams, baro: BaroreflexController
 
     # Cardiac chambers (time-varying elastance)
     _x_spt = av_ref.get("spt_x", 0.0) if av_ref is not None else 0.0
+    _wf0, _wf30, _wfrv = wall_rest_factors(params.pericardial_rest_mmhg)
     P[i["left_ventricle"]] = max(0.0,
         e_v * lv_emax_eff * (V[i["left_ventricle"]] - comp[i["left_ventricle"]].unstressed_volume)
-        + (1.0 - e_v) * klotz_diastolic_pressure(V[i["left_ventricle"]] - _x_spt, params.lv_v0_dia, params.lv_v30))
+        + (1.0 - e_v) * klotz_diastolic_pressure(V[i["left_ventricle"]] - _x_spt, params.lv_v0_dia * _wf0, params.lv_v30 * _wf30))
     # RV: systolic elastance line blended with Rommel's measured exponential
     # filling curve (heart.py rv_diastolic_pressure), the septal shift acting on the
     # passive law only, as on the left.
     _rv_v0 = comp[i["right_ventricle"]].unstressed_volume
     P[i["right_ventricle"]] = max(0.0, e_v * rv_emax_eff * (V[i["right_ventricle"]] - _rv_v0)
-                                  + (1.0 - e_v) * rv_diastolic_pressure(V[i["right_ventricle"]] + _x_spt, _rv_v0, params.rv_emin))
+                                  + (1.0 - e_v) * _wfrv * rv_diastolic_pressure(V[i["right_ventricle"]] + _x_spt, _rv_v0, params.rv_emin))
     _sh_la, _sh_ra = _av_shift(V, params, av_ref)
     P[i["left_atrium"]]     = _cardiac_pressure(V[i["left_atrium"]],     comp[i["left_atrium"]].unstressed_volume + _sh_la, E_la)
     P[i["right_atrium"]]    = _cardiac_pressure(V[i["right_atrium"]],    comp[i["right_atrium"]].unstressed_volume + _sh_ra, E_ra)
@@ -1914,7 +1929,8 @@ def run_simulation(
         # at the CURRENT volume every step, so the reported value was a cycle mean
         # including systole (~3 mmHg where the end-diastolic value is ~11), and coronary
         # perfusion pressure (DBP - LVEDP) and the Buckberg index were OVERESTIMATED.
-        p_lvedp = klotz_diastolic_pressure(_av_ref["lv_ed"], params.lv_v0_dia, params.lv_v30)
+        _f0, _f30, _ = wall_rest_factors(params.pericardial_rest_mmhg)
+        p_lvedp = klotz_diastolic_pressure(_av_ref["lv_ed"], params.lv_v0_dia * _f0, params.lv_v30 * _f30)
 
         # Current tilt for perfusion calculations
         tilt_now = smooth_tilt_profile(
