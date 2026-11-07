@@ -1995,10 +1995,11 @@ def test_phenylephrine_flow_response_schafers1999(phenyl_dose_response):
 # A fragile pass since 10-17 (inside by 0.5); a sac that engages as filling rises takes the rest. Not a band to widen.
 # CLOSED 2026-11-06 by the closed-chest constraint adopted 2026-11-06 (step 3C) with init volumes re-derived: plateau dMAP back inside the 1 SD band.
 # STRICT XFAIL 2026-11-07 — chambers scaled by Luu's RAW age/sex ratios (the model-measured 'transmission' divisor dropped; Jesper:
-# adopt): plateau dMAP +20.2 against the 1 SD floor 21.3. Schäfers' men are young, and the model under-fills a young heart (wedge ~6
-# against ~11-12.7 measured) — a central blood volume deficit, traced to the body layer, not to this band.
+# adopt): plateau dMAP +20.2 against the 1 SD floor 21.3. The scenario is the reference BODY age-matched to 27 (Schäfers gives no
+# size), so the 2026-11-07 size-scaling fix cannot reach it; what moved it is the age layer. Of a young heart's ~0.75 mmHg lower
+# filling, ~0.7 is the young elastic arteries holding more blood (validation log 2026-11-07). Not traced further.
 @pytest.mark.xfail(strict=True, raises=AssertionError, reason=(
-    'after raw Luu chamber ratios (2026-11-07): plateau dMAP +20.2 vs 1 SD floor 21.3; young-heart under-filling, not traced'))
+    'after raw Luu chamber ratios (2026-11-07): plateau dMAP +20.2 vs 1 SD floor 21.3; age layer at the reference body, not traced'))
 def test_phenylephrine_pressor_response_schafers1999(phenyl_dose_response):
     """[PMID: 10073742 — Schäfers 1999] Phenylephrine in healthy supine men
     raises MAP by +28 mmHg (quartiles 23.5-32.5) and total peripheral

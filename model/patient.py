@@ -188,12 +188,31 @@ def apply_cardiac(params, cardiac: dict) -> None:
         params.vascular_outflow_scale = cardiac["vascular_outflow_scale"]
     if "hip_height_m" in cardiac:
         params.hip_height_m = cardiac["hip_height_m"]
+    # BODY SIZE (2026-11-07). Elastances (mmHg/mL) and resistances fall as
+    # 1/size, compliances (mL/mmHg) and reference volumes rise with it, so a
+    # uniformly larger patient has the reference patient's pressures. The LV
+    # diastolic curve already scaled through lv_dia_volume_factor; nothing
+    # else in the heart did (validation log 2026-11-07). Exactly 1 at the
+    # reference patient.
+    s = cardiac.get("size_scale", 1.0)
     for tag in ("lv", "rv", "la", "ra"):
         setattr(params, f"{tag}_emax",
-                base_max[tag] * cardiac.get(f"{tag}_emax_factor", 1.0))
+                base_max[tag] * cardiac.get(f"{tag}_emax_factor", 1.0) / s)
         if tag in base_min:
             setattr(params, f"{tag}_emin",
-                    base_min[tag] * cardiac.get(f"{tag}_emin_factor", 1.0))
+                    base_min[tag] * cardiac.get(f"{tag}_emin_factor", 1.0) / s)
+    from .compartments import TRICUSPID_R, PULMONIC_R, MITRAL_R, AORTIC_R, AORTIC_ZC
+    from .heart import PERI_VK
+    # Applied to a FRESH SimParams (this function's contract), so the two
+    # SimParams defaults below are scaled once.
+    params.tricuspid_r = TRICUSPID_R / s
+    params.pulmonic_r = PULMONIC_R / s
+    params.mitral_r = MITRAL_R / s
+    params.aortic_r = AORTIC_R / s
+    params.aortic_zc = AORTIC_ZC / s
+    params.chest_slope = params.chest_slope / s
+    params.septal_compliance = params.septal_compliance * s
+    params.pericardial_vk_ml = PERI_VK * s
     # The pericardium is sized by THIS patient's walls, just set (heart.py
     # pericardial_capacity): calculated anatomy, not measured from a run.
     params.set_pericardial_capacity()
@@ -309,7 +328,17 @@ def scale_compartments(
             unstressed_volume=c.unstressed_volume * bv_scale * sex_vol,
             init_volume=c.init_volume * bv_scale * sex_vol,
             height_m=c.height_m * height_scale,
-            # resistance deliberately unscaled here; tiers 1-3 below adjust it
+            # SIZE SCALES CONDUCTANCE (2026-11-07). A larger body has
+            # proportionally more vessels in parallel, so every resistance
+            # falls as 1/size — the reason cardiac index and SVR index are the
+            # size-normalised clinical quantities. Until this date no
+            # resistance scaled, which left a large patient with a big heart
+            # and small-body resistances: wedge 6.9 instead of 9.6 at 185/91
+            # (validation log 2026-11-07). Tiers 1-3 below still calibrate
+            # on top, against size-scaled references.
+            resistance=c.resistance / bv_scale,
+            drain_resistance=(c.drain_resistance / bv_scale
+                              if c.drain_resistance else c.drain_resistance),
         ))
 
     from .compartments import HIP_HEIGHT_M
@@ -317,6 +346,8 @@ def scale_compartments(
         "hr_bpm": hr_bpm if hr_bpm is not None else 70.0,
         # The hip pivot scales with stature exactly as every height_m does.
         "hip_height_m": HIP_HEIGHT_M * height_scale,
+        # Body size for every EXTENSIVE cardiac quantity — see apply_cardiac.
+        "size_scale": bv_scale,
         "sex": sex,
         # THE BAROREFLEX AGES — backlog item 51, IN TWO TERMS since 2026-10-18.
         # End-organ responsiveness FALLS (White 1997: the older subjects reach a
@@ -372,8 +403,10 @@ def scale_compartments(
         # Imported, not re-typed — see the REFERENCE_* note in baroreflex.py.
         # These were two independent copies of one operating point until
         # 2026-09-15 (backlog item 50).
+        # Divided by body size because the base resistances already are
+        # (above): otherwise the size correction would be counted twice.
         svr_ref      = _svr(REFERENCE_MAP_MMHG, REFERENCE_CVP_MMHG,
-                            REFERENCE_CO_LPM)
+                            REFERENCE_CO_LPM) / bv_scale
         svr_scale    = svr_measured / svr_ref
         # Scale the ARTERIOLES, which since 2026-08-21 live on the venous side
         # of each exchange bed (see ARTERIOLAR_SEGMENTS). Matching on "art" in the
@@ -395,7 +428,7 @@ def scale_compartments(
     # Tier 3: pulmonary calibration from PCWP / PAP
     if pcwp_mmhg is not None and pap_mean_mmhg is not None and cardiac_output_lpm is not None:
         pvr_measured = _pvr(pap_mean_mmhg, pcwp_mmhg, cardiac_output_lpm)
-        pvr_ref      = _pvr(15.0, 9.0, 5.0)
+        pvr_ref      = _pvr(15.0, 9.0, 5.0) / bv_scale   # size-scaled, as svr_ref
         pvr_scale    = pvr_measured / pvr_ref
         for c in scaled:
             if "pulmonary" in c.name:
