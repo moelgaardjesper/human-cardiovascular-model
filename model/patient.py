@@ -102,16 +102,15 @@ SEX_CHAMBER_FACTORS = {
         "right_atrium":    {"volume": 1.0, "emax": 1.0},
     },
     "female": {
-        # These are NOT the raw female/male ratios. In a closed loop a chamber
-        # does not keep the volume it is assigned — the circulation pushes back,
-        # so an assigned factor is only partly transmitted. Measured
-        # transmission, at fixed body size: LV 0.62, RV 0.71, RA 0.87. The
-        # factors below are the raw ratios divided through by that, and were
-        # then verified by re-measuring against Luu's and Gao's female columns.
-        # Same lesson as RA_EMIN in heart.py: elastance and V0 set VOLUME, and
-        # how much volume they actually get is the circulation's decision.
-        "left_ventricle":  {"volume": 0.804, "emax": 1.032},
-        "right_ventricle": {"volume": 0.769, "emax": 1.094},
+        # The RAW female/male ratios (Luu, Gao) since 2026-11-07. Until then
+        # each was divided by a closed-loop "transmission" (LV 0.62, RV 0.71,
+        # RA 0.87) measured on the item-32 model; re-measured on the rebuilt
+        # heart it was 0.15 / 0.30 / 0.38, so the divisor had become a fit
+        # compensating for structure — see the note in aging.py. The wall
+        # follows anatomy; whether the chamber reaches the female volume is an
+        # outcome, tested by test_female_chamber_volumes_match_luu_and_gao.
+        "left_ventricle":  {"volume": 0.878, "emax": 1.032},
+        "right_ventricle": {"volume": 0.837, "emax": 1.094},
         # LEFT ATRIUM DELIBERATELY 1.0 — it cannot be scaled this way. Measured
         # transmission is NEGATIVE (-0.11): assigning a LARGER LA volume made the
         # chamber SMALLER. That is the pooled-volume problem confirmed from a
@@ -122,7 +121,7 @@ SEX_CHAMBER_FACTORS = {
         # LA is the one chamber that is LARGER indexed to BSA (1.076), so this is
         # a real gap, not a rounding decision. It needs 25a's structural fix.
         "left_atrium":     {"volume": 1.0,   "emax": 1.042},
-        "right_atrium":    {"volume": 0.928, "emax": 1.114},
+        "right_atrium":    {"volume": 0.937, "emax": 1.114},
     },
 }
 

@@ -204,13 +204,16 @@ LUU_RVEDV_MEN = ((39.5, 91.0), (49.5, 88.0), (59.5, 86.0), (69.5, 80.0))
 LUU_RVESV_MEN = ((39.5, 45.0), (49.5, 42.0), (59.5, 41.0), (69.5, 37.0))
 LUU_RVEF_MEN  = ((39.5, 51.0), (49.5, 53.0), (59.5, 53.0), (69.5, 54.0))
 
-# Closed-loop transmission of an ASSIGNED chamber volume factor, measured during
-# the sex work (item 32). A chamber does not keep the volume it is given — the
-# circulation pushes back — so an assigned factor is only partly realised and
-# the raw ratio has to be divided through by the transmission to land on target.
-# Same lesson as RA_EMIN in heart.py: elastance and V0 set volume, and how much
-# volume they actually get is the circulation's decision.
-_VOLUME_TRANSMISSION = {"lv": 0.62, "rv": 0.71, "ra": 0.87}
+# RAW RATIOS, NO "TRANSMISSION" DIVISOR (2026-11-07). Until then each ratio was
+# divided by a closed-loop "transmission" (LV 0.62, RV 0.71, RA 0.87) measured on
+# the model during the sex work (item 32), so an assigned wall factor would LAND
+# the chamber on Luu's volume. Re-measured on the rebuilt heart it was LV 0.15,
+# RV 0.30, RA 0.38: a bigger wall now barely changes chamber volume and mainly
+# LOWERS filling pressure, because the circulation sets the heart's volume and the
+# wall sets the pressure at that volume. Re-fitting the divisor would have inflated
+# Luu's ratios about sevenfold — a fit compensating for structure. So the wall
+# follows anatomy (the raw ratio), and whether the chamber then reaches Luu's
+# volume is an OUTCOME the tests judge, not a target forced here.
 # The LEFT ATRIUM IS ABSENT DELIBERATELY. Its measured transmission is NEGATIVE
 # (-0.11): assigning a larger LA volume made the chamber smaller, because the
 # pulmonary veins, LA and LV behave as one pooled volume. Item 32 excluded the
@@ -227,15 +230,13 @@ def chamber_age_factors(age_years: float,
         {"left_ventricle": {"volume": v, "emax": e}, "right_ventricle": {...}}
     All factors are exactly 1.0 at the reference age.
 
-    `volume` is the Luu end-diastolic-volume ratio, divided by the closed-loop
-    transmission so that the chamber actually LANDS near the target rather than
-    at a fraction of it. `emax` is the raw ejection-fraction ratio, applied
-    directly, because ESV = V0 + P_sys/E_max and the EF difference is what E_max
-    carries (again following item 32).
+    `volume` is the raw Luu end-diastolic-volume ratio (see the note above on
+    why it is not divided by a closed-loop transmission). `emax` is the raw
+    ejection-fraction ratio, applied directly, because ESV = V0 + P_sys/E_max
+    and the EF difference is what E_max carries (again following item 32).
     """
     def _factor(table, tag):
-        raw = at_age(table, age_years) / at_age(table, reference_age)
-        return 1.0 + (raw - 1.0) / _VOLUME_TRANSMISSION[tag]
+        return at_age(table, age_years) / at_age(table, reference_age)
 
     return {
         "left_ventricle": {

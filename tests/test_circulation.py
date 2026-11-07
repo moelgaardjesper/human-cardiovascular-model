@@ -1994,6 +1994,11 @@ def test_phenylephrine_flow_response_schafers1999(phenyl_dose_response):
 # STRICT XFAIL AGAIN 2026-11-05 (Jesper: adopt the capacity correction): plateau dMAP +19.1 against the 1 SD floor 21.3.
 # A fragile pass since 10-17 (inside by 0.5); a sac that engages as filling rises takes the rest. Not a band to widen.
 # CLOSED 2026-11-06 by the closed-chest constraint adopted 2026-11-06 (step 3C) with init volumes re-derived: plateau dMAP back inside the 1 SD band.
+# STRICT XFAIL 2026-11-07 — chambers scaled by Luu's RAW age/sex ratios (the model-measured 'transmission' divisor dropped; Jesper:
+# adopt): plateau dMAP +20.2 against the 1 SD floor 21.3. Schäfers' men are young, and the model under-fills a young heart (wedge ~6
+# against ~11-12.7 measured) — a central blood volume deficit, traced to the body layer, not to this band.
+@pytest.mark.xfail(strict=True, raises=AssertionError, reason=(
+    'after raw Luu chamber ratios (2026-11-07): plateau dMAP +20.2 vs 1 SD floor 21.3; young-heart under-filling, not traced'))
 def test_phenylephrine_pressor_response_schafers1999(phenyl_dose_response):
     """[PMID: 10073742 — Schäfers 1999] Phenylephrine in healthy supine men
     raises MAP by +28 mmHg (quartiles 23.5-32.5) and total peripheral
@@ -3116,9 +3121,7 @@ def test_male_patient_is_bit_for_bit_the_reference():
 # right-atrial band already uses Gao's. A strict xfail opened the same day
 # (female LVEDV 58.3 < 60) is closed by this, and the closure is BY the re-set,
 # not by the model moving — stated so nobody reads it as a fix.
-# STRICT XFAIL 2026-11-06 — the closed-chest constraint adopted 2026-11-06 (step 3C, Xc 1.75, s 0.15; Jesper overrode the registered rule).
-@pytest.mark.xfail(strict=True, reason=(
-    "after the closed-chest constraint (2026-11-06): female RAVmax 42.5 mL/m2 just below Maceira's 43 (marginal)"))
+# STRICT XFAIL 2026-11-06 (chest layer: female RAVmax 42.5 vs Maceira's 43); CLOSED 2026-11-07 when the chambers took Luu's RAW ratios.
 def test_female_chamber_volumes_match_luu_and_gao():
     """Female chamber volumes are smaller than male, and land in their sourced bands.
 
@@ -3974,13 +3977,9 @@ def test_patient_age_scales_only_the_elastic_arteries():
         pytest.approx(0.75, abs=0.02)
 
 
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason=(
-    "KNOWN GAP, 2026-10-06, NOT YET DIAGNOSED. When written: MAP moved 4.8 mmHg as "
-    "pulse pressure widened 10.4 with age, where Franklin has MAP nearly flat. "
-    "RE-MEASURED 2026-11-01 THE FAILURE IS A DIFFERENT ONE: pulse pressure stops "
-    "widening after 55 (45.3 / 49.2 / 49.0 at 30 / 55 / 80; the same on db1ed54), "
-    "where Franklin's keeps widening. Cause not traced."
-))
+# STRICT XFAIL 2026-10-06 to 2026-11-07 (pulse pressure stopped widening after 55: 45.3 / 49.2 / 49.0 at 30 / 55 / 80). CLOSED
+# 2026-11-07 when the chambers took Luu's RAW age ratios (the old divisor shrank an 80-year-old LV wall to 0.89 instead of
+# Luu's 0.93). Which output carried the closure was not traced.
 def test_age_widens_pulse_pressure_the_way_framingham_measured_it():
     """[PMID 9236450] The endpoint, not the parameter.
 
@@ -5354,9 +5353,7 @@ def test_phenylephrine_abolishes_preload_dependency_pmid31705432(phenylephrine_d
     )
 
 
-# STRICT XFAIL 2026-11-06 — the closed-chest constraint adopted 2026-11-06 (step 3C, Xc 1.75, s 0.15; Jesper overrode the registered rule).
-@pytest.mark.xfail(strict=True, reason=(
-    'after the closed-chest constraint (2026-11-06): phenylephrine bradycardia in tilt -2..-6 % vs IQR -15..-6 %'))
+# STRICT XFAIL 2026-11-06 (chest layer: bradycardia -2..-6 % vs IQR -15..-6 %); CLOSED 2026-11-07 when the chambers took Luu's RAW ratios.
 def test_phenylephrine_reflex_bradycardia_during_tilt_pmid31705432(phenylephrine_during_tilt):
     """[PMID 31705432] Phenylephrine slows the heart by 10 % (IQR -15 to -6).
 
