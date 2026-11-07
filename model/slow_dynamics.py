@@ -127,6 +127,24 @@ STRESS_RELAX_COMPARTMENTS = (
     "ivc_renal", "ivc_infrarenal",     # the IVC split, items 65 and 72
 )
 
+# THE LEG VEINS CREEP FASTER AND LESS — HUMAN VALUES (2026-11-07), grade C.
+# The dog numbers above made a 28-year-old's legs keep pooling for 10 min under
+# LBNP -70 (+224 mL after 3.5 min), where Lundvall 1993 (PMID 8475742) measured
+# intravascular filling COMPLETE at ~3.5 min with labelled red cells. Removing
+# leg creep fixed the plateau but dropped pooling to 587 mL against his 870:
+# the elastic leg (Halliwill 1999's 1 mmHg/s RAMP curves) is too small, and
+# Halliwill's own Table 1 says why — held steps take 1.46-1.83x the ramp
+# volume. So human leg veins DO creep, quickly:
+#   tau  70 s  — Lundvall's plateau by ~3.5 min, i.e. three time constants
+#   f    0.20  — pinned on Lundvall's 870 mL at 3.5 min (legs without feet:
+#                880); total/elastic 1.50 then sits inside Halliwill's
+#                1.46-1.83, which was not a target; creep 3.5 -> 10 min +33 mL
+#                against Halliwill's creep-plus-leak bound of ~80.
+LEG_RELAX_COMPARTMENTS = ("thigh_vein", "calf_vein", "foot_vein")
+TAU_STRESS_RELAX_LEG = 70.0   # s
+RELAX_FRACTION_LEG = 0.20
+K_RELAX_LEG = RELAX_FRACTION_LEG / (1.0 - RELAX_FRACTION_LEG)
+
 
 # ---------------------------------------------------------------------------
 # Phase 2 — transcapillary refill (Starling filtration)
@@ -659,10 +677,12 @@ def _update_stress_relaxation(state: SlowState, dt_slow: float,
     """
     for idx in state.relax_idx:
         c = compartments[idx]
-        target = K_RELAX * c.compliance * (P[idx] - state.p_ref[idx])
-        state.v0_relax_ml[idx] += (
-            (target - state.v0_relax_ml[idx]) * dt_slow / TAU_STRESS_RELAX
-        )
+        if c.name in LEG_RELAX_COMPARTMENTS:
+            k, tau = K_RELAX_LEG, TAU_STRESS_RELAX_LEG
+        else:
+            k, tau = K_RELAX, TAU_STRESS_RELAX
+        target = k * c.compliance * (P[idx] - state.p_ref[idx])
+        state.v0_relax_ml[idx] += (target - state.v0_relax_ml[idx]) * dt_slow / tau
 
 
 def _advance_pressure_filter(state: SlowState, t: float, P: np.ndarray) -> None:
