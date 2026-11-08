@@ -274,19 +274,22 @@ ADH_MAX_SVR_FRACTION  = 0.13
 # GRADE D: mass is a proxy for exchange surface, and Winter's masses are
 # cadaveric. The fractions are the only new numbers here.
 #
-# AND A SEPARATE QUESTION THIS RAISES, RECORDED NOT ACTED ON: Lundvall's own
-# tissue masses are legs + buttocks 23-24 kg against upper-body muscle and skin
-# 10-12 kg, yet this table gives the upper body 0.30 and the whole leg 0.20.
-# If share tracked exchange mass the leg should outweigh the upper body. Changing
-# it would move the Lister 1963 refill trajectory that KF_TOTAL is validated
-# against, so it needs its own measurement pass.
+# THE LEG OUTWEIGHS THE UPPER BODY — ACTED ON 2026-11-08, grade C. Lundvall's
+# own tissue masses are legs + buttocks 23-24 kg against upper-body muscle and
+# skin 10-12 kg, while this table gave the upper body 0.30 and the whole leg
+# 0.20. Renal 0.15 and splanchnic 0.35 are kept (mass is no proxy across tissue
+# TYPES); the remaining 0.50 is split by Lundvall's masses: leg 0.34, upper body
+# 0.16, the leg then re-partitioned by Winter's fractions as before. KF_TOTAL
+# is unchanged. Replaying Lundvall (28 y, LBNP -70, 10 min) the net plasma loss
+# goes -186 -> -408 mL against his -491 +/- 29 SE (range 323-564), and the
+# Lister 1963 refill trajectory this was feared to move still passes.
 CAPILLARY_BEDS = (
-    ("upper_body_art",  "upper_body_vein",  0.30),
+    ("upper_body_art",  "upper_body_vein",  0.16),
     ("renal_art",       "renal_vein",       0.15),
     ("splanchnic_art",  "splanchnic_vein",  0.35),
-    ("lower_body_art",  "thigh_vein",       0.1242),
-    ("lower_body_art",  "calf_vein",        0.0578),
-    ("lower_body_art",  "foot_vein",        0.0180),
+    ("lower_body_art",  "thigh_vein",       0.34 * 0.621),
+    ("lower_body_art",  "calf_vein",        0.34 * 0.289),
+    ("lower_body_art",  "foot_vein",        0.34 * 0.090),
 )
 
 # Plasma protein and oncotic pressure. Normal plasma protein ~70 g/L over a
