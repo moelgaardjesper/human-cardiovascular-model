@@ -386,16 +386,27 @@ def test_stress_relaxation_decays_cvp_after_volume_load():
     rise = peak - base
     assert rise > 0.5, f"bolus did not raise CVP meaningfully: +{rise:.2f} mmHg"
 
-    # Without the mechanism, CVP must NOT decay — this is the control, and it
-    # confirms the decay below is the mechanism rather than some other drift.
+    # THE CONTROL ARM IS SUBTRACTED, NOT REQUIRED TO BE FLAT (Jesper,
+    # 2026-11-08). After the bolus blood keeps redistributing into the
+    # splanchnic veins through their drainage resistance (doubled 2026-08-26,
+    # after this test was written): with slow dynamics OFF, CVP falls
+    # 11.90 -> 11.73 between 160 and 200 s and is then flat. That fall happens
+    # in both arms, so it is credited to neither: the mechanism is given its
+    # arm's decay MINUS the control arm's decay over the same window. A single
+    # later read does not work, because since 2026-11-07 the leg veins creep
+    # within about a minute, so any read late enough to miss the redistribution
+    # also misses part of the creep (300 s gave 10.4 %).
     off_peak, off_late = cvp_at(off, 160), cvp_at(off, 880)
-    assert abs(off_late - off_peak) < 0.15, (
-        f"CVP drifted without stress relaxation ({off_peak:.3f} -> {off_late:.3f}); "
-        f"the decay below cannot be attributed to the mechanism"
+    off_decay = off_peak - off_late
+    # The control must still show no mechanism of its own: whatever it does
+    # is small beside the rise (redistribution only, ~3 %).
+    assert abs(off_decay) < 0.1 * rise, (
+        f"CVP moved {off_decay:+.3f} mmHg without stress relaxation, "
+        f"{abs(off_decay) / rise * 100:.0f} % of the rise; the control is not quiescent"
     )
 
     # With it, CVP decays toward the calibrated fraction of the rise.
-    dissipated = (peak - late) / rise
+    dissipated = ((peak - late) - off_decay) / rise
     assert dissipated > 0.15, (
         f"stress relaxation dissipated only {dissipated * 100:.1f}% of the CVP rise"
     )
