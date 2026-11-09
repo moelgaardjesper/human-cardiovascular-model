@@ -320,6 +320,21 @@ def klotz_diastolic_pressure(vol: float, v0: float, v30: float) -> float:
 LV_V0_DIA, LV_V30 = klotz_placement(74.0 * _BSA_REF, 11.0 - _PLEURAL_END_EXPIRATION)
 
 
+def atrial_rest_factors(x_mmhg: float) -> tuple[float, float]:
+    """Factors on the passive atrial elastance (E_min) that re-place the atria
+    when the CLOSED-CHEST constraint carries `x_mmhg` of their resting filling
+    pressure (2026-11-08). The chest term is averaged over ~2 s and so acts in
+    every phase of the beat, atrial filling in ventricular systole included;
+    the sac argument in wall_rest_factors (atria fill while the sac is slack)
+    does not apply to it. Same construction as the RV factor, with the atria's
+    resting transmural pressures taken as the sourced ventricular end-diastolic
+    ones (wedge = LA mean; RA mean = RVEDP at rest). Returns (f_la, f_ra)."""
+    if x_mmhg <= 0.0:
+        return 1.0, 1.0
+    return ((P_LEFT_ED_TM - x_mmhg) / P_LEFT_ED_TM,
+            max(0.0, (P_RIGHT_ED_TM - x_mmhg) / P_RIGHT_ED_TM))
+
+
 def wall_rest_factors(x_mmhg: float) -> tuple[float, float, float]:
     """Factors that re-place the ventricular walls when the pericardium carries
     `x_mmhg` of the resting end-diastolic filling pressure (2026-11-05, step 3P
@@ -327,8 +342,9 @@ def wall_rest_factors(x_mmhg: float) -> tuple[float, float, float]:
     resting volumes: the LV Klotz curve is placed at (P_LEFT_ED_TM - x) and the RV
     curve scaled by (P_RIGHT_ED_TM - x) / P_RIGHT_ED_TM. Returns (f_v0, f_v30, f_rv)
     multiplying lv_v0_dia, lv_v30 and the RV passive pressure. x = 0 -> (1, 1, 1).
-    The atria are NOT re-placed: they fill in ventricular systole, when the sac is
-    nearly slack (step 3P smoke test, 2026-11-03)."""
+    The atria are NOT re-placed here: they fill in ventricular systole, when the sac
+    is nearly slack (step 3P smoke test, 2026-11-03). The cycle-averaged chest term
+    does act on them, and atrial_rest_factors re-places them for it."""
     if x_mmhg <= 0.0:
         return 1.0, 1.0, 1.0
     v0n, v30n = klotz_placement(74.0 * _BSA_REF, P_LEFT_ED_TM - x_mmhg)

@@ -2149,9 +2149,7 @@ def test_plr_fluid_responsiveness_monnet2016():
 # went on: the full normovolaemic heart meets the sac and stops filling (CO +1.8 %),
 # while after a 1200 mL bleed it sits below the knee and still responds (+60.8 %).
 # A Starling plateau from structure, not from a fitted curve.
-# STRICT XFAIL 2026-11-06 — the closed-chest constraint adopted 2026-11-06 (step 3C; Jesper overrode the registered rule).
-@pytest.mark.xfail(strict=True, reason=(
-    'after the closed-chest constraint (2026-11-06): normovolaemic PLR CO +10.7 % (non-responder threshold < 10 %; was +9.7 % when closed on 2026-11-03)'))
+# STRICT XFAIL 2026-11-06 (closed-chest constraint: PLR CO +10.7 %); CLOSED 2026-11-08 when the atria were re-placed by the chest term.
 def test_plr_normovolaemic_non_responder_monnet2016():
     """[PMID 26825952 — Monnet 2016] Specificity 0.91: a normovolaemic patient
     on the Starling plateau should NOT reach the +10 % responder threshold. Same
@@ -2980,9 +2978,7 @@ def test_right_atrial_emptying_fraction_is_physiological():
 # PLR (+10.8 % vs < 10) — Jesper, 2026-11-04: keep 0.72 and guard the gap. The larger
 # defect beside it is the passive conduit share (~52 % of SV vs Järvinen 20 +/- 9), which
 # no LA_EMAX and no valve law moves (validation log 2026-11-04).
-@pytest.mark.xfail(strict=True, reason=(
-    "LA active ejection fraction ~20 % against Järvinen's 28 +/- 7: LA_EMAX was pinned "
-    "before the atria were re-sized (2026-10-26); re-pinning breaks Schäfers and Monnet"))
+# CLOSED 2026-11-08 when the atria were re-placed by the closed-chest term (heart.atrial_rest_factors): it XPASSED.
 def test_left_atrial_contraction_jarvinen1994():
     """[J1] Järvinen 1994 AJC (PMID 8198044) LA active emptying (EJECTION) fraction
     28 +/- 7 %: atrial stroke volume over the PRESYSTOLIC volume, average beat, free

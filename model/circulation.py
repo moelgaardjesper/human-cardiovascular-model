@@ -44,7 +44,7 @@ from .heart import (
     VENTRICULAR_T_MAX_SCALE, AV_PLANE_F_LA, AV_PLANE_F_RA, AV_ATRIAL_SHARE_LA, AV_ATRIAL_SHARE_RA,
     RA_EMAX, RA_EMIN, LA_EMAX, LA_EMIN,
     atrial_phase_offset,
-    pericardial_pressure, pericardial_capacity, PERI_K, PERI_VK, wall_rest_factors,
+    pericardial_pressure, pericardial_capacity, PERI_K, PERI_VK, wall_rest_factors, atrial_rest_factors,
 )
 from .gravity import (hydrostatic_delta_mmhg, GravityEnvironment, smooth_tilt_profile,
                       positional_itp_mmhg, articulated_hydrostatic_delta_mmhg)
@@ -960,8 +960,10 @@ def _odes(t: float, V: np.ndarray, params: SimParams, baro: BaroreflexController
     t_n_a = (cardiac_phase
              + atrial_phase_offset(hr_now if hr_now is not None
                                    else params.hr_bpm)) % 1.0
-    E_la = elastance_from_phase(t_n_a, params.la_emax, params.la_emin)
-    E_ra = elastance_from_phase(t_n_a, params.ra_emax, params.ra_emin)
+    # Atria re-placed by the closed-chest constraint (heart.atrial_rest_factors).
+    _fla, _fra = atrial_rest_factors(params.chest_rest_mmhg)
+    E_la = elastance_from_phase(t_n_a, params.la_emax, params.la_emin * _fla)
+    E_ra = elastance_from_phase(t_n_a, params.ra_emax, params.ra_emin * _fra)
 
     # -----------------------------------------------------------------------
     # Compute pressures for every compartment
@@ -1839,8 +1841,9 @@ def run_simulation(
         # _hr_monitor is the PREVIOUS step's rate, which is the one that goes
         # with _monitor_phase. hr_now is not assigned until later in this loop.
         t_n_a_monitor = (_monitor_phase + atrial_phase_offset(_hr_monitor)) % 1.0
-        E_ra_now = elastance_from_phase(t_n_a_monitor, params.ra_emax, params.ra_emin)
-        E_la_now = elastance_from_phase(t_n_a_monitor, params.la_emax, params.la_emin)
+        _fla_m, _fra_m = atrial_rest_factors(params.chest_rest_mmhg)
+        E_ra_now = elastance_from_phase(t_n_a_monitor, params.ra_emax, params.ra_emin * _fra_m)
+        E_la_now = elastance_from_phase(t_n_a_monitor, params.la_emax, params.la_emin * _fla_m)
 
         p_ao = _vascular_pressure(V[i["aorta"]], c_ao.unstressed_volume, c_ao.compliance)
         _sh_la_m, _sh_ra_m = _av_shift(V, params, _av_ref)
