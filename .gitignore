@@ -43,3 +43,6 @@ freeze/dryrun*/
 # pushing". 001_run.py and 002_run.py predate this rule and stay tracked.
 preregistration/0[3-9]*_run.py
 preregistration/00[3-9]_run.py
+
+# Reported-not-asserted scorecard written by every pytest run (tests/scorecard.py)
+scorecard*.json

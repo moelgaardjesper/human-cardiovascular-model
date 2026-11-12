@@ -151,6 +151,7 @@ from model.patient import (build_patient_params, apply_cardiac, bsa_mosteller,
 from model.heart import LV_EMAX, RV_EMAX
 from model.pharmacology import combined_drug_factors
 from model.slow_dynamics import CAPILLARY_PRESSURE_FRACTION
+from tests.scorecard import score   # reported, never asserted — see tests/scorecard.py
 
 
 # ===========================================================================
@@ -444,6 +445,9 @@ def test_supine_baseline_sejersen2022(supine_177_80):
     Literature: MAP 83+/-8 mmHg, HR 62+/-8 bpm, SV 110+/-16 mL, CO 7+/-2 L/min.
     """
     s = supine_177_80
+    score("test_supine_baseline_sejersen2022", "HR", s["hr"], 62.0, sd=8.0, n=9, source="Sejersen 2022; Nexfin")
+    score("test_supine_baseline_sejersen2022", "SV", s["sv"], 110.0, sd=16.0, n=9, source="Sejersen 2022; Nexfin pulse contour (absolute, not gold)")
+    score("test_supine_baseline_sejersen2022", "MAP", s["map"], 83.0, sd=8.0, n=9, source="Sejersen 2022; FINGER pressure vs model central: quantity mismatch")
     assert 70 <= s["map"] <= 100, f"MAP {s['map']:.1f} mmHg out of range (lit 83+/-8)"
     assert 50 <= s["hr"]  <= 85,  f"HR {s['hr']:.1f} bpm out of range (lit 62+/-8)"
     assert 4  <= s["co"]  <= 10,  f"CO {s['co']:.2f} L/min out of range (lit 7+/-2)"
@@ -537,6 +541,7 @@ def test_trendelenburg_minus15_cvp_likhvantsev2025(supine_175_75, hdt15_175_75):
     split from the test above on 2026-10-04 so the passing flow assertions are
     not hidden behind a failing pressure one. The band is unchanged."""
     dcvp = hdt15_175_75["cvp"] - supine_175_75["cvp"]
+    score("test_trendelenburg_minus15_cvp_likhvantsev2025", "dCVP -15 deg", dcvp, 4.13, se=(5.84 - 2.42) / 3.92, kind="change", source="Likhvantsev 2025 pooled CI; pools -5 to -45 deg")
     assert 1.5 <= dcvp <= 7.0, f"ΔCVP {dcvp:+.2f} mmHg outside [1.5, 7.0] (lit CI 2.42-5.84)"
 
 
@@ -744,6 +749,7 @@ def test_ra_pressure_baseline_richter2021():
     period = 60.0 / params.resp_rate_bpm
     ee     = ((t % period) / period) > 0.85
     rap_ee = float(np.mean(intra[ee]))
+    score("test_ra_pressure_baseline_richter2021", "RAP end-expiration", rap_ee, 3.0, sd=(6.0 - 2.0) / 1.349, n=15, source="Richter 2021 median [IQR]; SD from IQR")
 
     assert 2.0 <= rap_ee <= 6.0, (
         f"end-expiratory intraluminal RA pressure {rap_ee:.2f} mmHg outside "
@@ -1631,6 +1637,7 @@ def test_central_pressures_mceniery2005(central_pressures):
         ("diastolic", "dbp", _MCE_PDBP),
         ("mean arterial", "map", _MCE_MAP),
     ):
+        score("test_central_pressures_mceniery2005", name, c[key], mean, sd=sd, n=429, source="McEniery 2005 men 50-59; tonometry, cuff-calibrated")
         z = (c[key] - mean) / sd
         assert abs(z) <= 2.0, (
             f"{name} {c[key]:.1f} mmHg is {z:+.1f} SD from McEniery's "
@@ -1672,6 +1679,7 @@ def test_pulse_pressure_amplification_mceniery2005(central_pressures):
     central; the measured ratio in males 50-59 is 1.33 +/- 0.16.
     """
     amp = central_pressures["amp"]
+    score("test_pulse_pressure_amplification_mceniery2005", "PP amplification", amp, _MCE_AMP[0], sd=_MCE_AMP[1], n=429, kind="ratio", source="McEniery 2005")
     z = (amp - _MCE_AMP[0]) / _MCE_AMP[1]
     assert abs(z) <= 2.0, (
         f"pulse pressure amplification {amp:.2f} is {z:+.1f} SD from "
@@ -1974,6 +1982,9 @@ def test_phenylephrine_flow_response_schafers1999(phenyl_dose_response):
         dco = m["co"] - base["co"]
         dhr = m["hr"] - base["hr"]
         dsv = m["sv"] - base["sv"]
+        for q, v in (("dCO", dco), ("dHR", dhr), ("dSV", dsv)):
+            med, q1, q3 = {"dCO": _SCH_Q_DCO, "dHR": _SCH_Q_DHR, "dSV": _SCH_Q_DSV}[q]
+            score("test_phenylephrine_flow_response_schafers1999", f"{q} @ {dose}", v, med, sd=abs(q3 - q1) / 1.349, n=12, kind="change", source="Schafers 1999 median, SD from IQR")
         assert _SCH_DCO[0] <= dco <= _SCH_DCO[1], (
             f"phenylephrine {dose} mcg/kg/min: dCO {dco:+.2f} L/min outside "
             f"Schäfers 1 SD band {_SCH_DCO} (median -1.15)"
@@ -2905,6 +2916,7 @@ def test_atrial_volumes_are_physiological():
     17-22, Prioli's SD of 4 either side). With Järvinen's bands the one-for-one sweep
     passed at 60 mL/m2; against these it fails at +2 SD."""
     s = _atrial_state()
+    score("test_atrial_volumes_are_physiological", "LAVmax i", s["la"]["vmax_i"], 36.9, sd=7.7, source="Gao 2022; n not checked")
     assert 29.0 <= s["la"]["vmax_i"] <= 45.0, (
         f"LAVmax {s['la']['vmax_i']:.1f} mL/m2 ({s['la']['vmax']:.0f} mL) outside "
         f"29-45; four sources 37-41 (Gao 36.9 +/- 7.7)"
@@ -2924,6 +2936,7 @@ def test_right_atrial_volumes_are_physiological():
     RAVmin: Sjöberg 37 +/- 16 (21-53); Maceira's derived min (54 - 31) = 23 lies inside.
     The RA unstressed volume is PINNED on the max, so the max band guards the pin."""
     s = _atrial_state()
+    score("test_right_atrial_volumes_are_physiological", "RAVmax i", s["ra"]["vmax_i"], 54.0, sd=10.3, n=120, source="Maceira 2013 CMR (Sjoberg 66 +/- 11 also in band)")
     assert 44.0 <= s["ra"]["vmax_i"] <= 77.0, (
         f"RAVmax {s['ra']['vmax_i']:.1f} mL/m2 ({s['ra']['vmax']:.0f} mL) outside "
         f"44-77; Maceira 54 +/- 10, Sjöberg 66 +/- 11"
@@ -2966,6 +2979,7 @@ def test_right_atrial_emptying_fraction_is_physiological():
     beat, free breathing). RE-TARGETED 2026-10-17 from Gao's 49.7 +/- 9.2 (body
     only). Band 1 SD."""
     s = _atrial_state()
+    score("test_right_atrial_emptying_fraction_is_physiological", "RA EF", s["ra"]["ef"], 52.0, sd=6.0, source="Jarvinen 1994; n not checked")
     assert 46.0 <= s["ra"]["ef"] <= 58.0, (
         f"RA emptying fraction {s['ra']['ef']:.1f}% outside 46-58; Järvinen 52 +/- 6"
     )
@@ -2987,6 +3001,7 @@ def test_left_atrial_contraction_jarvinen1994():
     s = _atrial_state()
     la = s["la"]
     ef = 100.0 * (la["pre"] - la["vmin"]) / la["pre"]
+    score("test_left_atrial_contraction_jarvinen1994", "LA active EF", ef, 28.0, sd=7.0, n=17, source="Jarvinen 1994 AJC")
     assert 21.0 <= ef <= 35.0, (
         f"LA ejection fraction {ef:.1f} % outside 21-35; Järvinen 28 +/- 7 "
         f"(stroke {la['pre'] - la['vmin']:.1f} mL = {100 * (la['pre'] - la['vmin']) / s['lv_sv']:.1f} % of SV)"
@@ -4203,6 +4218,7 @@ def test_spontaneous_respiratory_swing_matches_hoff():
     r = run_simulation(p, duration_s=60.0, dt=DT)
     t = np.asarray(r["t"]); m = t >= 30.0
     swing = float(np.ptp(np.asarray(r["ra_intraluminal"])[m]))
+    score("test_spontaneous_respiratory_swing_matches_hoff", "RA swing", swing, 3.05, sd=1.61, n=10, source="Hoff 2019; catheter")
 
     assert 1.5 <= swing <= 5.0, (
         f"intraluminal RA respiratory swing {swing:.2f} mmHg outside 1.5-5.0. "
@@ -4359,6 +4375,7 @@ def test_hr_reflex_gain_fritsch1989():
     for name, d_map, target in (("nitroprusside", -11.0, +8.79),
                                 ("phenylephrine", +19.0, -16.42)):
         got = _reflex_hr_steady(MAP_SETPOINT + d_map)
+        score("test_hr_reflex_gain_fritsch1989", name, got, target, se=4.0 if name == "nitroprusside" else 3.0, kind="change", source="Fritsch 1989; SE as stated in the test")
         assert abs(got - target) <= 0.20 * abs(target), (
             f"{name}: dMAP {d_map:+.0f} mmHg gave dHR {got:+.2f} bpm, "
             f"Fritsch measured {target:+.2f} bpm"
@@ -4784,6 +4801,7 @@ def test_orthostatic_tachycardia_is_blunted_with_age_white1997(white1997_arms):
     measured_diff = _W97_DHR_OLDER[0] - _W97_DHR_YOUNG[0]          # -11.4 bpm
     sd_diff = float(np.hypot(_W97_DHR_YOUNG[1], _W97_DHR_OLDER[1]))  # 8.78
     model_diff = mean_dhr[68.0] - mean_dhr[25.0]
+    score("test_orthostatic_tachycardia_is_blunted_with_age_white1997", "dHR older - young", model_diff, measured_diff, sd=sd_diff, se=float(np.hypot(1.9, 1.1)), kind="change", source="White 1997 SEM")
 
     assert abs(model_diff - measured_diff) <= sd_diff, (
         f"age difference in orthostatic tachycardia {model_diff:+.2f} bpm "
@@ -4812,6 +4830,7 @@ def test_orthostatic_vasoconstriction_is_blunted_with_age_white1997(white1997_ar
     measured_diff = _W97_DDBP_OLDER[0] - _W97_DDBP_YOUNG[0]          # -9.5 mmHg
     sd_diff = float(np.hypot(_W97_DDBP_YOUNG[1], _W97_DDBP_OLDER[1]))  # 8.77
     model_diff = ddbp[68.0] - ddbp[25.0]
+    score("test_orthostatic_vasoconstriction_is_blunted_with_age_white1997", "dDBP older - young", model_diff, measured_diff, sd=sd_diff, se=float(np.hypot(1.6, 1.5)), kind="change", source="White 1997 SEM, males")
 
     assert abs(model_diff - measured_diff) <= sd_diff, (
         f"age difference in the diastolic tilt response {model_diff:+.2f} mmHg "
@@ -4863,6 +4882,7 @@ def test_brachial_diastolic_pressure_by_age_white1997(white1997_arms):
         dbp[age] = sum(a["brachial_dbp"] for a in arms) / len(arms)
 
     for age, (mean, sd) in ((25.0, _W97_DBP_YOUNG), (68.0, _W97_DBP_OLDER)):
+        score("test_brachial_diastolic_pressure_by_age_white1997", f"brachial DBP {age:.0f} y", dbp[age], mean, sd=sd, n=16, source="White 1997; cuff")
         assert abs(dbp[age] - mean) <= sd, (
             f"supine brachial DBP at age {age:.0f} is {dbp[age]:.2f} mmHg "
             f"against a measured {mean} +/- {sd} (1 SD)"
@@ -5020,6 +5040,7 @@ def test_resting_stroke_volume_in_young_adults_pmid27702883(lbnp_young_haemorrha
     lo, hi = _LBNP_SV_IQR
     sv = [rest["sv"] for rest, _ in lbnp_young_haemorrhage.values()]
     mean_sv = sum(sv) / len(sv)
+    score("test_resting_stroke_volume_in_young_adults_pmid27702883", "SV", mean_sv, 80.4, sd=(84.4 - 72.5) / 1.349, source="PMID 27702883 median [IQR]; ultrasound; n not checked")
     assert lo <= mean_sv <= hi, (
         f"resting stroke volume, mean of the two sex arms, is {mean_sv:.2f} mL "
         f"— outside the 1 SD band {lo}-{hi} (median 80.4, IQR 72.5-84.4). Individual arms: "
@@ -5323,6 +5344,7 @@ def test_phenylephrine_raises_stroke_volume_hojlund2024(phenylephrine_during_til
                    for arm in phenylephrine_during_tilt_hojlund2024.values()]
         dsv.append(sum(per_sex) / len(per_sex))
     best = max(dsv)
+    score("test_phenylephrine_raises_stroke_volume_hojlund2024", "dSV % best dose", best, 0.5 * sum(_H24_DSV_CI95), se=(_H24_DSV_CI95[1] - _H24_DSV_CI95[0]) / 3.92, kind="change", source="Hojlund 2024 95 % CI")
     lo, hi = _H24_DSV_CI95
     assert lo <= best <= hi, (
         f"best sex-mean dSV across the dose bracket is {best:+.1f} %, outside the "
@@ -5815,6 +5837,8 @@ def test_propofol_lowers_stressed_volume_and_venous_resistance_dewit2016():
     """
     lo, hi = _propofol_venous_return_curve(1.0), _propofol_venous_return_curve(6.0)
     d = {k: 100.0 * (hi[k] - lo[k]) / lo[k] for k in lo}
+    for k, ci in (("map", _DEWIT_MAP_CI95), ("msfp", _DEWIT_MSFP_CI95), ("rvr", _DEWIT_RVR_CI95)):
+        score("test_propofol_lowers_stressed_volume_and_venous_resistance_dewit2016", f"d{k} %", d[k], 0.5 * sum(ci), se=(ci[1] - ci[0]) / 3.92, n=17, kind="change", source="de Wit 2016 95 % CI; Pmsf by hold method")
 
     mlo, mhi = _DEWIT_MAP_CI95
     if not (mlo <= d["map"] <= mhi):
@@ -6852,6 +6876,7 @@ def test_abdominal_share_of_blood_volume_kiszka_kanowitz2001():
     t = np.asarray(r["t"])
     V = np.asarray(r["volumes"])[t >= 100.0].mean(axis=0)
     share = 100.0 * sum(V[IDX[n]] for n in ABDOMINAL_COMPARTMENTS) / V.sum()
+    score("test_abdominal_share_of_blood_volume_kiszka_kanowitz2001", "abdominal share %", share, 29.7, sd=1.2, n=6, kind="ratio", source="Kiszka-Kanowitz 2001; scintigraphy")
     assert 26.1 <= share <= 33.3, (
         f"abdominal share of blood volume {share:.1f} % against Kiszka-Kanowitz "
         f"29.7 +/- 1.2 % (healthy supine controls, range ~29-32). Above the band "
@@ -6906,6 +6931,7 @@ def test_calf_venous_compliance_halves_where_halliwill_measured():
     below = np.nonzero(cs <= 0.5 * c0)[0]
     assert below.size, "calf compliance never halves below 80 mmHg"
     p_half = float(ps[below[0]])
+    score("test_calf_venous_compliance_halves_where_halliwill_measured", "P-half", p_half, 28.4, source="Halliwill 1999, three groups 27.6-29.5; no SD in test")
     assert 25.0 <= p_half <= 33.0, (
         f"calf venous compliance halves at {p_half:.1f} mmHg; Halliwill 1999 "
         f"measured 27.6-29.5 in healthy supine humans. Below the band the legs "
@@ -6945,6 +6971,7 @@ def test_head_down_tilt_does_not_raise_pleural_pressure_drummond1978():
                              - np.asarray(r["aortic_p"])[m]))
 
     change = thoracic_external(-15.0) - thoracic_external(0.0)
+    score("test_head_down_tilt_does_not_raise_pleural_pressure_drummond1978", "dPpl -15 deg", change, -0.165, se=(0.23 + 0.56) / 3.92, n=9, kind="change", source="Drummond 1978 95 % CI")
     assert -0.56 <= change <= 0.23, (
         f"15 deg head-down changes the pressure around the thorax by "
         f"{change:+.2f} mmHg; Drummond & Martin measured -0.17 (CI -0.56 to "
@@ -7299,6 +7326,7 @@ def test_ejection_time_follows_weissler_across_heart_rate():
         return float(np.median(runs)) * DT
     for hr in (70.0, 110.0):
         model, w = lvet(hr), -0.0017 * hr + 0.413
+        score("test_ejection_time_follows_weissler_across_heart_rate", f"LVET @ {hr:.0f}", model, w, sd=0.010, n=121, source="Weissler 1968 regression SD; SE treats it as the SD of a mean at that HR")
         z = (model - w) / 0.010
         assert abs(z) <= 2.0, (
             f"LVET at {hr:.0f} bpm {model*1000:.0f} ms is {z:+.1f} SD from Weissler's "
@@ -7365,6 +7393,7 @@ def test_atria_fill_during_ejection_carlsson2004():
     """
     fill_on, ratio_on = _heart_volume_bookkeeping(True)
     fill_off, ratio_off = _heart_volume_bookkeeping(False)
+    score("test_atria_fill_during_ejection_carlsson2004", "atrial filling in ejection %", fill_on * 100.0, 64.0, sd=5.7, n=8, source="Carlsson 2004; MRI")
     z = (fill_on * 100.0 - 64.0) / 5.7
     assert abs(z) <= 2.0, (
         f"atrial filling during ejection {fill_on*100:.1f} % of SV is {z:+.1f} SD "
@@ -7458,6 +7487,7 @@ def test_sac_carries_most_of_a_filling_load_bhella2014(bhella_saline):
     ratio = {sex: bhella_saline[(sex, True)][1] / bhella_saline[(sex, True)][0]
              for sex in ("male", "female")}
     r = _cohort_mean(ratio)
+    score("test_sac_carries_most_of_a_filling_load_bhella2014", "dRAP/dPCWP saline", r, 0.615, kind="ratio", source="Bhella 2014; no SD (two baseline estimates)")
     assert 0.55 <= r <= 0.70, (
         f"external share of the saline wedge rise dRAP/dPCWP {r:.2f} outside 0.55-0.70 "
         f"(Bhella 0.59-0.64); male {ratio['male']:.2f}, female {ratio['female']:.2f}")
@@ -7652,6 +7682,8 @@ def _stage_misses(bhella_stages, k, label, unit):
     for stage, bands in _BHELLA_STAGE_BANDS.items():
         lo, hi = bands[k]
         v = bhella_stages[stage][k]
+        score(f"bhella {label}", stage, v, 0.5 * (lo + hi), kind="change",
+              source="Bhella 2014; band = span of two baseline estimates; no SD")
         if not lo <= v <= hi:
             misses.append(f"{stage}: {label} {v:+.3g}{unit} outside [{lo:+.3g}, {hi:+.3g}]")
     return misses
@@ -7796,6 +7828,8 @@ def test_cvp_falls_as_in_johnson2014_controlled_blood_loss(johnson_bleed):
     """CVP falls by Johnson's mean change at each 333 mL stage, within the SE-of-
     change band defined above."""
     _, dcvp, _ = johnson_bleed
+    for k, (d, (lo, hi)) in enumerate(zip(dcvp, _JOHNSON_DCVP_BANDS)):
+        score("test_cvp_falls_as_in_johnson2014_controlled_blood_loss", f"dCVP {333 * (k + 1)} mL", d, 0.5 * (lo + hi), se=0.5 * (hi - lo), n=8, kind="change", source="Johnson 2014; SE of change (no-correlation upper bound); SD of change not published")
     misses = [f"{333 * (k + 1)} mL: dCVP {d:+.2f} outside [{lo:+.2f}, {hi:+.2f}]"
               for k, (d, (lo, hi)) in enumerate(zip(dcvp, _JOHNSON_DCVP_BANDS))
               if not lo <= d <= hi]
@@ -7885,6 +7919,9 @@ def test_atrial_reservoirs_match_two_independent_labs():
     # Sjöberg's subjects — but reservoir (max - min volume) and piston (AVPD x atrial area)
     # are separate measurements there. One-for-one gave 75 %.
     ra_pct = 100.0 * (s["ra"]["vmax"] - s["ra"]["vmin"]) / s["rv_sv"]
+    score("test_atrial_reservoirs_match_two_independent_labs", "LA reservoir i", la, 24.0, sd=4.4, n=120, source="Maceira")
+    score("test_atrial_reservoirs_match_two_independent_labs", "RA reservoir i", ra, 31.0, sd=6.0, n=120, source="Maceira")
+    score("test_atrial_reservoirs_match_two_independent_labs", "RA reservoir % RV SV", ra_pct, 58.0, sd=8.0, n=15, kind="ratio", source="Sjoberg 2020")
     assert 50.0 <= ra_pct <= 66.0, f"RA reservoir {ra_pct:.1f} % of RV SV outside 50-66; [SJO] 58 +/- 8"
 
 
@@ -7917,6 +7954,7 @@ def test_right_atrium_fills_mostly_in_systole_sjoberg2020():
         es = a + int(np.argmin(rv[a:b]))
         shares.append((ra[es] - ra[a]) / (rv[a] - rv[es]))
     pct = 100.0 * float(np.mean(shares))
+    score("test_right_atrium_fills_mostly_in_systole_sjoberg2020", "systolic share of RA inflow %", pct, 63.0, sd=9.0, n=15, kind="ratio", source="Sjoberg 2020; 4D flow")
     assert 54.0 <= pct <= 72.0, (
         f"RA systolic inflow {pct:.1f} % of RV SV outside 54-72; [SJO] 63 +/- 9 (4D flow)")
 
@@ -8039,6 +8077,7 @@ def test_rv_curvature_matches_rommels_figure3_pmid29449367(rv_passive_curvature)
     SD of beta (0.003 x 137 = 0.41): 2.54-3.36."""
     b_lo, b_hi, edv = rv_passive_curvature
     k = 0.5 * (b_lo + b_hi) * edv
+    score("test_rv_curvature_matches_rommels_figure3_pmid29449367", "RV k (Fig 3)", k, 2.95, sd=0.41, source="Rommel 2018 Fig 3; SD borrowed from table; n not checked")
     assert 2.54 <= k <= 3.36, (
         f"RV filling curvature k = {k:.2f} outside Rommel's Figure 3 band 2.54-3.36 "
         f"(figure beta 0.0215 /mL at 137 mL)")
@@ -8110,6 +8149,7 @@ def test_mild_unloading_empties_the_atrium_not_the_ventricles_oren1993(oren_lbnp
     by 14-32 % (1 SD around 23 %). Reported, not asserted: RVEDV (no individual SD
     published; Oren +1 mL) and RAP (-2.1, paired SD not published)."""
     dlv, drv, dla, drap = oren_lbnp10
+    score("test_mild_unloading_empties_the_atrium_not_the_ventricles_oren1993", "dLA ES %", 100.0 * dla, -23.0, sd=9.0, kind="change", source="Oren 1993; n not checked")
     misses = []
     if abs(dlv) > 0.06:
         misses.append(f"LVEDV {100 * dlv:+.1f} % (Oren holds within 6 %)")
@@ -8149,6 +8189,7 @@ def test_mean_wedge_sits_at_lvedp_in_healthy_hearts_rahimtoola1975():
     7 M / 3 F at age 29, within 1 SD of Rahimtoola's paired 0.6 +/- 1.7: -1.1 to +2.3."""
     (lm, am), (lf, af) = _rahimtoola_gap("male"), _rahimtoola_gap("female")
     gap = 0.7 * (lm - am) + 0.3 * (lf - af)
+    score("test_mean_wedge_sits_at_lvedp_in_healthy_hearts_rahimtoola1975", "LVEDP - wedge", gap, 0.6, sd=1.7, n=10, kind="change", source="Rahimtoola 1975 paired")
     assert -1.1 <= gap <= 2.3, (
         f"LVEDP - mean wedge {gap:+.2f} mmHg (men {lm - am:+.2f}, women {lf - af:+.2f}) "
         f"outside Rahimtoola's 1 SD band -1.1 to +2.3 (0.6 +/- 1.7, hearts without disease)")
