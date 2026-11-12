@@ -108,14 +108,21 @@ TAU_STRESS_RELAX = 250.0   # s
 #
 # expressing k as a multiple of that compartment's own compliance.
 #
-# CALIBRATION NOTE — deliberately conservative. In the Guyton experiment MSFP
-# decayed most of the way back to baseline, but the source attributes part of
-# that to fluid moving into the interstitium, which is transcapillary filtration
-# (Phase 2) and NOT viscoelastic creep. Attributing the whole decay to stress
-# relaxation here would double-count once Phase 2 lands. f = 0.30 takes roughly
-# the fast third; the remainder is expected to come from filtration, and the
-# combined behaviour is what gets validated against the full decay curve.
-RELAX_FRACTION = 0.30
+# MAGNITUDE — ON HUMAN BOUNDS SINCE 2026-11-12 (was 0.30 from Guyton's reflex-blocked DOGS, taken as "the
+# fast third" of their post-infusion decay). Grade C. TRUNK veins only; the leg veins have their own human
+# values below.
+#   FLOOR, Echt 1974 (PMID 4809350, 8 young men): after +500 mL of dextran in 3 min, CVP 9.8 -> 9.6 over a
+#     10-min pause — >= 6 % of the rise gone. A LOWER bound (hyperoncotic dextran draws fluid in). With fluid
+#     exchange off the model gives 2.0 % at f 0, 8.0 % at 0.15, 15 % at 0.30: the floor sits near f ~0.12.
+#   CEILING, Gauer 1956 (PMID 13277114, 12 men): after a 551 mL transfusion CVP falls at most ~20 % over
+#     30 min, filtration included. Not binding (5 % at 0.30).
+#   WHAT PICKS 0.15 inside that range: Johnson 2014 (PMID 24876357) controlled blood loss, the BODY alone
+#     (heart replaced by two pumps at Johnson's flow and a left atrial fall of 1.33 x CVP, Fujimoto 2011):
+#     0.30 leaves CVP outside all three of Johnson's bands (-2.93 at 1 L vs -4.7), 0.15 is inside all three
+#     (-3.38; edges -1.10 / -2.34 / -3.34) — by 0.00-0.09 mmHg, so this pin is not robust. 0.15 is the lowest
+#     round value inside Echt's floor. Both bounds and the pin are slow tests in tests/test_slow_dynamics.py.
+# The combined creep + filtration decay still reproduces Guyton's ~82 % (its own test).
+RELAX_FRACTION = 0.15
 K_RELAX = RELAX_FRACTION / (1.0 - RELAX_FRACTION)   # multiplier on compliance
 
 # Applied to the systemic venous capacitance vessels only. Arteries undergo

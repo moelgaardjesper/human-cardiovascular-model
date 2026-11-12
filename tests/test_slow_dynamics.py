@@ -405,9 +405,11 @@ def test_stress_relaxation_decays_cvp_after_volume_load():
         f"{abs(off_decay) / rise * 100:.0f} % of the rise; the control is not quiescent"
     )
 
-    # With it, CVP decays toward the calibrated fraction of the rise.
+    # With it, CVP decays toward the calibrated fraction of the rise. The floor is a
+    # LIVENESS floor (2026-11-12): the magnitude's lower bound is now HUMAN (Echt 1974,
+    # test below), replacing the 15 % that encoded the dog calibration's "fast third".
     dissipated = ((peak - late) - off_decay) / rise
-    assert dissipated > 0.15, (
+    assert dissipated > 0.05, (
         f"stress relaxation dissipated only {dissipated * 100:.1f}% of the CVP rise"
     )
     assert dissipated < 0.50, (
@@ -416,6 +418,138 @@ def test_stress_relaxation_decays_cvp_after_volume_load():
         f"portion; the rest of the decay observed in [S1] is interstitial fluid "
         f"movement, which is Phase 2 (transcapillary refill), not creep."
     )
+
+
+@pytest.mark.slow
+def test_trunk_relaxation_sits_inside_human_bounds_echt1974_gauer1956():
+    """[PMID 4809350 — Echt 1974; PMID 13277114 — Gauer 1956] How much of a venous
+    pressure rise the trunk veins give back by creep, in man. Fluid exchange OFF, since
+    both loads stay in the vessels (dextran; the subjects' own blood).
+
+    FLOOR, Echt: 8 young men, +500 mL of 6 % dextran in 3 min, CVP 6.6 -> 9.8, and 9.6
+    after a 10-min pause: >= 6 % of the rise gone. A LOWER bound — hyperoncotic dextran
+    draws fluid in, which offsets creep.
+    CEILING, Gauer: 12 men, ~600 mL (8.1 mL/kg) of their own blood over 8-12 min; CVP then
+    falls 0.0265 cmH2O/min: <= ~20 % of the rise over 30 min, filtration included.
+    Measured 2026-11-12 at RELAX_FRACTION 0.15: Echt 8.0 % (2.0 % at 0, 15 % at 0.30),
+    Gauer 2 %. SABOTAGE: RELAX_FRACTION 0 gives 2.0 % and fails the floor.
+    ~45 min wall — hence slow."""
+    from tests.test_circulation import cohort_params
+    t0 = 500.0
+
+    def run(h, w, age, ml, dur, follow):
+        p = cohort_params(h, w, age_years=age, sex="male")
+        p.slow_fluid_exchange_enabled = False
+        p.fluid_bolus_ml, p.fluid_bolus_start_s, p.fluid_bolus_duration_s = ml, t0, dur
+        r = run_simulation(p, duration_s=t0 + dur + follow + 1.0, dt=DT, output_every=10)
+        t = np.asarray(r["t"])
+        def win(a, b):     # minutes after the start of the infusion
+            return float(np.mean(np.asarray(r["cvp"])[(t >= t0 + 60 * a) & (t < t0 + 60 * b)]))
+        return win, float(np.mean(np.asarray(r["cvp"])[(t >= t0 - 120) & (t < t0)]))
+
+    win, base = run(175.0, 66.3, 24.5, 500.0, 180.0, 660.0)          # Echt
+    pk, end = win(3, 4) - base, win(12, 13) - base
+    gone = (pk - end) / pk
+    assert pk > 2.0, f"Echt infusion raised CVP only {pk:+.2f} mmHg (man +3.2)"
+    assert gone >= 0.06, (
+        f"trunk creep gave back {gone * 100:.1f} % of the rise over Echt's 10-min pause; man "
+        f">= 6 % (9.8 -> 9.6). RELAX_FRACTION is below the human floor")
+
+    win, base = run(175.0, 68.0, 34.5, 551.0, 600.0, 3000.0)         # Gauer transfusion
+    a, b = win(10, 15) - base, win(40, 45) - base
+    assert (a - b) / a <= 0.20, (
+        f"trunk creep gave back {(a - b) / a * 100:.0f} % of the transfusion rise in 30 min; "
+        f"Gauer's men at most ~20 % with filtration included")
+
+
+def _johnson_with_two_pumps(relax_fraction=None):
+    """Johnson 2014's bleed with the HEART REPLACED BY TWO PUMPS (validation log
+    2026-11-11): from t = 200 s the right pump moves Johnson's measured flow fraction of
+    the model's own resting flow from RA to pulmonary artery; the left pump moves it from
+    LA to aorta, trimmed so LA pressure falls 1.33 x Johnson's CVP fall (Fujimoto 2011,
+    PMID 21398598). Ventricles frozen, atria passive. Returns dCVP at the three reads."""
+    import model.circulation as C
+    from model.compartments import IDX
+    from model.heart import atrial_rest_factors
+    from tests.test_circulation import cohort_params
+    tsw, t0 = 200.0, 500.0
+    qf = (1.0, 0.960, 0.933, 0.903)                    # Johnson Table 3 SV x HR
+    dl = (0.0, -3.1, -4.9, -6.3)                       # 1.33 x (-2.3, -3.7, -4.7)
+    p = cohort_params(185.3, 91.3, age_years=32.0, sex="male")
+    t, pulses, bounds, ramps = t0, [], [], []
+    for rate in (37.0, 43.0, 46.0):
+        dur = 333.0 / rate * 60.0
+        pulses.append((t, dur, rate)); bounds.append((t, t + dur + 300.0)); ramps.append(dur)
+        t += dur + 300.0
+    p.hemorrhage_pulses = tuple(pulses)
+
+    def staged(tt, vals):
+        v = vals[0]
+        for k, (a, b) in enumerate(bounds):
+            if tt >= a:
+                v = vals[k] + (vals[k + 1] - vals[k]) * min(1.0, (tt - a) / ramps[k])
+        return v
+
+    i = {n: IDX[n] for n in ("right_atrium", "right_ventricle", "pulmonary_art",
+                             "left_atrium", "left_ventricle", "aorta")}
+    S = dict(n=0, sq=0.0, sla=0.0, sw=False, integ=0.0)
+    calls = []
+    vf0, orig = C._valve_flow, C._odes
+
+    def vf(dp, r, k):
+        q = vf0(dp, r, k); calls.append(q); return q
+
+    def odes(tt, V, params, baro, phase, p_out=None, slow=None, hr_now=None,
+             p_tm_out=None, flow_out=None, av_ref=None):
+        calls.clear()
+        dV = orig(tt, V, params, baro, phase, p_out, slow, hr_now=hr_now,
+                  p_tm_out=p_tm_out, flow_out=flow_out, av_ref=av_ref)
+        q_tri, q_pul, q_mit, q_ao = calls[0], calls[1], calls[2], float(flow_out["aortic"])
+        pla = float(p_tm_out[i["left_atrium"]])
+        if tt < tsw:
+            if tt >= tsw - 60.0:
+                S["n"] += 1; S["sq"] += q_ao; S["sla"] += pla
+            return dV
+        if not S["sw"]:
+            fla, fra = atrial_rest_factors(params.chest_rest_mmhg)
+            params.ra_emax, params.la_emax = params.ra_emin * fra, params.la_emin * fla
+            S["sw"] = True
+        qr = S["sq"] / S["n"] * staged(tt, qf)
+        e = pla - (S["sla"] / S["n"] + staged(tt, dl)); S["integ"] += e * DT
+        ql = max(0.0, qr + 10.0 * e + 2.0 * S["integ"])
+        dV[i["right_atrium"]] += q_tri - qr; dV[i["right_ventricle"]] = 0.0
+        dV[i["pulmonary_art"]] += qr - q_pul
+        dV[i["left_atrium"]] += q_mit - ql; dV[i["left_ventricle"]] = 0.0
+        dV[i["aorta"]] += ql - q_ao
+        return dV
+
+    import model.slow_dynamics as SD
+    k0 = SD.K_RELAX
+    C._valve_flow, C._odes = vf, odes
+    try:
+        if relax_fraction is not None:
+            SD.K_RELAX = relax_fraction / (1.0 - relax_fraction)
+        r = C.run_simulation(p, duration_s=bounds[-1][1] + 1.0, dt=DT, output_every=10)
+    finally:
+        C._valve_flow, C._odes, SD.K_RELAX = vf0, orig, k0
+    tt = np.asarray(r["t"]); cvp = np.asarray(r["cvp"])
+    base = float(np.mean(cvp[(tt >= t0 - 120.0) & (tt < t0)]))
+    return [float(np.mean(cvp[(tt >= b - 120.0) & (tt < b)])) - base for _, b in bounds]
+
+
+@pytest.mark.slow
+def test_body_alone_follows_johnson2014_blood_loss_with_the_heart_pumped():
+    """[PMID 24876357 — Johnson 2014] THE PIN of RELAX_FRACTION (slow_dynamics.py): with
+    the heart replaced by two pumps imposing Johnson's measured flow, the BODY's CVP falls
+    inside Johnson's three SE-of-change bands (the same bands as test_circulation §54).
+    Measured 2026-11-12: -1.19 / -2.34 / -3.38 at 0.15 — on the edges (0.00-0.09 mmHg);
+    the committed dog value 0.30 gave -1.03 / -2.02 / -2.93 and FAILS here (sabotage).
+    The closed loop (§54) still fails: that gap is the heart's. ~25 min wall."""
+    from tests.test_circulation import _JOHNSON_DCVP_BANDS as bands
+    d = _johnson_with_two_pumps()
+    misses = [f"{333 * (k + 1)} mL: {v:+.2f} outside [{lo:+.2f}, {hi:+.2f}]"
+              for k, (v, (lo, hi)) in enumerate(zip(d, bands)) if not lo <= v <= hi]
+    assert not misses, "body alone does not follow Johnson's CVP: " + "; ".join(misses)
 
 
 # ===========================================================================
