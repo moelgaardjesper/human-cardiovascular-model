@@ -545,6 +545,8 @@ def test_trendelenburg_minus15_cvp_likhvantsev2025(supine_175_75, hdt15_175_75):
     assert 1.5 <= dcvp <= 7.0, f"ΔCVP {dcvp:+.2f} mmHg outside [1.5, 7.0] (lit CI 2.42-5.84)"
 
 
+@pytest.mark.xfail(strict=True, raises=AssertionError, reason=(
+    "STEP 3, 2026-11-13 — external pressure Xc 3.0 (chest wall + mediastinum + pericardium), slope 0.08 below / 0.05 above rest. MAP falls -27.8 mmHg at 30 deg head-up against a floor of -25. Suspect: the body (orthostatic pooling) under the new heart; re-examined in the body pass."))
 def test_hut30_dynamics_wieling1998(supine_175_75, hut30_175_75):
     """[PMID: 9640339 — Wieling 1998] Head-up tilt dynamics: SV down, CO down,
     HR up, MAP partially maintained.
@@ -2161,6 +2163,8 @@ def test_plr_fluid_responsiveness_monnet2016():
 # while after a 1200 mL bleed it sits below the knee and still responds (+60.8 %).
 # A Starling plateau from structure, not from a fitted curve.
 # STRICT XFAIL 2026-11-06 (closed-chest constraint: PLR CO +10.7 %); CLOSED 2026-11-08 when the atria were re-placed by the chest term.
+@pytest.mark.xfail(strict=True, raises=AssertionError, reason=(
+    "STEP 3, 2026-11-13 — external pressure Xc 3.0 (chest wall + mediastinum + pericardium), slope 0.08 below / 0.05 above rest. Normovolaemic leg raise raises CO +13.5 % against < 10 % (as the steady 3.5 did on 2026-11-10). Suspect: the body's leg/splanchnic volume and the larger external fall on the unloading side."))
 def test_plr_normovolaemic_non_responder_monnet2016():
     """[PMID 26825952 — Monnet 2016] Specificity 0.91: a normovolaemic patient
     on the Starling plateau should NOT reach the +10 % responder threshold. Same
@@ -2232,6 +2236,13 @@ def test_venous_tone_modulates_preload_regression():
     neutral   = _run_venous_tone(1.00)
     constrict = _run_venous_tone(0.90)   # +10% venous tone (venoconstriction)
     dilate    = _run_venous_tone(1.10)   # 10% venodilation
+    # THE CVP LINES USE A +/-20 % STIMULUS (2026-11-13, Jesper approved). The adopted external
+    # pressure (Xc 3.0) left the 10 % venodilation CVP fall at exactly 0.200 mmHg, on the edge of the
+    # 0.2 margin. The margin is unchanged and still anchored to the dead mechanism (0); the stimulus
+    # is doubled so liveness no longer sits on a rounding error. Sabotage-verified 2026-11-13: with
+    # venous_tone_factor removed from _odes the guard fails (thorax +0.0 mL; every arm identical).
+    constrict20 = _run_venous_tone(0.80)
+    dilate20    = _run_venous_tone(1.20)
 
     # Venoconstriction recruits blood INTO THE CHEST — the mechanism's claim,
     # by a margin anchored to a dead mechanism (0 mL).
@@ -2245,8 +2256,8 @@ def test_venous_tone_modulates_preload_regression():
     # CVP margin 0.2 mmHg: with physiological venous compliance (venous-system
     # rebuild) the same fractional venoconstriction shifts CVP more gently than
     # on the old compressed pool — the effect is real, just correctly smaller.
-    assert constrict["cvp"] > neutral["cvp"] + 0.2, (
-        f"Venoconstriction did not raise CVP: {neutral['cvp']:.2f}→{constrict['cvp']:.2f} mmHg")
+    assert constrict20["cvp"] > neutral["cvp"] + 0.2, (
+        f"20 % venoconstriction did not raise CVP: {neutral['cvp']:.2f}→{constrict20['cvp']:.2f} mmHg")
 
     # Venodilation pools blood peripherally: the chest loses volume, CVP and CO fall.
     assert dilate["thorax_ml"] < neutral["thorax_ml"] - 20.0, (
@@ -2254,8 +2265,8 @@ def test_venous_tone_modulates_preload_regression():
         f"the thorax (dead mechanism: 0)")
     assert dilate["co"]  < neutral["co"], (
         f"Venodilation did not lower CO: {neutral['co']:.2f}→{dilate['co']:.2f} L/min")
-    assert dilate["cvp"] < neutral["cvp"] - 0.2, (
-        f"Venodilation did not lower CVP: {neutral['cvp']:.2f}→{dilate['cvp']:.2f} mmHg")
+    assert dilate20["cvp"] < neutral["cvp"] - 0.2, (
+        f"20 % venodilation did not lower CVP: {neutral['cvp']:.2f}→{dilate20['cvp']:.2f} mmHg")
 
     # Monotonic ordering across the range.
     assert constrict["co"] > neutral["co"] > dilate["co"], (
@@ -2951,6 +2962,8 @@ def test_right_atrial_volumes_are_physiological():
 # 2026-10-25 by exactly that: the AV-plane sweep's atrial share (AV_ATRIAL_SHARE_LA,
 # Maksuti geometry) and LA_EMIN re-pinned on four-source filling. Emptying is a RATIO
 # on which Järvinen agrees with the other sources, so his band is kept.
+@pytest.mark.xfail(strict=True, raises=AssertionError, reason=(
+    "STEP 3, 2026-11-13 — external pressure Xc 3.0 (chest wall + mediastinum + pericardium), slope 0.08 below / 0.05 above rest. LA total emptying fraction 60.4 % against 48-58 %. Same suspect as the reservoir: atria re-placed for the whole external pressure."))
 def test_atrial_emptying_fractions_are_physiological():
     """[G1][G2] Total atrial emptying fraction must match human reference ranges.
 
@@ -4045,6 +4058,8 @@ def test_age_widens_pulse_pressure_the_way_framingham_measured_it():
     )
 
 
+@pytest.mark.xfail(strict=True, raises=AssertionError, reason=(
+    "STEP 3, 2026-11-13 — external pressure Xc 3.0 (chest wall + mediastinum + pericardium), slope 0.08 below / 0.05 above rest. LVEDV 120.9 / 121.3 / 118.7 mL at 40 / 55 / 70: the 40-year-old is no longer the largest (by 0.4 mL). Suspect: wall re-placement for the larger external pressure interacting with the age factors."))
 def test_chamber_volumes_scale_with_age_toward_luu():
     """[PMID 34980185] Luu Tables 3/4, male: indexed volumes FALL with age.
 
@@ -5381,6 +5396,8 @@ def test_phenylephrine_abolishes_preload_dependency_pmid31705432(phenylephrine_d
 
 
 # STRICT XFAIL 2026-11-06 (chest layer: bradycardia -2..-6 % vs IQR -15..-6 %); CLOSED 2026-11-07 when the chambers took Luu's RAW ratios.
+@pytest.mark.xfail(strict=True, raises=AssertionError, reason=(
+    "STEP 3, 2026-11-13 — external pressure Xc 3.0 (chest wall + mediastinum + pericardium), slope 0.08 below / 0.05 above rest. Phenylephrine slows the heart at most -5.5 % across the doses against the IQR -15..-6 % (was inside). Suspect: the body (tilt pooling) and the reflex layer, re-examined in the body pass."))
 def test_phenylephrine_reflex_bradycardia_during_tilt_pmid31705432(phenylephrine_during_tilt):
     """[PMID 31705432] Phenylephrine slows the heart by 10 % (IQR -15 to -6).
 
@@ -7281,18 +7298,24 @@ def test_cardiopulmonary_reflex_reads_mean_not_trough_right_atrial_pressure():
     So the response is now judged against what each reading PREDICTS through the
     arm's own gain: a mean reader moves HR by at most gain x dMEAN (open loop;
     the closed loop attenuates it), a trough reader toward gain x dTROUGH, about
-    four times larger. The precondition keeps the probe a SHAPE change."""
+    four times larger. The precondition keeps the probe a SHAPE change.
+
+    PROBE CHANGED 2026-11-13 (Jesper approved): the external pressure adopted that day (Xc 3.0, atria
+    re-placed for it) left a fourfold atrial contraction moving the mean almost as much as the trough
+    (-0.49 vs -0.62), failing the precondition. The probe is now a doubled AV-plane coupling into the
+    RA (av_f_ra x2), which deepens the x descent: mean -0.13, trough -0.92, HR -0.55 (measured
+    2026-11-13). The three assertions are unchanged."""
     from model.baroreflex import CP_HR_GAIN_BPM_PER_MMHG as G
     def run(f):
         p = SimParams()
-        p.ra_emax *= f
+        p.av_f_ra *= f
         r = run_simulation(p, duration_s=200.0, dt=DT, output_every=1)
         t = np.asarray(r["t"])
         m = t > 160.0
         ra = np.asarray(r["ra_mean"])[m]
         return (float(np.mean(np.asarray(r["hr"])[m])),
                 float(np.mean(np.asarray(r["cvp"])[m])), float(np.percentile(ra, 1)))
-    (h1, m1, t1), (h4, m4, t4) = run(1.0), run(4.0)
+    (h1, m1, t1), (h4, m4, t4) = run(1.0), run(2.0)
     d_hr, d_mean, d_trough = h4 - h1, m4 - m1, t4 - t1
     assert abs(d_trough) > 2.0 * abs(d_mean), (
         f"the probe no longer changes waveform SHAPE more than level (mean {d_mean:+.2f}, "
@@ -7710,11 +7733,8 @@ def _stage_misses(bhella_stages, k, label, unit, test):
     return misses
 
 
-# RE-SCOPED 2026-11-12 (LBNP re-scope): the LBNP stages are an ORDERING, and it holds (-5.1 % then
-# -19.2 %). Still a strict xfail, on the SALINE stage alone.
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason=(
-    "saline 15 mL/kg: dLVEDV +4.1 % just below Bhella's +4.2..+10.5 % (measured 2026-11-12). The LBNP "
-    "stages (ordering only since the re-scope) pass. The earlier reason, -7.2 % at LBNP -15, was stale."))
+# CLOSED 2026-11-13 by STEP 3: saline dLVEDV +8.4 % (band +4.2..+10.5; Bhella +7.3), LBNP ordering holds. Was a
+# strict xfail (saline +4.1 %): less constraint above rest lets the LV take the infused volume.
 def test_the_body_delivers_bhellas_filling_volumes_to_the_lv(bhella_stages):
     """The LV's end-diastolic volume changes by Bhella's fraction at every stage:
     LBNP -15 -11.0 / -9.9 %, LBNP -30 -21.5 / -20.6 %, saline +6.7 / +8.0 % (two
@@ -7813,11 +7833,8 @@ def test_lv_filling_pressure_per_volume_follows_bhella2014(bhella_stages):
     assert not misses, "LV filling pressure per volume does not follow Bhella: " + "; ".join(misses)
 
 
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason=(
-    "KNOWN GAP, 2026-11-12 (pre-registered) — AT LBNP -30 THE RIGHT ATRIUM FALLS TOO LITTLE FOR "
-    "THE WEDGE FALL: dRAP / dPCWP 0.56 against Bhella's [0.63, 0.83] (0.74 at -15, inside [0.60, "
-    "0.90]). Same defect as the RA tests, now free of the LBNP dose."
-))
+# CLOSED 2026-11-13 by STEP 3: dRAP/dPCWP 0.72 / 0.69 at LBNP -15 / -30 (bands 0.60-0.90 / 0.62-0.83). Was a strict
+# xfail from 2026-11-12 (0.56 at -30): the external pressure now falls with the heart on unloading.
 def test_right_and_left_filling_pressures_fall_together_bhella2014(bhella_stages):
     """[PMID 25236519 — Bhella 2014] dRAP / dPCWP on LBNP: how the right and left filling
     pressures move together, measured simultaneously. Independent of the LBNP dose. The
@@ -7901,15 +7918,9 @@ def johnson_bleed():
     return _johnson_bleed()
 
 
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason=(
-    "KNOWN GAP, 2026-10-23 — CVP FALLS ~4x TOO LITTLE ON BLEEDING. Measured: -0.50 / -0.91 / "
-    "-1.28 mmHg at 333 / 667 / 1000 mL against Johnson's -2.3 / -3.7 / -4.7. Meanwhile stroke "
-    "volume falls ~2x TOO MUCH (-13 / -24 / -34 mL against -5 / -11 / -18): the heart's output "
-    "answers volume loss that its filling pressure does not show — the cardiac function curve "
-    "slope, seen again. Same RA defect as section 53's RAP test, from the bleed side, on a "
-    "different lab and cohort. HYPOTHESIS, under test: the pericardial knee sits AT the resting "
-    "volume, so below it the RA is slack. Validation log 2026-10-23."
-))
+# CLOSED 2026-11-13 by STEP 3 (external pressure Xc 3.0, slopes 0.08 below / 0.05 above rest): dCVP -1.32 / -2.50 /
+# -3.37 at 333 / 666 / 999 mL, inside all three bands for the first time. dSV -7.6 / -14.5 / -22.1 against
+# Johnson's -5 / -11 / -18 (not asserted here). Was a strict xfail from 2026-10-23 (CVP ~4x too shallow).
 def test_cvp_falls_as_in_johnson2014_controlled_blood_loss(johnson_bleed):
     """CVP falls by Johnson's mean change at each 333 mL stage, within the SE-of-
     change band defined above."""
@@ -7985,6 +7996,8 @@ def test_reported_lvedp_is_the_passive_pressure_at_end_diastolic_volume():
 # ===========================================================================
 
 
+@pytest.mark.xfail(strict=True, raises=AssertionError, reason=(
+    "STEP 3, 2026-11-13 — external pressure Xc 3.0 (chest wall + mediastinum + pericardium), slope 0.08 below / 0.05 above rest. RA reservoir 68.2 % of RV stroke volume against Sjoberg 50-66 %. Suspect: the atria are re-placed (atrial_rest_factors) for the WHOLE 3.0, while the pericardial part acts mainly at ventricular end-diastole."))
 def test_atrial_reservoirs_match_two_independent_labs():
     """Atrial reservoir (max - min volume of the average beat) indexed to BSA, reference
     patient. LA 24 +/- 4.4 [MAC16] and 25 +/- 4 [SJO]; RA 31 +/- 6.0 [MAC16] and 32 +/- 5

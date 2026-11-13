@@ -384,8 +384,20 @@ class SimParams:
         # **PERI_K (the sac's stiffness) was pinned WITHOUT this layer (Bhella's external share
         # attributed to the sac alone): it is now a STALE PIN, to be re-pinned with sac + chest
         # together** (validation log 2026-11-06).
-        self.chest_rest_mmhg = 1.75
-        self.chest_slope = 0.15
+        # RE-SOLVED 2026-11-13 (step 3, Jesper: "we need to adopt the 3 / 0.08 cell"; validation log STEP 3b/3c):
+        # Xc 3.0 mmHg — the external pressure at rest read as the AMALGAM of chest wall, mediastinum/lungs and
+        # pericardium at normal volumes (Jesper: "pressures are probably an amalgamation of thoracic, pericardium and
+        # chest wall"; ITP is separate). Belenkie gives the chest-closure part (~1.5-2), Tyberg/Hamilton the pericardial
+        # part (one lab, conflict H): GRADE C/D, two partial routes summed. The phasic sac stays slack at rest, so the
+        # pericardium is not counted twice. THE CAP: the constraint can lower CVP by at most Xc; Johnson's 1 L stage
+        # needs ~3.0 (2.5 gave -3.08 whatever the slope).
+        # Slope BELOW rest 0.08 mmHg/mL (grade D): soft enough to last a litre, steep enough to move Johnson's stages
+        # 1-2 (0.03 never did). Slope ABOVE rest 0.05 (grade D): the smallest change that puts Bhella's saline wedge per
+        # LV volume inside its band (8.99 vs 4.3-9.2). Replaced 1.75 / 0.15 both ways (Oren pin, an LBNP magnitude).
+        # KNOWN COSTS: rest wedge -0.57 (rule +/-0.5); LV per volume at LBNP -30 3.73 vs <= 3.2; saline wedge +7.5.
+        self.chest_rest_mmhg = 3.0
+        self.chest_slope = 0.05          # above the resting heart volume
+        self.chest_slope_below = 0.08    # below it
         self.chest_tau_s = 2.0
         # Pericardial capacity from the walls just set (heart.py). apply_cardiac
         # recomputes it for a built patient.
@@ -1892,8 +1904,12 @@ def run_simulation(
             _av_ref["vbar"] = _vb
             if "vref" not in _av_ref and t >= _SPT_SETTLE_S:
                 _av_ref["vref"] = _vb
-            _av_ref["p_chest"] = (max(0.0, params.chest_rest_mmhg + params.chest_slope * (_vb - _av_ref["vref"]))
-                                  if "vref" in _av_ref else params.chest_rest_mmhg)
+            if "vref" in _av_ref:
+                _dv = _vb - _av_ref["vref"]
+                _sl = params.chest_slope if _dv >= 0.0 else params.chest_slope_below
+                _av_ref["p_chest"] = max(0.0, params.chest_rest_mmhg + _sl * _dv)
+            else:
+                _av_ref["p_chest"] = params.chest_rest_mmhg
         _pc_now = _av_ref.get("p_chest", 0.0)
         _cvp_rep_sum += (p_ra + _pp_now + _pc_now) - _cvp_rep_win[0]
         _cvp_rep_win.append(p_ra + _pp_now + _pc_now)

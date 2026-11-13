@@ -211,6 +211,7 @@ def apply_cardiac(params, cardiac: dict) -> None:
     params.aortic_r = AORTIC_R / s
     params.aortic_zc = AORTIC_ZC / s
     params.chest_slope = params.chest_slope / s
+    params.chest_slope_below = params.chest_slope_below / s
     params.septal_compliance = params.septal_compliance * s
     params.pericardial_vk_ml = PERI_VK * s
     # The pericardium is sized by THIS patient's walls, just set (heart.py
