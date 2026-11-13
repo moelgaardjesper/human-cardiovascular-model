@@ -376,6 +376,9 @@ class SimParams:
         # surgical cohort, so healthy spontaneous breathing is probably lower.
         # s 0.15 mmHg/mL — GRADE D, PINNED on ONE source (Oren 1993 LBNP -10 dRAP; the grid's
         # closest value, -1.49 vs -2.1, at the grid's edge). tau 2 s — chosen, not tuned.
+        # PROVISIONAL since 2026-11-12: Oren's dRAP at -10 is an LBNP MAGNITUDE, and the model's
+        # tank moves a different dose (legs only; man's chamber includes the pelvis). Re-pin on
+        # the dose-independent relations of test_circulation §53b (step 3, the heart).
         # Walls re-placed by Xc (wall_rest_factors), so rest is held. HELD OUT and moved toward
         # man: Cléroux 2.0 vs 2.4 %/mmHg, Echt bleed side, Johnson SV, Oren ventricles, Blaber CO.
         # **PERI_K (the sac's stiffness) was pinned WITHOUT this layer (Bhella's external share

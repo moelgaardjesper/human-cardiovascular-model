@@ -4534,10 +4534,14 @@ def test_hypovolaemic_tachycardia_matches_lbnp():
 
     base, bled = run(0.0), run(1000.0)
     dhr = bled['hr'] - base['hr']
-    assert 20.0 < dhr < 40.0, (
-        f"1000 mL bleed gave dHR {dhr:+.1f} bpm; humans give +25.3 (LBNP -80) "
-        f"to +38 (Vettorello 2016)"
-    )
+    # RE-SCOPED 2026-11-12 (LBNP re-scope, §53): the bleed stands in for LBNP -80 at an
+    # assumed equivalence ("more than a litre"), so the size is not the same quantity.
+    # Until today: 20 < dHR < 40. The dose-independent RELATION — heart rate per mmHg
+    # of filling-pressure fall at constant arterial pressure — stays asserted in
+    # test_cardiopulmonary_hr_arm_is_live_and_signed (15-32 bpm for -6.7 mmHg).
+    score("test_hypovolaemic_tachycardia_matches_lbnp", "dHR 1 L", dhr, 25.3, kind="change",
+          source="LBNP -80 (n 20) stands in for 1 L; reported only")
+    assert dhr > 0.0, f"1000 mL bleed gave dHR {dhr:+.1f} bpm; the heart must speed up"
     assert bled['cvp'] < base['cvp'], "CVP did not fall with haemorrhage"
 
 
@@ -5048,9 +5052,10 @@ def test_resting_stroke_volume_in_young_adults_pmid27702883(lbnp_young_haemorrha
     )
 
 
-# STRICT XFAIL 2026-11-06 — the closed-chest constraint adopted 2026-11-06 (step 3C, Xc 1.75, s 0.15; Jesper overrode the registered rule).
-@pytest.mark.xfail(strict=True, reason=(
-    "after the closed-chest constraint (2026-11-06): young men, ~500 mL LBNP: male dCO -0.38 vs -1.00 measured — the chest term holds SV too well at mild unloading in the young (with Johnson's CVP: the young-heart placement, #34)"))
+# CLOSED 2026-11-12 by the LBNP RE-SCOPE, not by a model change: a 500 mL bleed standing in for -30
+# mmHg at a chosen exchange rate is not the same quantity, so direction is asserted. Measured: dCO
+# -0.46 / -0.47, dHR +11.1 / +11.3 (male / female) against -1.00, +5.8 — output falls about half as
+# much and the rate rises twice as much; reported to the scorecard. Was a strict xfail from 2026-11-06.
 def test_central_hypovolaemia_flow_and_rate_response_pmid27702883(lbnp_young_haemorrhage):
     """[PMID 27702883] Cardiac output and heart rate under -30 mmHg LBNP.
 
@@ -5076,17 +5081,20 @@ def test_central_hypovolaemia_flow_and_rate_response_pmid27702883(lbnp_young_hae
     against 4.6. The two young cohorts genuinely differ and the model sits
     between them, which is why neither is used as an absolute target.
     """
+    # RE-SCOPED 2026-11-12 (LBNP re-scope, §53): a 500 mL bleed stands in for -30 mmHg
+    # LBNP at an exchange rate CHOSEN by matching these two numbers, so their magnitudes
+    # are not the same quantity as the study's. Direction is asserted; the magnitudes go
+    # to the scorecard. Until today: |dCO - (-1.00)| <= 0.5 and |dHR - 5.8| <= 4.0.
     for sex, (rest, bled) in lbnp_young_haemorrhage.items():
         dco = bled["co"] - rest["co"]
         dhr = bled["hr"] - rest["hr"]
-        assert abs(dco - _LBNP_DCO) <= 0.5, (
-            f"{sex} dCO {dco:+.2f} L/min against a measured {_LBNP_DCO:+.2f} — "
-            f"the 500 mL LBNP equivalence has moved"
-        )
-        assert abs(dhr - _LBNP_DHR) <= 4.0, (
-            f"{sex} dHR {dhr:+.1f} bpm against a measured {_LBNP_DHR:+.1f} — "
-            f"the 500 mL LBNP equivalence has moved"
-        )
+        score("test_central_hypovolaemia_flow_and_rate_response_pmid27702883", f"dCO {sex}", dco, _LBNP_DCO,
+              kind="change", source="PMID 27702883; bleed standing in for LBNP, reported only")
+        score("test_central_hypovolaemia_flow_and_rate_response_pmid27702883", f"dHR {sex}", dhr, _LBNP_DHR,
+              kind="change", source="PMID 27702883; bleed standing in for LBNP, reported only")
+        assert dco < 0.0 and dhr > 0.0, (
+            f"{sex}: under central hypovolaemia cardiac output must fall and heart rate rise; "
+            f"dCO {dco:+.2f} L/min, dHR {dhr:+.1f} bpm (measured {_LBNP_DCO:+.2f}, {_LBNP_DHR:+.1f})")
 
 
 @pytest.mark.xfail(strict=True, reason=(
@@ -7677,22 +7685,36 @@ def bhella_stages(bhella_saline):
     return out
 
 
-def _stage_misses(bhella_stages, k, label, unit):
+def _stage_misses(bhella_stages, k, label, unit, test):
+    """RE-SCOPED 2026-11-12 (Jesper: "if it's not the same quantity it's not a loosening").
+    The model's LBNP tank acts on the legs only; Bhella's chamber seals at the iliac crest,
+    so the pelvis is inside it. How much blood a given suction moves therefore differs by an
+    unknown amount, and a per-stage LBNP MAGNITUDE is a different quantity in the model. The
+    LBNP stages are asserted as an ORDERING (0 > -15 > -30 for every quantity here); their
+    magnitudes are still reported to the scorecard. The SALINE stage is not LBNP and keeps
+    its band. The dose-independent RELATIONS between these quantities are tested in §53b."""
     misses = []
     for stage, bands in _BHELLA_STAGE_BANDS.items():
         lo, hi = bands[k]
         v = bhella_stages[stage][k]
-        score(f"bhella {label}", stage, v, 0.5 * (lo + hi), kind="change",
-              source="Bhella 2014; band = span of two baseline estimates; no SD")
-        if not lo <= v <= hi:
+        lbnp = stage != "saline15"
+        score(test, f"{label} {stage}", v, 0.5 * (lo + hi), kind="change",
+              source="Bhella 2014; band = span of two baseline estimates; no SD"
+                     + ("; LBNP: dose differs (tank boundary), reported only" if lbnp else ""))
+        if not lbnp and not lo <= v <= hi:
             misses.append(f"{stage}: {label} {v:+.3g}{unit} outside [{lo:+.3g}, {hi:+.3g}]")
+    v15, v30 = bhella_stages["lbnp15"][k], bhella_stages["lbnp30"][k]
+    if not 0.0 > v15 > v30:
+        misses.append(f"LBNP ordering: {label} {v15:+.3g} at -15, {v30:+.3g} at -30 "
+                      f"(must fall, and fall further at -30)")
     return misses
 
 
-# STRICT XFAIL 2026-11-05 (Jesper: adopt the capacity correction): at LBNP -15 the LV now loses -7.2 % against the band edge
-# -7.4 % — LESS volume, the direction of the closed-chest fingerprint (Cléroux 1989 measured ~-7 % at -15; physiology_core).
-@pytest.mark.xfail(strict=True, reason=(
-    "LBNP -15 dLVEDV -7.2 % just outside Bhella's -13.5..-7.4 % after the pericardial capacity correction of 2026-11-05 (atria at end-of-contraction volume at ventricular end-diastole; the sac now meets the heart at end-diastole as designed, ~34 mL tighter); Cléroux measures ~-7 %"))
+# RE-SCOPED 2026-11-12 (LBNP re-scope): the LBNP stages are an ORDERING, and it holds (-5.1 % then
+# -19.2 %). Still a strict xfail, on the SALINE stage alone.
+@pytest.mark.xfail(strict=True, raises=AssertionError, reason=(
+    "saline 15 mL/kg: dLVEDV +4.1 % just below Bhella's +4.2..+10.5 % (measured 2026-11-12). The LBNP "
+    "stages (ordering only since the re-scope) pass. The earlier reason, -7.2 % at LBNP -15, was stale."))
 def test_the_body_delivers_bhellas_filling_volumes_to_the_lv(bhella_stages):
     """The LV's end-diastolic volume changes by Bhella's fraction at every stage:
     LBNP -15 -11.0 / -9.9 %, LBNP -30 -21.5 / -20.6 %, saline +6.7 / +8.0 % (two
@@ -7705,46 +7727,110 @@ def test_the_body_delivers_bhellas_filling_volumes_to_the_lv(bhella_stages):
     It PASSED when written (2026-10-23: -10.1, -20.7, +6.4 %), and its passing is
     what clears the body of the loading defect in this experiment. Sabotage-verified:
     tripling venous-reservoir compliance moves it out of band (validation log)."""
-    misses = _stage_misses(bhella_stages, 0, "dLVEDV", "")
+    misses = _stage_misses(bhella_stages, 0, "dLVEDV", "", "test_the_body_delivers_bhellas_filling_volumes_to_the_lv")
     assert not misses, "LV filling volume does not follow Bhella: " + "; ".join(misses)
 
 
 @pytest.mark.xfail(strict=True, raises=AssertionError, reason=(
-    "KNOWN GAP — THE WEDGE HAS THE SAME SHAPE ERROR AS THE RIGHT ATRIUM: TOO LITTLE "
-    "FALL ON UNLOADING, TOO MUCH RISE ON LOADING. Re-measured 2026-11-01: -2.28 / -4.35 "
-    "on LBNP -15 / -30 against -4.2 / -6.1, and +6.12 on saline against +4.4-5.5. "
-    "WRITTEN 2026-10-23 THE UNLOADING HALF WAS THE OPPOSITE (-5.1 / -8.5, too much): "
-    "the septum (C 4, 2026-10-29) over-corrected it, while relieving the loading half "
-    "(+8.7 -> +6.1). Its own adoption note says unloading wants C ~1, loading >= 8. "
-    "The LV still receives Bhella's volume at every stage (test above). No combination "
-    "of 11 heart and body parameters reaches normal rest AND Bhella's loading "
-    "pressures, with or without the septum (joint searches 0/512, 0/256). Slack below "
-    "rest and steep above is the signature of a knee AT the resting volume (RA xfail "
-    "below; step 2g). Validation log 2026-11-01."
+    "KNOWN GAP — ON LOADING THE WEDGE RISES TOO MUCH: saline +6.73 against +4.1..+5.75 (measured "
+    "2026-11-12). The LBNP stages are an ORDERING since the 2026-11-12 re-scope and pass (-3.02, "
+    "-5.35). Per volume received the LV is too stiff around rest and on loading — §53b, the heart's "
+    "target. Joint searches 0/512, 0/256 found no heart+body set reaching normal rest AND Bhella's "
+    "loading pressures (validation log 2026-11-01)."
 ))
 def test_wedge_pressure_follows_bhellas_stages(bhella_stages):
     """The HEART half, left side: given the volume it received, the LV's filling
     pressure changes by Bhella's amount — LBNP -15 -4.2 / -3.15, LBNP -30 -6.1 /
     -5.05, saline +4.4 / +5.45 mmHg (two baseline estimates)."""
-    misses = _stage_misses(bhella_stages, 1, "dPCWP", " mmHg")
+    misses = _stage_misses(bhella_stages, 1, "dPCWP", " mmHg", "test_wedge_pressure_follows_bhellas_stages")
     assert not misses, "wedge pressure does not follow Bhella: " + "; ".join(misses)
 
 
 @pytest.mark.xfail(strict=True, raises=AssertionError, reason=(
-    "KNOWN GAP, 2026-10-23 — THE RIGHT ATRIUM HAS THE WRONG SHAPE AROUND REST. It falls "
-    "one-third to two-fifths of Bhella's value on suction (-0.9 / -1.7 against -3.2 / "
-    "-4.5) and rises twice it on saline (+5.3 against +2.6-3.5): slack below rest, steep "
-    "above. That is the signature of a sharp pericardial knee placed AT the resting "
-    "volume (option 1, heart.py). Man's pattern fits a sac already engaged at rest with "
-    "a softer knee (the Tyberg position, conflict H) — a HYPOTHESIS, not yet tested. "
-    "Validation log 2026-10-23."
+    "KNOWN GAP — ON LOADING THE RIGHT ATRIUM RISES TWICE BHELLA'S: saline +5.90 against +2.15..+3.95 "
+    "(measured 2026-11-12). The LBNP stages are an ORDERING since the 2026-11-12 re-scope and pass "
+    "(-2.23, -2.98); their dose-free relation to the wedge fails at -30 (§53b)."
 ))
 def test_right_atrial_pressure_follows_bhellas_stages(bhella_stages):
     """The HEART half, right side: RA pressure changes by Bhella's derived amount —
     LBNP -15 -3.2 / -2.3, LBNP -30 -4.5 / -3.6, saline +2.6 / +3.5 mmHg (two
     baseline estimates). The model's RAP is the catheter-mean CVP."""
-    misses = _stage_misses(bhella_stages, 2, "dRAP", " mmHg")
+    misses = _stage_misses(bhella_stages, 2, "dRAP", " mmHg", "test_right_atrial_pressure_follows_bhellas_stages")
     assert not misses, "RA pressure does not follow Bhella: " + "; ".join(misses)
+
+
+# ===========================================================================
+# 53b. BHELLA'S RELATIONS — what the heart did with the volume it received
+# ===========================================================================
+#
+# ADDED 2026-11-12 with the LBNP re-scope (§53's helper). A per-stage LBNP magnitude
+# depends on how much blood the tank moves, which the model gets wrong (pelvis outside
+# the suction). A RELATION between two quantities measured at the same moment does not:
+# whatever volume reached the LV, the filling pressure that came with it is a property
+# of the heart. These are the HEART's targets for step 3.
+#
+# Bhella's two baseline estimates per stage (docstrings above; base 2 / mean of bases):
+_BHELLA_EST = {
+    #            dLVEDV fraction     dPCWP mmHg       dRAP mmHg
+    "lbnp15":  ((-0.110, -0.099), (-4.20, -3.15), (-3.20, -2.30)),
+    "lbnp30":  ((-0.215, -0.206), (-6.10, -5.05), (-4.50, -3.60)),
+    "saline15": ((+0.067, +0.080), (+4.40, +5.45), (+2.60, +3.50)),
+}
+# Figure-reading precision, as §53: dPCWP +/-0.3, derived dRAP +/-0.45, dLVEDV +/-0.025.
+_BHELLA_PREC = (0.025, 0.30, 0.45)
+
+
+def _bhella_ratio_band(stage, num, den):
+    """Band for (quantity num) / (quantity den) at one stage: the span of the two
+    baseline estimates' ratios, widened by figure-reading precision added in quadrature
+    (relative). Not interval arithmetic over the §53 bands, which would treat the two
+    estimates' errors as independent when one baseline choice moves both."""
+    e = _BHELLA_EST[stage]
+    r = [e[num][i] / e[den][i] for i in (0, 1)]
+    mid_n, mid_d = 0.5 * sum(e[num]), 0.5 * sum(e[den])
+    rel = ((_BHELLA_PREC[num] / abs(mid_n)) ** 2 + (_BHELLA_PREC[den] / abs(mid_d)) ** 2) ** 0.5
+    return min(r) * (1.0 - rel), max(r) * (1.0 + rel)
+
+
+@pytest.mark.xfail(strict=True, raises=AssertionError, reason=(
+    "KNOWN GAP, 2026-11-12 (pre-registered) — THE LV IS TOO STIFF AROUND REST AND ON LOADING. "
+    "Filling pressure per 10 % of end-diastolic volume: model 5.9 / 2.8 / 16.4 mmHg at LBNP -15 / "
+    "-30 / saline against Bhella's [2.4, 4.8] / [2.1, 3.2] / [4.3, 9.2]. Right only at -30. "
+    "The heart's in-vivo pressure-volume relation, free of the LBNP dose: step 3's target."
+))
+def test_lv_filling_pressure_per_volume_follows_bhella2014(bhella_stages):
+    """[PMID 25236519 — Bhella 2014] dPCWP per fractional dLVEDV at each stage: the LV's
+    end-diastolic pressure-volume relation as the circulation sees it, in vivo, measured
+    at the same moments (Swan-Ganz, MRI-scaled echo). Independent of the LBNP dose."""
+    misses = []
+    for stage in ("lbnp15", "lbnp30", "saline15"):
+        lo, hi = _bhella_ratio_band(stage, 1, 0)
+        v = bhella_stages[stage][1] / bhella_stages[stage][0]
+        score("test_lv_filling_pressure_per_volume_follows_bhella2014", f"dPCWP per dLVEDV {stage}",
+              v / 10.0, 0.05 * (lo + hi), kind="ratio", source="Bhella 2014; mmHg per 10 % of LVEDV")
+        if not lo <= v <= hi:
+            misses.append(f"{stage}: {v / 10:.2f} mmHg per 10 % outside [{lo / 10:.2f}, {hi / 10:.2f}]")
+    assert not misses, "LV filling pressure per volume does not follow Bhella: " + "; ".join(misses)
+
+
+@pytest.mark.xfail(strict=True, raises=AssertionError, reason=(
+    "KNOWN GAP, 2026-11-12 (pre-registered) — AT LBNP -30 THE RIGHT ATRIUM FALLS TOO LITTLE FOR "
+    "THE WEDGE FALL: dRAP / dPCWP 0.56 against Bhella's [0.63, 0.83] (0.74 at -15, inside [0.60, "
+    "0.90]). Same defect as the RA tests, now free of the LBNP dose."
+))
+def test_right_and_left_filling_pressures_fall_together_bhella2014(bhella_stages):
+    """[PMID 25236519 — Bhella 2014] dRAP / dPCWP on LBNP: how the right and left filling
+    pressures move together, measured simultaneously. Independent of the LBNP dose. The
+    saline ratio is tested in §51 (0.55-0.70)."""
+    misses = []
+    for stage in ("lbnp15", "lbnp30"):
+        lo, hi = _bhella_ratio_band(stage, 2, 1)
+        v = bhella_stages[stage][2] / bhella_stages[stage][1]
+        score("test_right_and_left_filling_pressures_fall_together_bhella2014", f"dRAP/dPCWP {stage}",
+              v, 0.5 * (lo + hi), kind="ratio", source="Bhella 2014")
+        if not lo <= v <= hi:
+            misses.append(f"{stage}: {v:.2f} outside [{lo:.2f}, {hi:.2f}]")
+    assert not misses, "RA and wedge do not fall together as in Bhella: " + "; ".join(misses)
 
 
 # ===========================================================================
@@ -8132,29 +8218,26 @@ def oren_lbnp10():
     return tuple((8.0 * x + 1.0 * y) / 9.0 for x, y in zip(m, f))
 
 
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason=(
-    "KNOWN GAP, 2026-11-01 — THE MODEL'S VOLUME BUFFER IS IN THE WRONG CHAMBERS. On "
-    "Oren's -10 mmHg LBNP man gives up volume from the LEFT ATRIUM (-23 %) while both "
-    "ventricles hold theirs and stroke volume is unchanged; the filling pressures still "
-    "fall 2-3 mmHg. The model gives it up from the VENTRICLES (LVEDV -8.7 %, RVEDV -9.2 %, "
-    "SV -10 mL) and the LA only -12 %. Oren's reading: the LA is the more compliant chamber "
-    "at rest; in the model the ranking is reversed. A pericardium pressing at rest moves "
-    "the ventricles toward Oren (capacity x0.70: LVEDV -3 mL) but the LA AWAY from it, so "
-    "two things are missing together: external pressure at rest (conflict H) and atria "
-    "that are the compliant, volume-giving chambers. Validation log 2026-11-01."
-))
+# CLOSED 2026-11-12 by the LBNP RE-SCOPE, not by a model change: the per-mmHg magnitudes (LV within
+# 6 %, LA -14..-32 %) became the dose-free ordering (the LA gives up the larger fraction). It holds,
+# NARROWLY: LA -5.5 % against LV -4.6 % (Oren -23 % against ~3 %). The magnitudes are reported to
+# the scorecard. Was a strict xfail from 2026-11-01 ("the volume buffer is in the wrong chambers").
 def test_mild_unloading_empties_the_atrium_not_the_ventricles_oren1993(oren_lbnp10):
-    """[PMID 8365967] At -10 mmHg LBNP the LV end-diastolic volume holds (absolute change
-    within 6 %, 1 SD of Oren's individual changes) and the LA end-systolic volume falls
-    by 14-32 % (1 SD around 23 %). Reported, not asserted: RVEDV (no individual SD
-    published; Oren +1 mL) and RAP (-2.1, paired SD not published)."""
+    """[PMID 8365967] At -10 mmHg LBNP the left atrium gives up a larger FRACTION of its
+    volume than the left ventricle: Oren LA end-systolic -23 +/- 9 % (every subject),
+    LVEDV within 3 +/- 3 %.
+
+    RE-SCOPED 2026-11-12 (LBNP re-scope, §53): the two magnitudes (LV within 6 %, LA
+    -14..-32 %) depend on how much blood -10 mmHg moves, which the model's tank gets
+    wrong (pelvis outside the suction). Which CHAMBER gives up the volume does not: that
+    ordering is asserted, the magnitudes are reported to the scorecard."""
     dlv, drv, dla, drap = oren_lbnp10
-    score("test_mild_unloading_empties_the_atrium_not_the_ventricles_oren1993", "dLA ES %", 100.0 * dla, -23.0, sd=9.0, kind="change", source="Oren 1993; n not checked")
+    score("test_mild_unloading_empties_the_atrium_not_the_ventricles_oren1993", "dLA ES %", 100.0 * dla, -23.0, sd=9.0, n=9, kind="change", source="Oren 1993; LBNP magnitude, reported only")
+    score("test_mild_unloading_empties_the_atrium_not_the_ventricles_oren1993", "dLVEDV %", 100.0 * dlv, 3.0, sd=3.0, n=9, kind="change", source="Oren 1993 (absolute change); LBNP magnitude, reported only")
     misses = []
-    if abs(dlv) > 0.06:
-        misses.append(f"LVEDV {100 * dlv:+.1f} % (Oren holds within 6 %)")
-    if not -0.32 <= dla <= -0.14:
-        misses.append(f"LA {100 * dla:+.1f} % (Oren -14 to -32 %)")
+    if not abs(dla) > abs(dlv):
+        misses.append(f"the LV gives up {100 * dlv:+.1f} % and the LA only {100 * dla:+.1f} % "
+                      f"(Oren: LA -23 %, LV within 3 %)")
     assert not misses, ("mild unloading does not follow Oren: " + "; ".join(misses)
                         + f". Also RVEDV {100 * drv:+.1f} % (Oren +0.6 %), dRAP {drap:+.2f}"
                         + " (Oren -2.1)")

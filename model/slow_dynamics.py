@@ -147,6 +147,10 @@ STRESS_RELAX_COMPARTMENTS = (
 #                880); total/elastic 1.50 then sits inside Halliwill's
 #                1.46-1.83, which was not a target; creep 3.5 -> 10 min +33 mL
 #                against Halliwill's creep-plus-leak bound of ~80.
+#   PROVISIONAL since 2026-11-12: 870 mL is an LBNP MAGNITUDE, and the model's tank
+#   acts on the legs only where Lundvall's sealed at the iliac crest (pelvis inside),
+#   so the dose differs. The plateau TIMING (tau) and Halliwill's cuff-based
+#   total/elastic ratio (1.50 in 1.46-1.83) do not depend on the tank and still hold.
 LEG_RELAX_COMPARTMENTS = ("thigh_vein", "calf_vein", "foot_vein")
 TAU_STRESS_RELAX_LEG = 70.0   # s
 RELAX_FRACTION_LEG = 0.20
