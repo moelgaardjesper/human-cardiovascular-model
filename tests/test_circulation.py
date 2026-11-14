@@ -1543,7 +1543,17 @@ def test_init_volumes_are_the_settled_equilibrium():
     r = run_simulation(p, duration_s=90.0)
     V = np.asarray(r["volumes"])
     t = np.asarray(r["t"])
-    settled = V[t >= t[-1] - 5.0].mean(axis=0)
+    # AT PHASE 0, as init_volume is defined (docstring) — corrected 2026-11-14. This read the
+    # CYCLE MEAN of the last 5 s, which for a ventricle is ~50-60 mL below its phase-0 (end-diastolic)
+    # volume by construction: the RV "settled -61 mL" while it sat 7.6 mL from its init at phase 0.
+    # Phase 0 is ventricular end-diastole (circulation.py records lv_ed / rv_ed there), so every
+    # compartment is read at the LV volume peaks — one instant per beat, which also keeps total
+    # blood volume identical. Stricter for the chambers, unchanged in kind for the veins.
+    m = np.where(t >= t[-1] - 5.0)[0]
+    lv = V[m, IDX["left_ventricle"]]
+    d = np.diff(lv)
+    ed = m[np.where((d[:-1] > 0) & (d[1:] <= 0))[0] + 1]
+    settled = V[ed].mean(axis=0)
     init = np.array([c.init_volume for c in comp])
 
     # DERIVED from the model's own set (2026-10-04), not listed: the IVC split
@@ -8139,6 +8149,23 @@ def rv_passive_curvature():
     lo, mid, hi = (p_rv(edv * f) for f in (0.7, 1.0, 1.3))
     return (float(np.log(mid / lo)) / (0.3 * edv),
             float(np.log(hi / mid)) / (0.3 * edv), edv)
+
+
+def test_rv_resting_point_is_luus_volume_at_richters_pressure():
+    """[PMID 34980185 — Luu 2022; PMID 33655769 — Richter 2021] The RV's resting point is placed through
+    two sourced numbers (2026-11-14): its wall carries Richter's RVEDP at Luu's RVEDV for the reference
+    age, in Luu's convention (papillary muscle and trabeculae counted as mass: cavity blood, as the model
+    holds). Read THROUGH THE PARAMETERS THE MODEL USES — the compartment's V0 and SimParams.rv_emin — and
+    the age table aging.py scales from, so a hand edit to RV_EMIN, to the RV's V0 or to the table fails
+    here instead of silently moving the placement back onto a chosen constant."""
+    from model.heart import P_RIGHT_ED_TM, _BSA_REF
+    from model.aging import at_age, LUU_RVEDV_MEN, REFERENCE_AGE_YEARS
+    p = SimParams()
+    rv0 = p.compartments[IDX["right_ventricle"]].unstressed_volume
+    placed = rv0 + P_RIGHT_ED_TM / p.rv_emin
+    luu = at_age(LUU_RVEDV_MEN, REFERENCE_AGE_YEARS) * _BSA_REF
+    assert abs(placed - luu) < 0.5, (
+        f"the RV's resting point is {placed:.1f} mL; Luu's RVEDV at the reference age is {luu:.1f} mL")
 
 
 def test_rv_fills_along_rommels_measured_exponential_pmid29449367(rv_passive_curvature):

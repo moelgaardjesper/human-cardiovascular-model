@@ -515,8 +515,15 @@ def _johnson_with_two_pumps(relax_fraction=None):
             params.ra_emax, params.la_emax = params.ra_emin * fra, params.la_emin * fla
             S["sw"] = True
         qr = S["sq"] / S["n"] * staged(tt, qf)
-        e = pla - (S["sla"] / S["n"] + staged(tt, dl)); S["integ"] += e * DT
-        ql = max(0.0, qr + 10.0 * e + 2.0 * S["integ"])
+        e = pla - (S["sla"] / S["n"] + staged(tt, dl))
+        # The left pump trims flow so LA pressure follows its target. BOUNDED (2026-11-14): flow is held in
+        # [0.5, 1.5] x the right pump's, and the integrator stops winding while the output sits on a bound.
+        # Unbounded, a target the LA cannot reach (stage 3 after the RV re-placement) wound it up until the run
+        # diverged (CVP ~1e44). The bound never acts in a stage that reaches its target.
+        u = qr + 10.0 * e + 2.0 * (S["integ"] + e * DT)
+        ql = min(1.5 * qr, max(0.5 * qr, u))
+        if ql == u:
+            S["integ"] += e * DT
         dV[i["right_atrium"]] += q_tri - qr; dV[i["right_ventricle"]] = 0.0
         dV[i["pulmonary_art"]] += qr - q_pul
         dV[i["left_atrium"]] += q_mit - ql; dV[i["left_ventricle"]] = 0.0
@@ -538,8 +545,13 @@ def _johnson_with_two_pumps(relax_fraction=None):
 
 
 @pytest.mark.slow
-# RE-PINNED 2026-11-13: strict xfail on the re-solved heart (-2.27 / -3.28 at 0.15) CLOSED by RELAX_FRACTION 0.11;
-# stage 2 passes by 0.002 mmHg (validation log, BODY PASS 1).
+@pytest.mark.xfail(strict=True, raises=AssertionError, reason=(
+    "2026-11-14, after the RV was placed on Luu + Richter: stage 2 -2.32 against the edge -2.34 at RELAX_FRACTION 0.11 "
+    "(0.10 passes stage 2 but sits below Echt's human floor: the floor wins, by the registered rule). Stage 3 cannot be "
+    "run on this harness any more: its frozen ventricles hold the heart's volume, so the heart's external pressure (3.0 "
+    "at rest) cannot fall and the imposed left-atrial fall becomes unreachable — the run ends at CVP +50..+66. The harness "
+    "must let the atria's surroundings follow the imposed state before this pin can be re-solved (validation log)."))
+# RE-PINNED 2026-11-13 (0.11, stage 2 by 0.002 mmHg); strict xfail again 2026-11-14 — see the reason above.
 def test_body_alone_follows_johnson2014_blood_loss_with_the_heart_pumped():
     """[PMID 24876357 — Johnson 2014] THE PIN of RELAX_FRACTION (slow_dynamics.py): with
     the heart replaced by two pumps imposing Johnson's measured flow, the BODY's CVP falls

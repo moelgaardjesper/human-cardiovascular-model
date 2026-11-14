@@ -556,7 +556,20 @@ RV_EMAX = 0.72   # mmHg/mL  right ventricle peak systolic elastance
 # the curve exactly as it moved the old line. 0.04 sits between the values implied
 # by Richter's RVEDP 4 and Hoff's RAP with Petersen's CMR RVEDV (0.031-0.053;
 # reference_values.md) — a BOUND, GRADE C.
-RV_EMIN = 0.04   # mmHg/mL  right ventricle diastolic placement (see above)
+# PLACED THROUGH TWO SOURCED NUMBERS (2026-11-14, Jesper: "Adopt rv placement"; validation log #34 step 3).
+# The RV's resting point is where its wall carries Richter's RVEDP (P_RIGHT_ED_TM). Until now that point was
+# V0 + P / 0.04, with 0.04 chosen inside a bound — 175 mL at the reference patient, ~9 mL above any measurement.
+# It is now Luu 2022's RVEDV at the reference age (men, 86.9 mL/m2 interpolated between 45-54 and 55-64) x the
+# reference BSA: 165.9 mL. Luu contours "anatomically correct, papillary muscle and trabeculae counted as MASS",
+# so the volume is the BLOOD in the cavity — the quantity the model's compartment holds (Jesper: check whether
+# a source includes appendages / trabeculae before comparing volumes). RV_EMIN is therefore CALCULATED, 0.0428,
+# inside the old bound. Age and sex scale it through Luu's ratios as before. RV V0 38 mL: compartments.py.
+# Measured: the RV's resting VOLUME barely moves (157 -> 156 mL: the circulation sets the volume, the wall the
+# pressure); rest held; catheter-equivalent RVEDP ~3 mmHg (read 50 ms before the volume peak — the peak itself
+# carries ~3 mmHg of early contraction).
+_LUU_RVEDV_REF_ML_PER_M2 = 86.9
+_RV_V0_REF_ML = 38.0
+RV_EMIN = P_RIGHT_ED_TM / (_LUU_RVEDV_REF_ML_PER_M2 * _BSA_REF - _RV_V0_REF_ML)   # mmHg/mL, ~0.0428
 
 # THE SHAPE — Rommel 2018 (PMID 29449367), adopted 2026-10-31. Until then the RV
 # filled along a STRAIGHT line pinned to one pressure-volume point. Rommel measured
