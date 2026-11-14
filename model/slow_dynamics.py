@@ -114,6 +114,8 @@ TAU_STRESS_RELAX = 250.0   # s
 #   FLOOR, Echt 1974 (PMID 4809350, 8 young men): after +500 mL of dextran in 3 min, CVP 9.8 -> 9.6 over a
 #     10-min pause — >= 6 % of the rise gone. A LOWER bound (hyperoncotic dextran draws fluid in). With fluid
 #     exchange off the model gives 2.0 % at f 0, 8.0 % at 0.15, 15 % at 0.30: the floor sits near f ~0.12.
+#     ON THE RE-SOLVED HEART (2026-11-13, external pressure 3.0): 7.7 % at 0.15, 6.6 % at 0.12, 6.2 % at 0.11,
+#     5.8 % at 0.10 — the floor sits between 0.10 and 0.11.
 #   CEILING, Gauer 1956 (PMID 13277114, 12 men): after a 551 mL transfusion CVP falls at most ~20 % over
 #     30 min, filtration included. Not binding (5 % at 0.30).
 #   WHAT PICKS 0.15 inside that range: Johnson 2014 (PMID 24876357) controlled blood loss, the BODY alone
@@ -121,8 +123,11 @@ TAU_STRESS_RELAX = 250.0   # s
 #     0.30 leaves CVP outside all three of Johnson's bands (-2.93 at 1 L vs -4.7), 0.15 is inside all three
 #     (-3.38; edges -1.10 / -2.34 / -3.34) — by 0.00-0.09 mmHg, so this pin is not robust. 0.15 is the lowest
 #     round value inside Echt's floor. Both bounds and the pin are slow tests in tests/test_slow_dynamics.py.
+#   RE-SOLVED 2026-11-13 on the re-solved heart (the pump harness's passive atria sit differently): 0.15 -> 0.11,
+#     the lowest value inside Echt's floor (6.2 %) that passes the pin (-1.15 / -2.342 / -3.39). FRAGILE: stage 2
+#     by 0.002 mmHg, the floor by 0.2 points — the human floor and the Johnson pin now meet.
 # The combined creep + filtration decay still reproduces Guyton's ~82 % (its own test).
-RELAX_FRACTION = 0.15
+RELAX_FRACTION = 0.11
 K_RELAX = RELAX_FRACTION / (1.0 - RELAX_FRACTION)   # multiplier on compliance
 
 # Applied to the systemic venous capacitance vessels only. Arteries undergo
