@@ -270,6 +270,45 @@ number you skipped is a number you will later half-remember and get wrong.
 validation log on the strength of its title; when finally retrieved it reported a value 9x
 different and did not support the calibration it was cited for.
 
+### How we find the root of a gap (Jesper approved, 2026-11-14)
+
+The October heart work ran parameter grids for a month without converging; the week of 2026-11-11 found the
+causes in days. What changed was the method, not the effort. **Before tuning anything, run these moves, in
+roughly this order.**
+
+1. **Split at an interface and judge each side alone.** Replace one layer by a "fake" that imposes what man
+   measured, and score the other: the heart replaced by two pumps imposing measured flow and atrial pressure
+   to judge the BODY; the body replaced by imposed atrial pressures to judge the HEART. In the closed loop the
+   defects mask each other — the closed model matched Gauer's CVP (-2.36 vs -2.38) only because a heart error
+   cancelled a body error. **A closed-loop pass is not evidence for either layer.**
+2. **Attribute by removal, one mechanism at a time.** Switch each mechanism off (refill, stress relaxation,
+   the venous reflex) and measure what it contributes before deciding which to change. Write the prediction
+   down first; the wrong ones are the informative ones (relaxation turned out as large as refill; the venous
+   reflex contributed nothing).
+3. **Check the quantity before the number.** If the model cannot reproduce what a protocol does to it (LBNP
+   moves a different volume per mmHg, because the model's tank excludes the pelvis), the magnitude is a
+   different quantity: test direction, and test RELATIONS between quantities measured at the same moment
+   (wedge per LV volume, RA fall per wedge fall), which do not depend on the dose. That is a correction, not
+   a loosening (Jesper) — and it applies to passing and failing tests alike.
+4. **Look for the structural limit before the best value.** Ask what the mechanism CAN do at most. An
+   external pressure can lower CVP by at most what it carries at rest; a reference volume captured at 60 s
+   leaves the term inert in every shorter run. Both were found by asking "why does this knob do nothing?",
+   and no grid would have found them.
+5. **Shape from physiology; never a curve from one point.** A law fitted through a single pressure-volume
+   point (the old straight-line RV, the chest slope pinned on one Oren value) gets its shape from the
+   modeller, not the data. Choose the form on physiology, fit it to multi-point human data, and accept the
+   endpoints.
+6. **Plot it against the textbook.** Draw the model's curve on the same axes as the measured or textbook
+   curve (pericardial pressure against volume, venous return, P-V loops) before reading numbers. Shape
+   errors that hide in a table are obvious on a plot.
+7. **Swap animal values for human bounds where they exist.** A human floor and ceiling (Echt >= 6 %, Gauer
+   <= 20 %) bound a parameter even when no human point measures it; the value is pinned between them, and the
+   pin becomes a test.
+
+**And judge progress by the decisive targets, not the test count.** Tests that passed on a heart now known to
+be wrong are not evidence (Jesper, 2026-11-13: "Don't you think you're panicking?"). Convert what a better
+structure breaks into strict xfails with their stated cause, and keep the guards that can still fire.
+
 ### Name the convention where the number is defined
 
 **Every pressure constant must say three things: which SITE, TRANSMURAL or INTRALUMINAL, and

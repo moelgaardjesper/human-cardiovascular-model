@@ -546,7 +546,7 @@ def test_trendelenburg_minus15_cvp_likhvantsev2025(supine_175_75, hdt15_175_75):
 
 
 @pytest.mark.xfail(strict=True, raises=AssertionError, reason=(
-    "STEP 3, 2026-11-13 — external pressure Xc 3.0 (chest wall + mediastinum + pericardium), slope 0.08 below / 0.05 above rest. MAP falls -27.8 mmHg at 30 deg head-up against a floor of -25. Suspect: the body (orthostatic pooling) under the new heart; re-examined in the body pass."))
+    "STEP 3, 2026-11-13 — external pressure Xc 3.0 (chest wall + mediastinum + pericardium), slope 0.08 below / 0.05 above rest. MAP falls -27.8 mmHg at 30 deg head-up against a floor of -25. CAUSE FOUND 2026-11-14: the external pressure's reference is captured at 60 s and this run lasts 40 s, so the term never responds. With an anatomical reference (option A, scratch) dMAP -13.4 passes; A waits on the young heart's resting placement (backlog #34)."))
 def test_hut30_dynamics_wieling1998(supine_175_75, hut30_175_75):
     """[PMID: 9640339 — Wieling 1998] Head-up tilt dynamics: SV down, CO down,
     HR up, MAP partially maintained.
@@ -2164,7 +2164,7 @@ def test_plr_fluid_responsiveness_monnet2016():
 # A Starling plateau from structure, not from a fitted curve.
 # STRICT XFAIL 2026-11-06 (closed-chest constraint: PLR CO +10.7 %); CLOSED 2026-11-08 when the atria were re-placed by the chest term.
 @pytest.mark.xfail(strict=True, raises=AssertionError, reason=(
-    "STEP 3, 2026-11-13 — external pressure Xc 3.0 (chest wall + mediastinum + pericardium), slope 0.08 below / 0.05 above rest. Normovolaemic leg raise raises CO +13.5 % against < 10 % (as the steady 3.5 did on 2026-11-10). Suspect: the body's leg/splanchnic volume and the larger external fall on the unloading side."))
+    "STEP 3, 2026-11-13 — external pressure Xc 3.0 (chest wall + mediastinum + pericardium), slope 0.08 below / 0.05 above rest. Normovolaemic leg raise raises CO +13.5 % against < 10 %. CAUSE FOUND 2026-11-14: the external pressure's reference volume is captured at 60 s and this run lasts 30 s, so the term never responds (sits at Xc). With an anatomical reference (option A, scratch) CO +5.9 % passes; A waits on the young heart's resting placement (backlog #34)."))
 def test_plr_normovolaemic_non_responder_monnet2016():
     """[PMID 26825952 — Monnet 2016] Specificity 0.91: a normovolaemic patient
     on the Starling plateau should NOT reach the +10 % responder threshold. Same
