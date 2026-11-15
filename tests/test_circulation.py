@@ -8343,23 +8343,22 @@ def test_mild_unloading_empties_the_atrium_not_the_ventricles_oren1993(oren_lbnp
 # have none, 7 M / 3 F, mean age 29; simultaneous LV catheter and PCWP, zero at mid-chest.
 # LVEDP 10.4 +/- 2.0, mean PCWP 9.8 +/- 2.3; PAIRED LVEDP - mean PCWP 0.6 +/- 1.7 mmHg
 # (P > 0.2). Body size not reported: reference body. A difference, so the zero and the
-# pleural pressure cancel; the model's LVEDP is read as a catheter reads it — LV cavity
-# pressure at the volume peak, at 1 ms — not the passive `lvedp` output.
+# pleural pressure cancel. READ POINT CORRECTED 2026-11-15 (Jesper: "Yes please"): a catheter LVEDP is
+# read after the a-wave at the ONSET of the isovolumic upstroke, before contraction adds pressure. The model's
+# volume peak comes ~4 ms after the upstroke has begun, so the cavity pressure there carried ~1.2-1.6 mmHg of
+# contraction (gap +4.06 against +2.24 at the 29 y cohort; +2.50 against +1.76 at 55 y). The passive cavity
+# pressure at end-diastolic volume — the `lvedp` output: wall + sac + external pressure, no respiratory ITP, the
+# same convention as `la_pressure` — is the pre-contraction reading. A cavity read at the dP/dt-onset gives
+# +2.88 (validation log 2026-11-15): that reading already contains some contraction, so it is not used.
 
 def _rahimtoola_gap(sex):
     p = cohort_params(175.0, 70.0, age_years=29.0, sex=sex)
     r = run_simulation(p, duration_s=101.0, dt=DT, output_every=1)
     t = np.asarray(r["t"]); m = np.where((t >= 80.0) & (t < 100.0))[0]
-    lv = np.asarray(r["volumes"])[m, IDX["left_ventricle"]]
-    pleural = (np.asarray(r["ra_intraluminal"]) - np.asarray(r["cvp"]))[m]
-    lv_tm = np.asarray(r["lv_pressure"])[m] - pleural       # transmural, like la_pressure
-    d = np.diff(lv); ed = np.where((d[:-1] > 0) & (d[1:] <= 0))[0] + 1
-    return float(lv_tm[ed].mean()), float(np.mean(np.asarray(r["la_pressure"])[m]))
+    return float(np.mean(np.asarray(r["lvedp"])[m])), float(np.mean(np.asarray(r["la_pressure"])[m]))
 
 
-# CLOSED 2026-11-06 by the closed-chest constraint adopted 2026-11-06 (step 3C, Xc 1.75, s 0.15; Jesper overrode the registered rule): mean wedge within Rahimtoola's band.
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason=(
-    "2026-11-15, option A + blood volume by age (Davy & Seals 1994). LVEDP - wedge +4.06 (M +3.75, F +4.79) against -1.1..+2.3 (29-year-olds): the young LV now fills up its steep part. Same suspect."))
+# CLOSED 2026-11-15 by correcting the LVEDP read point (above): strict xfail of the same day (+4.06 at the volume peak).
 def test_mean_wedge_sits_at_lvedp_in_healthy_hearts_rahimtoola1975():
     """[PMID 1200036] Catheter-equivalent LVEDP minus cycle-mean LA (wedge), cohort
     7 M / 3 F at age 29, within 1 SD of Rahimtoola's paired 0.6 +/- 1.7: -1.1 to +2.3."""
