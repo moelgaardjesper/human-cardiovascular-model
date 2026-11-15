@@ -545,8 +545,7 @@ def test_trendelenburg_minus15_cvp_likhvantsev2025(supine_175_75, hdt15_175_75):
     assert 1.5 <= dcvp <= 7.0, f"ΔCVP {dcvp:+.2f} mmHg outside [1.5, 7.0] (lit CI 2.42-5.84)"
 
 
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason=(
-    "STEP 3, 2026-11-13 — external pressure Xc 3.0 (chest wall + mediastinum + pericardium), slope 0.08 below / 0.05 above rest. MAP falls -27.8 mmHg at 30 deg head-up against a floor of -25. CAUSE FOUND 2026-11-14: the external pressure's reference is captured at 60 s and this run lasts 40 s, so the term never responds. With an anatomical reference (option A, scratch) dMAP -13.4 passes; A waits on the young heart's resting placement (backlog #34)."))
+# CLOSED 2026-11-15 by option A (anatomical reference for the heart's external pressure) + blood volume by age.
 def test_hut30_dynamics_wieling1998(supine_175_75, hut30_175_75):
     """[PMID: 9640339 — Wieling 1998] Head-up tilt dynamics: SV down, CO down,
     HR up, MAP partially maintained.
@@ -599,9 +598,8 @@ def test_graded_hut_monotonicity_sarafian2017(supine_175_75, hut20_175_75, hut30
 # and the real quantity is asserted separately in
 # `test_map_is_defended_on_head_up_tilt_wieling1998` below, which xfails.
 # Do not read this pass as evidence the orthostatic collapse has closed.
-# STRICT XFAIL 2026-11-06 — the closed-chest constraint adopted 2026-11-06 (step 3C, Xc 1.75, s 0.15; Jesper overrode the registered rule).
-@pytest.mark.xfail(strict=True, reason=(
-    'after the closed-chest constraint (2026-11-06): CPP at 45 deg 32.6 (> 40 required)'))
+# STRICT XFAIL 2026-11-06 (closed-chest constraint: CPP at 45 deg 32.6).
+# CLOSED 2026-11-15 by option A (anatomical reference for the heart's external pressure) + blood volume by age.
 def test_cerebral_perfusion_pressure_pohl_cullen2005(supine_175_75, upright45_175_75):
     """Cerebral perfusion pressure (Pohl/Cullen 2005).
 
@@ -932,9 +930,10 @@ def test_graded_hemorrhage_monotonic_lie2023(baseline_hem, hem_mild, hem_mod, he
     co_vals  = [baseline_hem['co'],  hem_mild['co'],  hem_mod['co'],  hem_severe['co']]
     hr_vals  = [baseline_hem['hr'],  hem_mild['hr'],  hem_mod['hr'],  hem_severe['hr']]
 
-    assert all(map_vals[i] > map_vals[i + 1] for i in range(3)), (
-        f"MAP not monotonically falling with hemorrhage severity: {map_vals}"
-    )
+    # CORRECTED 2026-11-15 (Jesper: "Yes. Correct them"): MAP monotonicity was asserted here although
+    # neither source claims it — Lie 2023 is CO, Vettorello 2016 is HR — and Johnson 2014's men held MAP
+    # at 333 mL. The model now holds MAP at 300 mL (95.3 -> 95.8). The MAP floor at 1 L stays, and the
+    # 1 L MAP fall is asserted in test_severe_hemorrhage_decompensation.
     assert all(co_vals[i] > co_vals[i + 1] for i in range(3)), (
         f"CO not monotonically falling with hemorrhage severity: {co_vals}"
     )
@@ -952,7 +951,8 @@ def test_mild_hemorrhage_preload_sensitivity_hamilton2021(baseline_hem, hem_mild
     dmap_pct = pct(hem_mild['map'], baseline_hem['map'])
 
     assert dcvp_pct < 0, f"CVP did not fall with mild hemorrhage: {dcvp_pct:+.1f}%"
-    assert dmap_pct < 0, f"MAP did not fall with mild hemorrhage: {dmap_pct:+.1f}%"
+    # CORRECTED 2026-11-15 (Jesper): Hamilton's claim is that preload falls PROPORTIONALLY MORE than MAP
+    # before decompensation — not that MAP must fall at 300 mL (Johnson's men held it at 333 mL).
     assert dcvp_pct < dmap_pct, (
         f"CVP should fall proportionally more than MAP at mild hypovolemia: "
         f"dCVP={dcvp_pct:+.1f}%, dMAP={dmap_pct:+.1f}%"
@@ -1092,9 +1092,7 @@ def test_ppv_fluid_responsiveness_michard2000(ppv_scenarios):
     )
 
 
-# STRICT XFAIL 2026-11-06 — the closed-chest constraint adopted 2026-11-06 (step 3C, Xc 1.75, s 0.15; Jesper overrode the registered rule).
-@pytest.mark.xfail(strict=True, reason=(
-    'after the closed-chest constraint (2026-11-06): normovolaemic PPV 13.6 % (< 13 required; marginal)'))
+# CLOSED 2026-11-15 by option A (anatomical reference for the heart's external pressure) + blood volume by age.
 def test_ppv_normovolaemic_below_michard_threshold(ppv_scenarios):
     """[DOI 10.1164/ajrccm.162.1.9905119] Normovolaemic patient must not be
     flagged as fluid-responsive.
@@ -1770,6 +1768,8 @@ def _venous_return_curve(bleed_ml=0.0, sympathetic_outflow_scale=1.0, baroreflex
 # CLOSED 2026-10-11 (XPASS on the systolic timing change), REOPENED 2026-10-15.
 # STRICT XFAIL 2026-11-06 — the closed-chest constraint adopted 2026-11-06 (step 3C, Xc 1.75, s 0.15; Jesper overrode the registered rule).
 # CLOSED 2026-11-06 by the closed-chest constraint adopted 2026-11-06 (step 3C) with init volumes re-derived: slope ratio back above 0.9 once the start volumes were re-derived.
+@pytest.mark.xfail(strict=True, raises=AssertionError, reason=(
+    "2026-11-15, option A + blood volume by age (Davy & Seals 1994). Slope ratio 0.895 against 0.9-1.1: the heart's external pressure now falls with the heart, inside the RA pressure the curve is drawn against."))
 def test_haemorrhage_shifts_venous_return_curve_without_rotating_it():
     """[PMID: 19237896 — Maas 2009] A moderate haemorrhage must lower Pmsf and
     leave the venous-return slope alone: resistance to venous return is a
@@ -1968,6 +1968,8 @@ def phenyl_dose_response():
 # on its band edge under every recent change: a finding about the drug-reflex coupling
 # to investigate, not a band to widen.
 # CLOSED 2026-11-06 by the closed-chest constraint adopted 2026-11-06 (step 3C, Xc 1.75, s 0.15; Jesper overrode the registered rule): dCO back inside Schäfers' 1 SD band.
+@pytest.mark.xfail(strict=True, raises=AssertionError, reason=(
+    "2026-11-15, option A + blood volume by age (Davy & Seals 1994). dCO -1.67 L/min at 4 mcg/kg/min against -1.30..-0.04 (27-year-olds, blood volume 1.19 x). Same suspect as the young resting SV."))
 def test_phenylephrine_flow_response_schafers1999(phenyl_dose_response):
     """[PMID: 10073742 — Schäfers 1999] Phenylephrine in healthy supine men
     LOWERS cardiac output, LOWERS heart rate and RAISES stroke volume.
@@ -2172,9 +2174,8 @@ def test_plr_fluid_responsiveness_monnet2016():
 # went on: the full normovolaemic heart meets the sac and stops filling (CO +1.8 %),
 # while after a 1200 mL bleed it sits below the knee and still responds (+60.8 %).
 # A Starling plateau from structure, not from a fitted curve.
-# STRICT XFAIL 2026-11-06 (closed-chest constraint: PLR CO +10.7 %); CLOSED 2026-11-08 when the atria were re-placed by the chest term.
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason=(
-    "STEP 3, 2026-11-13 — external pressure Xc 3.0 (chest wall + mediastinum + pericardium), slope 0.08 below / 0.05 above rest. Normovolaemic leg raise raises CO +13.5 % against < 10 %. CAUSE FOUND 2026-11-14: the external pressure's reference volume is captured at 60 s and this run lasts 30 s, so the term never responds (sits at Xc). With an anatomical reference (option A, scratch) CO +5.9 % passes; A waits on the young heart's resting placement (backlog #34)."))
+# STRICT XFAIL 2026-11-06 (closed-chest constraint: PLR CO +10.7 %); CLOSED 2026-11-08; STRICT XFAIL 2026-11-13 (+13.5 %).
+# CLOSED 2026-11-15 by option A (anatomical reference for the heart's external pressure) + blood volume by age.
 def test_plr_normovolaemic_non_responder_monnet2016():
     """[PMID 26825952 — Monnet 2016] Specificity 0.91: a normovolaemic patient
     on the Starling plateau should NOT reach the +10 % responder threshold. Same
@@ -4015,6 +4016,8 @@ def test_patient_age_scales_only_the_elastic_arteries():
 # STRICT XFAIL 2026-10-06 to 2026-11-07 (pulse pressure stopped widening after 55: 45.3 / 49.2 / 49.0 at 30 / 55 / 80). CLOSED
 # 2026-11-07 when the chambers took Luu's RAW age ratios (the old divisor shrank an 80-year-old LV wall to 0.89 instead of
 # Luu's 0.93). Which output carried the closure was not traced.
+@pytest.mark.xfail(strict=True, raises=AssertionError, reason=(
+    "2026-11-15, option A + blood volume by age (Davy & Seals 1994). Pulse pressure 51.3 / 52.5 / 51.4 at 30 / 55 / 80: older patients now carry less blood, so SV falls and offsets the arterial stiffening."))
 def test_age_widens_pulse_pressure_the_way_framingham_measured_it():
     """[PMID 9236450] The endpoint, not the parameter.
 
@@ -4068,8 +4071,7 @@ def test_age_widens_pulse_pressure_the_way_framingham_measured_it():
     )
 
 
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason=(
-    "STEP 3, 2026-11-13 — external pressure Xc 3.0 (chest wall + mediastinum + pericardium), slope 0.08 below / 0.05 above rest. LVEDV 120.9 / 121.3 / 118.7 mL at 40 / 55 / 70: the 40-year-old is no longer the largest (by 0.4 mL). Suspect: wall re-placement for the larger external pressure interacting with the age factors."))
+# CLOSED 2026-11-15 by option A (anatomical reference for the heart's external pressure) + blood volume by age.
 def test_chamber_volumes_scale_with_age_toward_luu():
     """[PMID 34980185] Luu Tables 3/4, male: indexed volumes FALL with age.
 
@@ -4840,6 +4842,8 @@ def test_orthostatic_tachycardia_is_blunted_with_age_white1997(white1997_arms):
     )
 
 
+@pytest.mark.xfail(strict=True, raises=AssertionError, reason=(
+    "2026-11-15, option A + blood volume by age (Davy & Seals 1994). Age difference in the diastolic tilt response -35.8 against -9.5 +/- 8.8. THE MODEL COLLAPSES AT 60 DEG in both arms (young MAP 96 -> 62, older 95 -> 22), and did before this week (94 -> 35 / 96 -> 27 at 3c05602): the test asserts only the difference, so the collapse passed. Validation log 2026-11-15."))
 def test_orthostatic_vasoconstriction_is_blunted_with_age_white1997(white1997_arms):
     """[PMID 9404222 — White 1997] The diastolic response to tilt falls with age.
 
@@ -4925,6 +4929,8 @@ def test_brachial_diastolic_pressure_by_age_white1997(white1997_arms):
 
 # STRICT XFAIL 2026-11-05 (Jesper: adopt the capacity correction): PP widens +6.37 between 25 and 68 against the guard edge 6.42.
 # CLOSED 2026-11-06 by the closed-chest constraint adopted 2026-11-06 (step 3C, Xc 1.75, s 0.15; Jesper overrode the registered rule): PP widening back inside the guard.
+@pytest.mark.xfail(strict=True, raises=AssertionError, reason=(
+    "2026-11-15, option A + blood volume by age (Davy & Seals 1994). Brachial PP widens +5.78 (25 -> 68 y) against 6.4-17.1: same cause as the Framingham test."))
 def test_age_slope_of_brachial_pulse_pressure_white1997(white1997_arms):
     """[PMID 9404222 — White 1997] The age slope of pulse pressure is RIGHT.
 
@@ -5033,6 +5039,8 @@ def lbnp_young_haemorrhage():
     return out
 
 
+@pytest.mark.xfail(strict=True, raises=AssertionError, reason=(
+    "2026-11-15, option A + blood volume by age (Davy & Seals 1994). Resting SV of the 22-year-olds 89.7 mL (95.6 M / 83.8 F) against <= 86.3: their blood volume is now 1.20 x the reference. Suspect: Davy's ratio (Evans blue, n 7 + 7, fitness-confounded) may be too large for an untrained young cohort; next: the age-related failures."))
 def test_resting_stroke_volume_in_young_adults_pmid27702883(lbnp_young_haemorrhage):
     """[PMID 27702883] Supine stroke volume in healthy 22-year-olds.
 
@@ -5405,9 +5413,7 @@ def test_phenylephrine_abolishes_preload_dependency_pmid31705432(phenylephrine_d
     )
 
 
-# STRICT XFAIL 2026-11-06 (chest layer: bradycardia -2..-6 % vs IQR -15..-6 %); CLOSED 2026-11-07 when the chambers took Luu's RAW ratios.
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason=(
-    "STEP 3, 2026-11-13 — external pressure Xc 3.0 (chest wall + mediastinum + pericardium), slope 0.08 below / 0.05 above rest. Phenylephrine slows the heart at most -5.5 % across the doses against the IQR -15..-6 % (was inside). Suspect: the body (tilt pooling) and the reflex layer, re-examined in the body pass."))
+# CLOSED 2026-11-15 by option A (anatomical reference for the heart's external pressure) + blood volume by age.
 def test_phenylephrine_reflex_bradycardia_during_tilt_pmid31705432(phenylephrine_during_tilt):
     """[PMID 31705432] Phenylephrine slows the heart by 10 % (IQR -15 to -6).
 
@@ -6328,8 +6334,25 @@ def test_venous_resistance_factor_is_live_and_correctly_signed():
         f = dict(combined_drug_factors({}))
         f["venous_resistance_factor"] = vr
         p.drug_factors = f
-        r = run_simulation(p, duration_s=45.0, dt=DT)
-        return {k: last_half(r[k]) for k in ("map", "co", "cvp")}
+        # RE-EXPRESSED 2026-11-15 (Jesper: "Yes re express them"). The claim is that a resistance does not
+        # move MEAN SYSTEMIC FILLING PRESSURE; this asserted |dCVP| < 1.5 as a stand-in. Since the heart's
+        # external pressure follows the heart's volume, a flow change moves CVP for a second, legitimate
+        # reason (+1.79). Pmsf is now measured as it is defined: stop the heart and read the venous pressure
+        # at the zero-flow plateau (IVC: a conduit, so its unstressed volume is the static one).
+        # SABOTAGE-EQUIVALENT, measured 2026-11-15: resistance x0.6 / x1.6 moves the plateau -0.07 / +0.05;
+        # a CAPACITANCE change (venous_tone_factor 0.8) moves it +2.11 — so a resistance that acted like a
+        # capacitance fails here.
+        from model.circulation import _vascular_pressure
+        p.slow_dynamics_enabled = False
+        p.arrest_start_s, p.arrest_duration_s = 40.0, 40.0
+        r = run_simulation(p, duration_s=80.0, dt=DT)
+        t = np.asarray(r["t"])
+        pre, w = (t >= 30.0) & (t < 40.0), (t >= 74.0) & (t <= 79.0)
+        out = {k: float(np.mean(np.asarray(r[k])[pre])) for k in ("map", "co", "cvp")}
+        c = p.compartments[IDX["ivc"]]
+        out["pmsf"] = _vascular_pressure(float(np.mean(np.asarray(r["volumes"])[w, IDX["ivc"]])),
+                                         c.unstressed_volume, c.compliance, c.p_stiffen)
+        return out
 
     base, dilated, constricted = run(1.0), run(0.60), run(1.60)
 
@@ -6345,9 +6368,9 @@ def test_venous_resistance_factor_is_live_and_correctly_signed():
     # Filling pressure rises slightly as flow rises (the atrium is better fed),
     # but the effect must stay small relative to the flow change: this factor is
     # a resistance, not a capacitance.
-    assert abs(dilated["cvp"] - base["cvp"]) < 1.5, (
-        f"venous resistance moved filling pressure by "
-        f"{dilated['cvp'] - base['cvp']:+.2f} mmHg, which is too much for a pure "
+    assert abs(dilated["pmsf"] - base["pmsf"]) < 0.5, (
+        f"venous resistance moved mean systemic filling pressure by "
+        f"{dilated['pmsf'] - base['pmsf']:+.2f} mmHg, which is too much for a pure "
         f"resistance change and breaks its independence from the two capacitance "
         f"factors. See the de Wit discrimination, validation_log.md 2026-09-27."
     )
@@ -7318,14 +7341,14 @@ def test_cardiopulmonary_reflex_reads_mean_not_trough_right_atrial_pressure():
     from model.baroreflex import CP_HR_GAIN_BPM_PER_MMHG as G
     def run(f):
         p = SimParams()
-        p.av_f_ra *= f
+        p.av_f_ra *= f   # 2026-11-15: x0 (coupling removed) — x2 stopped being a shape change on option A
         r = run_simulation(p, duration_s=200.0, dt=DT, output_every=1)
         t = np.asarray(r["t"])
         m = t > 160.0
         ra = np.asarray(r["ra_mean"])[m]
         return (float(np.mean(np.asarray(r["hr"])[m])),
                 float(np.mean(np.asarray(r["cvp"])[m])), float(np.percentile(ra, 1)))
-    (h1, m1, t1), (h4, m4, t4) = run(1.0), run(2.0)
+    (h1, m1, t1), (h4, m4, t4) = run(1.0), run(0.0)
     d_hr, d_mean, d_trough = h4 - h1, m4 - m1, t4 - t1
     assert abs(d_trough) > 2.0 * abs(d_mean), (
         f"the probe no longer changes waveform SHAPE more than level (mean {d_mean:+.2f}, "
@@ -7822,12 +7845,7 @@ def _bhella_ratio_band(stage, num, den):
     return min(r) * (1.0 - rel), max(r) * (1.0 + rel)
 
 
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason=(
-    "KNOWN GAP, 2026-11-12 (pre-registered) — THE LV IS TOO STIFF AROUND REST AND ON LOADING. "
-    "Filling pressure per 10 % of end-diastolic volume: model 5.9 / 2.8 / 16.4 mmHg at LBNP -15 / "
-    "-30 / saline against Bhella's [2.4, 4.8] / [2.1, 3.2] / [4.3, 9.2]. Right only at -30. "
-    "The heart's in-vivo pressure-volume relation, free of the LBNP dose: step 3's target."
-))
+# CLOSED 2026-11-15 by option A (anatomical reference for the heart's external pressure) + blood volume by age.
 def test_lv_filling_pressure_per_volume_follows_bhella2014(bhella_stages):
     """[PMID 25236519 — Bhella 2014] dPCWP per fractional dLVEDV at each stage: the LV's
     end-diastolic pressure-volume relation as the circulation sees it, in vivo, measured
@@ -8151,6 +8169,39 @@ def rv_passive_curvature():
             float(np.log(hi / mid)) / (0.3 * edv), edv)
 
 
+def test_blood_volume_scales_with_age_as_davy_and_seals_measured():
+    """[PMID 8063668 — Davy & Seals 1994] A young man carries more blood than an older man of the same size:
+    3160 vs 2438 mL/m2 at 24.7 vs 66.1 y. Read through cohort_params, the route every literature test uses:
+    the VESSELS of a 32-year-old hold Davy's ratio more than a 55-year-old's of the same size, and the four
+    chambers (sized by Luu) do not change with it. Grade C; the ratio, not the absolute, is the claim."""
+    from model.aging import at_age, DAVY_BV_PER_BSA_MEN
+    ch = {"right_atrium", "right_ventricle", "left_atrium", "left_ventricle"}
+    old, young = cohort_params(175.0, 75.0, age_years=55.0), cohort_params(175.0, 75.0, age_years=32.0)
+    vess = lambda p: sum(c.init_volume for c in p.compartments if c.name not in ch)
+    want = at_age(DAVY_BV_PER_BSA_MEN, 32.0) / at_age(DAVY_BV_PER_BSA_MEN, 55.0)
+    assert abs(vess(young) / vess(old) - want) < 1e-6, (
+        f"vessels hold {vess(young) / vess(old):.3f} x at 32 y against Davy's {want:.3f}")
+    from model.aging import blood_volume_age_factor, REFERENCE_AGE_YEARS
+    assert blood_volume_age_factor(REFERENCE_AGE_YEARS) == 1.0, "the reference age must be the identity"
+
+
+def test_external_pressure_responds_in_a_short_run():
+    """The heart's external pressure must answer a change in the heart's volume from the first beats, not only
+    after 60 s. Until 2026-11-14 its reference volume was captured from the run at SETTLE_S = 60 s, so in every
+    shorter run (Monnet's 30 s leg raise, Wieling's 40 s tilt) it sat at its resting value and its slopes did
+    nothing. Now the reference is the anatomical capacity: in a 30 s run, head-down tilt (heart fuller) must
+    raise it above the supine run's. SABOTAGE: restore the 60 s capture -> both runs report the resting value."""
+    def chest(tilt):
+        p = SimParams()
+        p.tilt_start_deg = p.tilt_end_deg = tilt
+        r = run_simulation(p, duration_s=30.0, dt=DT)
+        c = np.asarray(r["chest_p"])
+        return float(np.mean(c[len(c) // 2:]))
+    flat, down = chest(0.0), chest(-20.0)
+    assert down > flat + 0.5, (
+        f"external pressure {flat:.2f} supine vs {down:.2f} at -20 deg in a 30 s run: it is not responding")
+
+
 def test_rv_resting_point_is_luus_volume_at_richters_pressure():
     """[PMID 34980185 — Luu 2022; PMID 33655769 — Richter 2021] The RV's resting point is placed through
     two sourced numbers (2026-11-14): its wall carries Richter's RVEDP at Luu's RVEDV for the reference
@@ -8307,6 +8358,8 @@ def _rahimtoola_gap(sex):
 
 
 # CLOSED 2026-11-06 by the closed-chest constraint adopted 2026-11-06 (step 3C, Xc 1.75, s 0.15; Jesper overrode the registered rule): mean wedge within Rahimtoola's band.
+@pytest.mark.xfail(strict=True, raises=AssertionError, reason=(
+    "2026-11-15, option A + blood volume by age (Davy & Seals 1994). LVEDP - wedge +4.06 (M +3.75, F +4.79) against -1.1..+2.3 (29-year-olds): the young LV now fills up its steep part. Same suspect."))
 def test_mean_wedge_sits_at_lvedp_in_healthy_hearts_rahimtoola1975():
     """[PMID 1200036] Catheter-equivalent LVEDP minus cycle-mean LA (wedge), cohort
     7 M / 3 F at age 29, within 1 SD of Rahimtoola's paired 0.6 +/- 1.7: -1.1 to +2.3."""

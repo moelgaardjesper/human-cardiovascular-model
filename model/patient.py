@@ -27,7 +27,7 @@ does NOT, once both are in the model.]
 from dataclasses import replace
 
 from .aging import (REFERENCE_AGE_YEARS, arterial_compliance_factor,
-                    chamber_age_factors, baroreflex_age_factors,
+                    chamber_age_factors, baroreflex_age_factors, blood_volume_age_factor,
                     vascular_outflow_scale_for_age)
 
 import numpy as np
@@ -281,6 +281,9 @@ def scale_compartments(
     sex_factors = SEX_CHAMBER_FACTORS[sex]
     age_factor = arterial_compliance_factor(age_years)
     age_chamber = chamber_age_factors(age_years)
+    # Blood volume by age (aging.py, Davy & Seals 1994): the VESSELS only; exactly 1 at the reference age.
+    bv_age = blood_volume_age_factor(age_years)
+    _CHAMBERS = ("right_atrium", "right_ventricle", "left_atrium", "left_ventricle")
     bv_scale = bsa / BSA_REF
 
     # PATIENT HEIGHT SCALES THE HYDROSTATIC LEVER ARM — backlog item 66.
@@ -323,6 +326,8 @@ def scale_compartments(
         # Age stiffens the large elastic arteries and nothing else here.
         # ELASTIC_ARTERIES is anatomy, not a knob — see its note below.
         age_c = age_factor if c.name in ELASTIC_ARTERIES else 1.0
+        if c.name not in _CHAMBERS:
+            sex_vol = sex_vol * bv_age      # sex_vol is 1.0 for every vessel: this is the age term alone
         scaled.append(replace(
             c,
             compliance=c.compliance * bv_scale * age_c,

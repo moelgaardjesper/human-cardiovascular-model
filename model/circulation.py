@@ -398,6 +398,7 @@ class SimParams:
         self.chest_rest_mmhg = 3.0
         self.chest_slope = 0.05          # above the resting heart volume
         self.chest_slope_below = 0.08    # below it
+        self.chest_vref_anatomical_ml = None   # set from the anatomical capacity (set_pericardial_capacity)
         self.chest_tau_s = 2.0
         # Pericardial capacity from the walls just set (heart.py). apply_cardiac
         # recomputes it for a built patient.
@@ -707,6 +708,8 @@ class SimParams:
             c[i["right_ventricle"]].unstressed_volume, self.rv_emin,
             c[i["left_atrium"]].unstressed_volume, self.la_emax,
             c[i["right_atrium"]].unstressed_volume, self.ra_emax)
+        # The external pressure's reference: the same anatomical volume, before any sac-at-rest lowering.
+        self.chest_vref_anatomical_ml = self.pericardial_capacity_ml
         # Sac engaged at rest: lower the capacity so the sac presses X on the same
         # contents (the walls are evaluated un-re-placed above, so the contents are the
         # sourced resting volumes).
@@ -1898,12 +1901,20 @@ def run_simulation(
         # reflex input below.
         _pp_now = _pericardial_now(V, params)
         if params.chest_rest_mmhg > 0.0:
-            _hv = float(sum(V[k] for k in _CHAMBER_IDX))
-            _vb = _av_ref.get("vbar", _hv)
-            _vb += dt / params.chest_tau_s * (_hv - _vb)
-            _av_ref["vbar"] = _vb
-            if "vref" not in _av_ref and t >= _SPT_SETTLE_S:
-                _av_ref["vref"] = _vb
+            # ANATOMICAL REFERENCE (adopted 2026-11-14, Jesper: "a" / "adopt both"). The input is the heart's
+            # END-DIASTOLIC volume, held per beat and filtered with tau; the reference is the patient's anatomical
+            # capacity (the chambers at their sourced end-diastolic pressures — the number the sac uses), from the
+            # first beat. Until this date the reference was MEASURED from the run at SETTLE_S = 60 s, which left the
+            # term inert in every run shorter than 60 s or perturbed before it (Monnet's leg raise, Wieling's tilt),
+            # and treated a patient who starts tilted as being at rest. Calculated anatomy, as for the sac (Jesper,
+            # 10-16): where a patient's resting heart differs from its anatomy, that now shows instead of being
+            # absorbed.
+            _hv = _av_ref.get("hv_ed")
+            if _hv is not None:
+                _vb = _av_ref.get("vbar", _hv)
+                _vb += dt / params.chest_tau_s * (_hv - _vb)
+                _av_ref["vbar"] = _vb
+                _av_ref["vref"] = params.chest_vref_anatomical_ml
             if "vref" in _av_ref:
                 _dv = _vb - _av_ref["vref"]
                 _sl = params.chest_slope if _dv >= 0.0 else params.chest_slope_below
@@ -2223,6 +2234,9 @@ def run_simulation(
             _phase_prev = _cardiac_phase
             _cardiac_phase = (_cardiac_phase + hr_now / 60.0 * dt) % 1.0
             if _cardiac_phase < _phase_prev:
+                # The heart's END-DIASTOLIC volume, the input of the external-pressure term below — the same
+                # instant the anatomical capacity is defined at (ventricles at ED, atria just contracted).
+                _av_ref["hv_ed"] = float(sum(V[k] for k in _CHAMBER_IDX))
                 _av_ref["lv_ed"] = float(V[IDX["left_ventricle"]])
                 _av_ref["rv_ed"] = float(V[IDX["right_ventricle"]])
                 # SEPTUM (scratch, step 2c): once per beat, at end-diastole. Deviation

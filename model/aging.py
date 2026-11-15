@@ -222,6 +222,25 @@ LUU_RVEF_MEN  = ((39.5, 51.0), (49.5, 53.0), (59.5, 53.0), (69.5, 54.0))
 # a real gap, not a rounding decision. It needs item 25a's structural fix.
 
 
+# BLOOD VOLUME BY AGE (adopted 2026-11-14, Jesper: "adopt both"; validation log). Davy & Seals 1994
+# (PMID 8063668, read in full): 7 young (24.7 y) and 7 older (66.1 y) healthy, untrained, nonobese men matched
+# for size and daily energy expenditure; total blood volume per BSA 3160 +/- 150 vs 2438 +/- 138 mL/m2 (SE).
+# Same direction and size in sedentary women (Jones 1997, PMID 9227528: 73 -> 61 mL/kg, 29 -> 60 y).
+# GRADE C — one lab, n 7 + 7, fat-free mass explains ~25 % of the difference. ONLY THE RATIO IS USED: Evans blue
+# absolutes run ~20 % above Nadler 1962's prediction for the same men. Linear between the two groups, clamped
+# outside them, and exactly 1 at the reference age, so the reference patient and every 55-year-old test are
+# unchanged. Applied to the VESSELS only (patient.py): the four chambers are sized by Luu.
+# Why it is here: a 32-year-old had the 55-year-old's blood volume while his chambers were Luu's larger young
+# chambers, so his resting heart sat ~52 mL below its anatomy (resting wedge 8 vs ~11-12.7).
+DAVY_BV_PER_BSA_MEN = ((24.7, 3160.0), (66.1, 2438.0))   # mL/m2
+
+
+def blood_volume_age_factor(age_years: float,
+                            reference_age: float = REFERENCE_AGE_YEARS) -> float:
+    """Vascular blood volume at `age_years` relative to the reference age (Davy & Seals 1994 ratio)."""
+    return at_age(DAVY_BV_PER_BSA_MEN, age_years) / at_age(DAVY_BV_PER_BSA_MEN, reference_age)
+
+
 def chamber_age_factors(age_years: float,
                         reference_age: float = REFERENCE_AGE_YEARS) -> dict:
     """Volume and E_max factors for LV and RV at `age_years`.
