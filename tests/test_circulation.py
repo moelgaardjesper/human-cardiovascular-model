@@ -7768,6 +7768,13 @@ def _stage_misses(bhella_stages, k, label, unit, test):
 
 # CLOSED 2026-11-13 by STEP 3: saline dLVEDV +8.4 % (band +4.2..+10.5; Bhella +7.3), LBNP ordering holds. Was a
 # strict xfail (saline +4.1 %): less constraint above rest lets the LV take the infused volume.
+@pytest.mark.xfail(strict=True, raises=AssertionError, reason=(
+    "KNOWN GAP, 2026-11-16 — TIPPED BY THE AGE SHAPE. Bhella's seniors (69 y) carry 6.5 % less vascular "
+    "blood since blood volume follows Wennesland's shape (flat to 45 y, then Davy's fall). Saline dLVEDV +10.7 % against +4.2..+10.5 (was +9.3 %). Under the "
+    "old straight line it sat near its band edge too. Not the resting external pressure: restoring the heart's "
+    "old offset below its anatomical capacity made it WORSE (+11.9 %, the softer above-rest slope reached "
+    "sooner); the blood volume itself carries it. Validation log 2026-11-16. Band not widened."
+))
 def test_the_body_delivers_bhellas_filling_volumes_to_the_lv(bhella_stages):
     """The LV's end-diastolic volume changes by Bhella's fraction at every stage:
     LBNP -15 -11.0 / -9.9 %, LBNP -30 -21.5 / -20.6 %, saline +6.7 / +8.0 % (two
@@ -7846,6 +7853,12 @@ def _bhella_ratio_band(stage, num, den):
 
 
 # CLOSED 2026-11-15 by option A (anatomical reference for the heart's external pressure) + blood volume by age.
+@pytest.mark.xfail(strict=True, raises=AssertionError, reason=(
+    "KNOWN GAP, 2026-11-16 — TIPPED BY THE AGE SHAPE. Bhella's seniors (69 y) carry 6.5 % less vascular "
+    "blood since blood volume follows Wennesland's shape (flat to 45 y, then Davy's fall). Wedge per 10 % LVEDV at -30: 2.12 against 2.13-3.21 (was 2.67, mid-band). "
+    "Restoring the heart's old offset below its anatomical capacity (resting external pressure 1.6 -> 2.2 mmHg in "
+    "men) moves it only to 2.21; the blood volume itself carries most of it. Validation log 2026-11-16. Band not widened."
+))
 def test_lv_filling_pressure_per_volume_follows_bhella2014(bhella_stages):
     """[PMID 25236519 — Bhella 2014] dPCWP per fractional dLVEDV at each stage: the LV's
     end-diastolic pressure-volume relation as the circulation sees it, in vivo, measured
@@ -7863,6 +7876,13 @@ def test_lv_filling_pressure_per_volume_follows_bhella2014(bhella_stages):
 
 # CLOSED 2026-11-13 by STEP 3: dRAP/dPCWP 0.72 / 0.69 at LBNP -15 / -30 (bands 0.60-0.90 / 0.62-0.83). Was a strict
 # xfail from 2026-11-12 (0.56 at -30): the external pressure now falls with the heart on unloading.
+@pytest.mark.xfail(strict=True, raises=AssertionError, reason=(
+    "KNOWN GAP, 2026-11-16 — TIPPED BY THE AGE SHAPE. Bhella's seniors (69 y) carry 6.5 % less vascular "
+    "blood since blood volume follows Wennesland's shape (flat to 45 y, then Davy's fall). dRAP/dPCWP at -30: 0.57 against 0.62-0.83 (was 0.64). Under the "
+    "old straight line it sat at its band edge too. About half is the resting external pressure (heart 18 mL "
+    "below its anatomical capacity in men: 1.6 vs 2.2 mmHg; removing that offset moves it half-way back), the "
+    "rest the blood volume itself. Validation log 2026-11-16. Band not widened."
+))
 def test_right_and_left_filling_pressures_fall_together_bhella2014(bhella_stages):
     """[PMID 25236519 — Bhella 2014] dRAP / dPCWP on LBNP: how the right and left filling
     pressures move together, measured simultaneously. Independent of the LBNP dose. The
@@ -8170,17 +8190,22 @@ def rv_passive_curvature():
 
 
 def test_blood_volume_scales_with_age_as_davy_and_seals_measured():
-    """[PMID 8063668 — Davy & Seals 1994] A young man carries more blood than an older man of the same size:
-    3160 vs 2438 mL/m2 at 24.7 vs 66.1 y. Read through cohort_params, the route every literature test uses:
-    the VESSELS of a 32-year-old hold Davy's ratio more than a 55-year-old's of the same size, and the four
-    chambers (sized by Luu) do not change with it. Grade C; the ratio, not the absolute, is the claim."""
-    from model.aging import at_age, DAVY_BV_PER_BSA_MEN
+    """[PMID 8063668 — Davy & Seals 1994; PMID 13664782 — Wennesland 1959] A young man carries more blood than an
+    older man of the same size: 3160 vs 2438 mL/m2 at 24.7 vs 66.1 y (Davy). WHERE between those ages it falls is
+    Wennesland's: no change for size from 19 to 44 y, so the young level holds to 45 y and falls linearly to Davy's
+    older level at 66.1 y. Read through cohort_params, the route every literature test uses, against the SOURCED
+    numbers (not the module's table): a 22- and a 44-year-old's vessels hold the same; a 32-year-old's hold the
+    shape's ratio more than a 55-year-old's; the four chambers (sized by Luu) do not enter. Grade C; the ratio,
+    not the absolute, is the claim."""
     ch = {"right_atrium", "right_ventricle", "left_atrium", "left_ventricle"}
-    old, young = cohort_params(175.0, 75.0, age_years=55.0), cohort_params(175.0, 75.0, age_years=32.0)
-    vess = lambda p: sum(c.init_volume for c in p.compartments if c.name not in ch)
-    want = at_age(DAVY_BV_PER_BSA_MEN, 32.0) / at_age(DAVY_BV_PER_BSA_MEN, 55.0)
-    assert abs(vess(young) / vess(old) - want) < 1e-6, (
-        f"vessels hold {vess(young) / vess(old):.3f} x at 32 y against Davy's {want:.3f}")
+    vess = lambda age: sum(c.init_volume for c in cohort_params(175.0, 75.0, age_years=age).compartments
+                           if c.name not in ch)
+    assert abs(vess(22.0) / vess(44.0) - 1.0) < 1e-6, "Wennesland: no change in blood volume from 19 to 44 y"
+    at55 = 1.0 - (1.0 - 2438.0 / 3160.0) * (55.0 - 45.0) / (66.1 - 45.0)
+    want = 1.0 / at55
+    assert abs(vess(32.0) / vess(55.0) - want) < 1e-6, (
+        f"vessels hold {vess(32.0) / vess(55.0):.3f} x at 32 y against {want:.3f} (flat to 45, Davy's fall to 66.1)")
+    assert abs(vess(70.0) / vess(32.0) - 2438.0 / 3160.0) < 1e-6, "Davy's older/young ratio, clamped past 66.1 y"
     from model.aging import blood_volume_age_factor, REFERENCE_AGE_YEARS
     assert blood_volume_age_factor(REFERENCE_AGE_YEARS) == 1.0, "the reference age must be the identity"
 

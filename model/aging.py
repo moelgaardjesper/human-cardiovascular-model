@@ -232,13 +232,22 @@ LUU_RVEF_MEN  = ((39.5, 51.0), (49.5, 53.0), (59.5, 53.0), (69.5, 54.0))
 # unchanged. Applied to the VESSELS only (patient.py): the four chambers are sized by Luu.
 # Why it is here: a 32-year-old had the 55-year-old's blood volume while his chambers were Luu's larger young
 # chambers, so his resting heart sat ~52 mL below its anatomy (resting wedge 8 vs ~11-12.7).
+# THE SHAPE: FLAT TO 45, THEN FALLING (adopted 2026-11-15, Jesper). Davy measured two ages and cannot say where
+# between them the fall happens; a straight line from 24.7 y was the modeller's choice. Wennesland 1959 (PMID
+# 13664782; 201 healthy men, Cr-51; a different lab, method and era) found blood volume for size UNCHANGED from
+# 19 to 44 y (Table III residuals within SE) and a fall only in his oldest group. So the young level holds to 45 y
+# (his last flat group, 40-44: a reading, not a fit) and falls linearly to Davy's older level at 66.1 y.
+# Grade C, two routes. Scratch probe pre-registered and scored (validation log): Johnson stays inside; the young
+# resting SV, Schafers and the pulse-pressure widening are not fixed by it.
 DAVY_BV_PER_BSA_MEN = ((24.7, 3160.0), (66.1, 2438.0))   # mL/m2
+WENNESLAND_FLAT_UNTIL_YEARS = 45.0
+BV_PER_BSA_MEN = ((WENNESLAND_FLAT_UNTIL_YEARS, DAVY_BV_PER_BSA_MEN[0][1]), DAVY_BV_PER_BSA_MEN[1])
 
 
 def blood_volume_age_factor(age_years: float,
                             reference_age: float = REFERENCE_AGE_YEARS) -> float:
-    """Vascular blood volume at `age_years` relative to the reference age (Davy & Seals 1994 ratio)."""
-    return at_age(DAVY_BV_PER_BSA_MEN, age_years) / at_age(DAVY_BV_PER_BSA_MEN, reference_age)
+    """Vascular blood volume at `age_years` relative to the reference age (Wennesland's shape, Davy's ratio)."""
+    return at_age(BV_PER_BSA_MEN, age_years) / at_age(BV_PER_BSA_MEN, reference_age)
 
 
 def chamber_age_factors(age_years: float,
