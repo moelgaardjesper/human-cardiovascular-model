@@ -8227,6 +8227,41 @@ def test_external_pressure_responds_in_a_short_run():
         f"external pressure {flat:.2f} supine vs {down:.2f} at -20 deg in a 30 s run: it is not responding")
 
 
+def test_abdominal_column_is_live_and_zero_supine():
+    """The abdomen as a fluid column (SimParams.abdominal_column_enabled, 2026-11-16) must reach the ODE: tilted
+    60 deg head-up for 20 s, cardiac output with the column carried (fraction 0.9) must exceed the run without it,
+    because the abdominal veins keep their head. Supine it must change nothing, to the last bit: the column is
+    zero at zero tilt. SABOTAGE: delete the `P[_ai] += ...` line in _odes -> the first assertion fails."""
+    def co(enabled, tilt):
+        p = SimParams()
+        p.abdominal_column_enabled, p.abdominal_column_fraction = enabled, 0.9
+        p.tilt_end_deg, p.tilt_onset_s, p.tilt_duration_s = tilt, 5.0, 3.0
+        r = run_simulation(p, duration_s=25.0, dt=DT, output_every=10)
+        t = np.asarray(r["t"])
+        return float(np.mean(np.asarray(r["co"])[t >= 15.0])), np.asarray(r["volumes"])
+    off, _ = co(False, 60.0)
+    on, _ = co(True, 60.0)
+    assert on > off + 0.3, f"abdominal column not live: CO {off:.2f} off vs {on:.2f} L/min on at 60 deg"
+    _, v_off = co(False, 0.0)
+    _, v_on = co(True, 0.0)
+    assert np.array_equal(v_off, v_on), "the abdominal column must be exactly zero supine"
+
+
+def test_ivc_zone_law_is_live():
+    """The IVC's exit through the diaphragm as a Starling resistor (SimParams.ivc_zone_law_enabled; Takata 1990,
+    PMID 2076989) must reach the ODE: with an absurd closing pressure (15 mmHg, above any resting IVC pressure)
+    the waterfall throttles the IVC and cardiac output falls well below the run without the law. Off, the
+    junction is the plain resistance. SABOTAGE: drop the `max(...)` of the waterfall -> no fall."""
+    def co(enabled):
+        p = SimParams()
+        p.ivc_zone_law_enabled, p.ivc_closing_pressure_mmhg = enabled, 15.0
+        r = run_simulation(p, duration_s=20.0, dt=DT, output_every=10)
+        t = np.asarray(r["t"])
+        return float(np.mean(np.asarray(r["co"])[t >= 10.0]))
+    off, on = co(False), co(True)
+    assert on < off - 0.5, f"IVC zone law not live: CO {off:.2f} off vs {on:.2f} L/min with a 15 mmHg closing pressure"
+
+
 def test_rv_resting_point_is_luus_volume_at_richters_pressure():
     """[PMID 34980185 — Luu 2022; PMID 33655769 — Richter 2021] The RV's resting point is placed through
     two sourced numbers (2026-11-14): its wall carries Richter's RVEDP at Luu's RVEDV for the reference

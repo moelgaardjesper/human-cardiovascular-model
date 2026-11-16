@@ -557,6 +557,26 @@ class SimParams:
         # so the mechanism can be validated in isolation.
         self.abdominal_coupling_enabled = True
 
+        # THE ABDOMEN AS A FLUID COLUMN (2026-11-16; validation log "60 DEG"). The abdominal contents are a
+        # column too: tilted head-up, pressure in the cavity rises with depth below the diaphragm (Rushmer
+        # 1946; bladder pressure +1.2 / 2.9 / 5.0 / 7.4 mmHg at 10-45 deg, McBeth 2007; ~2 supine -> ~20
+        # standing in healthy adults, Cobb 2005; rectal pressure in passive 60 deg tilt rose by the
+        # hydrostatic change only, Tanaka 1996). It acts on the ABDOMINAL_COMPARTMENTS from outside, so
+        # the abdominal veins are partly spared their own column. Without it the splanchnic reservoir lost
+        # its head at 60 deg (10.4 -> 1.0 mmHg referred to the heart) and venous return collapsed.
+        # `abdominal_column_fraction` is the share of the full column the cavity transmits: 1 is a liquid
+        # container, less allows for shear and wall give (Loring 1994). UNPINNED — grade E until the
+        # bladder-pressure papers (Cobb, McBeth) are read for zero level and depth; OFF by default, so the
+        # model is unchanged until it is pinned.
+        self.abdominal_column_enabled = False
+        self.abdominal_column_fraction = 0.0
+        # The abdominal vascular zone law at the IVC's exit through the diaphragm (Takata, Wise & Robotham
+        # 1990, PMID 2076989, dogs): when the IVC's transmural pressure there falls below a closing
+        # pressure the vein is a Starling resistor, and the right atrium no longer sets the flow. Grade D
+        # (animal; the closing pressure 0.96-1.00 +/- 0.7 mmHg SE). Its own switch, OFF by default.
+        self.ivc_zone_law_enabled = False
+        self.ivc_closing_pressure_mmhg = 1.0
+
         # The four valves, each independently settable. Before 2026-08-31
         # mitral and aortic shared left_ventricle.resistance and could not be
         # varied apart, which blocked the left-heart coupling work in item 25a.
@@ -1222,6 +1242,22 @@ def _odes(t: float, V: np.ndarray, params: SimParams, baro: BaroreflexController
         p_abd = ABDOMINAL_TRANSMISSION * itp_resp
         for _ai in _ABDOMINAL_IDX:
             P[_ai] += p_abd
+    else:
+        p_abd = 0.0
+
+    # The abdomen as a fluid column (SimParams.abdominal_column_enabled). The cavity runs from the
+    # diaphragm (the supra-hepatic IVC's height: the hepatic veins join at the diaphragm) to the pelvic
+    # floor (the hip pivot). Its pressure is zero at whichever end is uppermost and rises with depth below
+    # it, so it is never negative and acts head-up and head-down alike. Blood density stands in for the
+    # contents' (~1.0-1.05); the fraction absorbs the difference.
+    p_abd_diaphragm = p_abd
+    if params.abdominal_column_enabled and params.abdominal_column_fraction > 0.0 and tilt != 0.0:
+        _hd_dia = hydrostatic_delta_mmhg(comp[i["ivc"]].height_m, tilt, g)
+        _top = max(_hd_dia, hydrostatic_delta_mmhg(params.hip_height_m, tilt, g))
+        _f = params.abdominal_column_fraction
+        for _ai in _ABDOMINAL_IDX:
+            P[_ai] += _f * max(0.0, _top - hydrostatic_delta_mmhg(comp[_ai].height_m, tilt, g))
+        p_abd_diaphragm += _f * max(0.0, _top - _hd_dia)
 
     flexion = smooth_tilt_profile(
         t, params.hip_flexion_start_deg, params.hip_flexion_end_deg,
@@ -1358,6 +1394,12 @@ def _odes(t: float, V: np.ndarray, params: SimParams, baro: BaroreflexController
     # ITP under PPV drives blood backward up the great veins without limit.
     Q_svc_ra = max(0.0, (P[i["svc"]] - P[i["right_atrium"]] + hdp("svc") - hdp("right_atrium")) / R_drain("svc"))
     Q_ivc_ra = max(0.0, (P[i["ivc"]] - P[i["right_atrium"]] + hdp("ivc") - hdp("right_atrium")) / R_drain("ivc"))
+    if params.ivc_zone_law_enabled:
+        # Zone 2 (Takata 1990): below the closing pressure at the diaphragm the outflow is a waterfall,
+        # driven by the IVC's own pressure over the abdominal pressure there, not over the right atrium's.
+        _ivc_down = max(P[i["right_atrium"]] + hdp("right_atrium"),
+                        p_abd_diaphragm + params.ivc_closing_pressure_mmhg + hdp("ivc"))
+        Q_ivc_ra = max(0.0, (P[i["ivc"]] + hdp("ivc") - _ivc_down) / R_drain("ivc"))
 
     # Valve law: None per valve means the linear form. See valve_orifice_enabled.
     _k = _ORIFICE_K if params.valve_orifice_enabled else _NO_ORIFICE
