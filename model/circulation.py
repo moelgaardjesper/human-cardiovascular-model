@@ -565,11 +565,19 @@ class SimParams:
         # the abdominal veins are partly spared their own column. Without it the splanchnic reservoir lost
         # its head at 60 deg (10.4 -> 1.0 mmHg referred to the heart) and venous return collapsed.
         # `abdominal_column_fraction` is the share of the full column the cavity transmits: 1 is a liquid
-        # container, less allows for shear and wall give (Loring 1994). UNPINNED — grade E until the
-        # bladder-pressure papers (Cobb, McBeth) are read for zero level and depth; OFF by default, so the
-        # model is unchanged until it is pinned.
-        self.abdominal_column_enabled = False
-        self.abdominal_column_fraction = 0.0
+        # container, less allows for shear and wall give (Loring 1994).
+        # HEAD-UP 0.7 — GRADE C, a BRACKET value: bladder pressure rises by ~0.53 of the full column in
+        # sedated, ventilated ICU patients (McBeth 2007, PMID 17434374) and ~0.9 in healthy adults standing
+        # (Cobb 2005, PMID 16140336; standing adds abdominal-wall tone, an upper bound for a passive tilt).
+        # Tested, not fitted: Petersen 2014 (PMID 24481962) volume indifference point head-up 22 +/- 16 cm
+        # below IC-4; the model with the column 20.8 (13.9 without).
+        # HEAD-DOWN 0.5 — GRADE D, PINNED on one point: Petersen's head-down volume indifference point 13 +/- 7
+        # (14.6 at 0.5; 0.7-0.9 give 6.9-8.6). Lower than head-up for an anatomical reason: head-down the
+        # contents press on a diaphragm the lungs let rise, head-up on the bony pelvis and pelvic floor.
+        # No intra-abdominal pressure in Trendelenburg has been read (WANTED).
+        self.abdominal_column_enabled = True
+        self.abdominal_column_fraction = 0.7
+        self.abdominal_column_fraction_head_down = 0.5
         # The abdominal vascular zone law at the IVC's exit through the diaphragm (Takata, Wise & Robotham
         # 1990, PMID 2076989, dogs): when the IVC's transmural pressure there falls below a closing
         # pressure the vein is a Starling resistor, and the right atrium no longer sets the flow. Grade D
@@ -1251,10 +1259,10 @@ def _odes(t: float, V: np.ndarray, params: SimParams, baro: BaroreflexController
     # it, so it is never negative and acts head-up and head-down alike. Blood density stands in for the
     # contents' (~1.0-1.05); the fraction absorbs the difference.
     p_abd_diaphragm = p_abd
-    if params.abdominal_column_enabled and params.abdominal_column_fraction > 0.0 and tilt != 0.0:
+    _f = params.abdominal_column_fraction if tilt > 0.0 else params.abdominal_column_fraction_head_down
+    if params.abdominal_column_enabled and _f > 0.0 and tilt != 0.0:
         _hd_dia = hydrostatic_delta_mmhg(comp[i["ivc"]].height_m, tilt, g)
         _top = max(_hd_dia, hydrostatic_delta_mmhg(params.hip_height_m, tilt, g))
-        _f = params.abdominal_column_fraction
         for _ai in _ABDOMINAL_IDX:
             P[_ai] += _f * max(0.0, _top - hydrostatic_delta_mmhg(comp[_ai].height_m, tilt, g))
         p_abd_diaphragm += _f * max(0.0, _top - _hd_dia)

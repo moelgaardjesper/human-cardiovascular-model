@@ -614,17 +614,9 @@ def test_cerebral_perfusion_pressure_pohl_cullen2005(supine_175_75, upright45_17
     assert s_up45["cpp"] > 40, f"CPP not viable at 45 deg: {s_up45['cpp']:.1f}"
 
 
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason=(
-    "KNOWN GAP, 2026-10-18 — THE ORTHOSTATIC MAP COLLAPSE, asserted on the quantity that "
-    "is actually wrong rather than on the CPP floor above. Measured: supine MAP 98.3 -> "
-    "63.8 at 45 deg, a fall of 34.6 mmHg, where Wieling measured heart-level MAP changing "
-    "+1 +- 7 even at 90 deg. CAUSE (validation log 2026-10-18): the filling-pressure signal "
-    "is too small, so the reflex must trade MAP for vasoconstriction — the model's heart "
-    "converts filling PRESSURE into stroke volume 3-4x too efficiently (dSV/dPCWP 8.88 vs "
-    "Levine 1991 nonathletes 2.7 +- 1.5), so CVP falls -1.41 at -30 LBNP against man's -5.8. "
-    "Not the muscle pump (the same failure appears supine under LBNP) and not the chambers "
-    "(stiffness x3 moved dCVP by 0.04). Band not widened."
-))
+# CLOSED 2026-11-17 by the abdomen as a fluid column (head-up 0.7): MAP 97.0 -> 82.0 at 45 deg, -14.9 against the 15 mmHg
+# band — ON ITS EDGE, a fragile pass. Was a strict xfail from 2026-10-18 (-34.6). What remains is the heart's resting point
+# (validation log 2026-11-16/17, problem 1, step 2).
 def test_map_is_defended_on_head_up_tilt_wieling1998(supine_175_75, upright45_175_75):
     """[PMID 9640339 — Wieling 1998] Heart-level mean arterial pressure is defended on
     head-up tilt: it changes by only +1 +/- 7 mmHg even at 90 deg, while leg arterial
@@ -8229,19 +8221,19 @@ def test_external_pressure_responds_in_a_short_run():
 
 def test_abdominal_column_is_live_and_zero_supine():
     """The abdomen as a fluid column (SimParams.abdominal_column_enabled, 2026-11-16) must reach the ODE: tilted
-    60 deg head-up for 20 s, cardiac output with the column carried (fraction 0.9) must exceed the run without it,
+    60 deg head-up for 20 s, cardiac output with the column carried (default fractions) must exceed the run without it,
     because the abdominal veins keep their head. Supine it must change nothing, to the last bit: the column is
     zero at zero tilt. SABOTAGE: delete the `P[_ai] += ...` line in _odes -> the first assertion fails."""
     def co(enabled, tilt):
         p = SimParams()
-        p.abdominal_column_enabled, p.abdominal_column_fraction = enabled, 0.9
+        p.abdominal_column_enabled = enabled
         p.tilt_end_deg, p.tilt_onset_s, p.tilt_duration_s = tilt, 5.0, 3.0
         r = run_simulation(p, duration_s=25.0, dt=DT, output_every=10)
         t = np.asarray(r["t"])
         return float(np.mean(np.asarray(r["co"])[t >= 15.0])), np.asarray(r["volumes"])
     off, _ = co(False, 60.0)
     on, _ = co(True, 60.0)
-    assert on > off + 0.3, f"abdominal column not live: CO {off:.2f} off vs {on:.2f} L/min on at 60 deg"
+    assert on > off + 0.2, f"abdominal column not live: CO {off:.2f} off vs {on:.2f} L/min on at 60 deg"
     _, v_off = co(False, 0.0)
     _, v_on = co(True, 0.0)
     assert np.array_equal(v_off, v_on), "the abdominal column must be exactly zero supine"
