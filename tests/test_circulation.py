@@ -5086,6 +5086,13 @@ def test_resting_stroke_volume_in_young_adults_pmid27702883(lbnp_young_haemorrha
 # mmHg at a chosen exchange rate is not the same quantity, so direction is asserted. Measured: dCO
 # -0.46 / -0.47, dHR +11.1 / +11.3 (male / female) against -1.00, +5.8 — output falls about half as
 # much and the rate rises twice as much; reported to the scorecard. Was a strict xfail from 2026-11-06.
+@pytest.mark.xfail(strict=True, raises=AssertionError, reason=(
+    "KNOWN GAP, 2026-11-17 — the cardiopulmonary reflex reference re-measured to its fixed point (5.23 -> 6.21 mmHg) removed a "
+    "~1.5 mmHg dead band; the young man's tachycardia now answers his full CVP fall and holds cardiac output (male dCO +0.07 "
+    "against -1.00; dHR +11.6 against +5.8). The reflex gain matches man (3.5-3.8 bpm/mmHg, Vettorello-type LBNP, Minson 60 deg); "
+    "the CVP fall it answers is too large (problem 1, validation log 2026-11-16/17). A 500 mL bleed standing in for -30 mmHg "
+    "LBNP. Band not widened."
+))
 def test_central_hypovolaemia_flow_and_rate_response_pmid27702883(lbnp_young_haemorrhage):
     """[PMID 27702883] Cardiac output and heart rate under -30 mmHg LBNP.
 

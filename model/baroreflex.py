@@ -82,7 +82,7 @@ from collections import deque
 # made a venous return curve slope come out POSITIVE.
 MAP_SETPOINT = 93.0   # mmHg, CENTRAL AORTIC — McEniery 2005 males 50-59 measure 95 +/- 7
 PP_SETPOINT  = 40.0   # mmHg, CENTRAL AORTIC
-CVP_SETPOINT =  3.95  # mmHg, CAVITY, CYCLE MEAN — keeps its 1.28 gap below CP_HR_REFERENCE (2026-11-04)
+CVP_SETPOINT =  4.93  # mmHg, CAVITY, CYCLE MEAN — keeps its 1.28 gap below CP_HR_REFERENCE (2026-11-17)
 
 # The reference patient's OPERATING POINT, used by `patient.py` to compute the
 # SVR a patient's measured numbers should be scaled against. This is NOT the
@@ -321,7 +321,12 @@ CP_HR_LOADING_FRACTION = 0.0
 # corrected (HR 68.17 -> 68.02). CVP_SETPOINT moved by the same amount.
 # **Re-measure this whenever the resting heart changes** — it is a fixed point
 # of the model, not a constant of physiology.
-CP_HR_REFERENCE_CVP_MMHG = 5.23
+# RE-MEASURED 2026-11-17, same definition: 5.23 -> 6.21 (fixed point 6.209 at 6.20 and 6.210 at 6.15). The heart's
+# surroundings (Xc 3.0, 11-13), option A and the RV placement (11-14), blood volume by age, the abdominal column and the
+# leg-flow correction (11-16/17) had each moved rest, and nothing re-read this: a ~1 mmHg DEAD BAND again (the first
+# ~1 mmHg of a CVP fall gave no tachycardia; 1.5 for a young man). Rest barely moves (HR 67.6 -> 67.4).
+# CVP_SETPOINT moved by the same amount (3.95 -> 4.93), keeping its 1.28 gap.
+CP_HR_REFERENCE_CVP_MMHG = 6.21
 
 
 # ---------------------------------------------------------------------------
