@@ -7986,8 +7986,11 @@ def _johnson_bleed():
     def win(k, a, b):
         return float(np.mean(np.asarray(r[k])[(tt >= a) & (tt < b)]))
     cvp0, sv0 = win("cvp", 180.0, 300.0), win("sv", 180.0, 300.0)
+    map0, hr0 = win("map", 180.0, 300.0), win("hr", 180.0, 300.0)
     return (cvp0, [win("cvp", a, b) - cvp0 for a, b in reads],
-            [win("sv", a, b) - sv0 for a, b in reads])
+            [win("sv", a, b) - sv0 for a, b in reads],
+            [win("map", a, b) - map0 for a, b in reads],
+            [win("hr", a, b) - hr0 for a, b in reads])
 
 
 @pytest.fixture(scope="module")
@@ -8001,13 +8004,47 @@ def johnson_bleed():
 def test_cvp_falls_as_in_johnson2014_controlled_blood_loss(johnson_bleed):
     """CVP falls by Johnson's mean change at each 333 mL stage, within the SE-of-
     change band defined above."""
-    _, dcvp, _ = johnson_bleed
+    _, dcvp, _, _, _ = johnson_bleed
     for k, (d, (lo, hi)) in enumerate(zip(dcvp, _JOHNSON_DCVP_BANDS)):
         score("test_cvp_falls_as_in_johnson2014_controlled_blood_loss", f"dCVP {333 * (k + 1)} mL", d, 0.5 * (lo + hi), se=0.5 * (hi - lo), n=8, kind="change", source="Johnson 2014; SE of change (no-correlation upper bound); SD of change not published")
     misses = [f"{333 * (k + 1)} mL: dCVP {d:+.2f} outside [{lo:+.2f}, {hi:+.2f}]"
               for k, (d, (lo, hi)) in enumerate(zip(dcvp, _JOHNSON_DCVP_BANDS))
               if not lo <= d <= hi]
     assert not misses, "CVP does not follow Johnson 2014: " + "; ".join(misses)
+
+
+# REAL BLOOD LOSS, PRESSURE AND RATE — added 2026-11-19 (Jesper: "no LBNP scaffolding, no circular comparisons").
+# Johnson 2014 Table 3 read in full (ledger): blood loss by brachial ARTERIAL LINE, mean +/- SE, n 8 —
+# MAP 91.4 +/- 2.7 / 91.0 +/- 2.4 / 90.3 +/- 3.0 / 89.2 +/- 2.7 (stage 3 below baseline, main effect P < 0.05);
+# HR 59 +/- 3.4 / 60 +/- 3.0 / 63 +/- 2.8 / 67 +/- 3.5. Bands as for CVP above: the SE of the change with no
+# within-subject correlation assumed (an UPPER bound; the paired SD is not published). Site: an arterial-line
+# mean against the model's central `map` — a change, so the constant site offset cancels.
+# THE MODEL'S HEART RATE RUNS ABOVE MAN'S MEAN AT EVERY STAGE (+2.9 / +7.0 / +10.6 vs +1 / +4 / +8 on
+# 2026-11-19) and stays inside these conservative bands; that consistent excess is recorded, not asserted.
+_JOHNSON_DMAP = (-0.4, -1.1, -2.2)
+_JOHNSON_DMAP_SE = tuple(float(np.hypot(2.7, s)) for s in (2.4, 3.0, 2.7))
+_JOHNSON_DHR = (1.0, 4.0, 8.0)
+_JOHNSON_DHR_SE = tuple(float(np.hypot(3.4, s)) for s in (3.0, 2.8, 3.5))
+
+
+def test_map_is_held_and_heart_rate_rises_in_johnson2014_blood_loss(johnson_bleed):
+    """[PMID 24876357 — Johnson 2014] Real blood loss in awake supine men (333 / 667 / 1000 mL): MAP is
+    defended (changes inside Johnson's band at each stage, and lower at 1 L than at rest) and heart rate rises
+    modestly. This is the sourced, non-LBNP statement of 'mean pressure under hypovolaemia' — LBNP lowers MAP
+    ~7x more per mmHg of CVP than blood loss does in the same men (Johnson Table 1), so it cannot stand in."""
+    _, _, _, dmap, dhr = johnson_bleed
+    misses = []
+    for k in range(3):
+        ml = 333 * (k + 1)
+        score("test_map_is_held_and_heart_rate_rises_in_johnson2014_blood_loss", f"dMAP {ml} mL", dmap[k], _JOHNSON_DMAP[k], se=_JOHNSON_DMAP_SE[k], n=8, kind="change", source="Johnson 2014 Table 3; SE of change (no-correlation upper bound)")
+        score("test_map_is_held_and_heart_rate_rises_in_johnson2014_blood_loss", f"dHR {ml} mL", dhr[k], _JOHNSON_DHR[k], se=_JOHNSON_DHR_SE[k], n=8, kind="change", source="Johnson 2014 Table 3; SE of change (no-correlation upper bound)")
+        if abs(dmap[k] - _JOHNSON_DMAP[k]) > _JOHNSON_DMAP_SE[k]:
+            misses.append(f"{ml} mL: dMAP {dmap[k]:+.2f} vs {_JOHNSON_DMAP[k]:+.1f} +/- {_JOHNSON_DMAP_SE[k]:.1f}")
+        if abs(dhr[k] - _JOHNSON_DHR[k]) > _JOHNSON_DHR_SE[k]:
+            misses.append(f"{ml} mL: dHR {dhr[k]:+.1f} vs {_JOHNSON_DHR[k]:+.0f} +/- {_JOHNSON_DHR_SE[k]:.1f}")
+    assert dmap[2] < 0.0, f"MAP did not fall at 1000 mL ({dmap[2]:+.2f}); Johnson's stage 3 sits below baseline"
+    assert all(h > 0.0 for h in dhr), f"heart rate did not rise at every stage: {[round(h, 1) for h in dhr]}"
+    assert not misses, "MAP / HR do not follow Johnson 2014 blood loss: " + "; ".join(misses)
 
 
 # ===========================================================================
@@ -8460,3 +8497,159 @@ def test_mean_wedge_sits_at_lvedp_in_healthy_hearts_rahimtoola1975():
     assert -1.1 <= gap <= 2.3, (
         f"LVEDP - mean wedge {gap:+.2f} mmHg (men {lm - am:+.2f}, women {lf - af:+.2f}) "
         f"outside Rahimtoola's 1 SD band -1.1 to +2.3 (0.6 +/- 1.7, hearts without disease)")
+
+
+# ===========================================================================
+# 62. MILD TILT LEAVES THE HUMAN HEART ALONE — Petersen 2014, van Lieshout 2005 (problem 1, on the record)
+# ===========================================================================
+#
+# [PMID 24481962 — Petersen 2014, Copenhagen; ledger] 12 healthy men, 24.6 y, 179.8 cm, 71.3 kg; 10 min at each angle,
+# CVP by central catheter zeroed at IC-4, Modelflow SV, mean of the last 2 min. Table 1, mean (SD): CVP 3.7 (1.9) supine,
+# 2.0 (1.5) at +20, 4.9 (2.3) at -20; SV 88 (18), 86 (15), 86 (18) — "no other recorded cardiovascular variables were
+# affected by tilt". Bands: the SE of the change, no within-subject correlation assumed (upper bound; the suite's
+# convention for changes, as Johnson above).
+# [PMID 16146465 — van Lieshout 2005; ABSTRACT ONLY, ledger] 9 healthy humans, Swan-Ganz: 20 deg head-DOWN left SV, thoracic
+# fluid and CVP (3.6 +/- 0.9) unchanged while wedge rose 8.8 +/- 3.4 -> 11.3 +/- 2.5 (P < 0.05). Wedge band likewise.
+# PROBLEM 1 HAD NO TEST until 2026-11-19 (Jesper: "we haven't kept up with the discipline of adding literature results
+# to the test suite"); it lived in the validation log only.
+_PET_DCVP = {20.0: (2.0 - 3.7, float(np.hypot(1.9, 1.5) / np.sqrt(12))),
+             -20.0: (4.9 - 3.7, float(np.hypot(1.9, 2.3) / np.sqrt(12)))}
+_PET_DSV = {20.0: (86.0 - 88.0, float(np.hypot(18.0, 15.0) / np.sqrt(12))),
+            -20.0: (86.0 - 88.0, float(np.hypot(18.0, 18.0) / np.sqrt(12)))}
+_VL_DWEDGE = (11.3 - 8.8, float(np.hypot(3.4, 2.5) / np.sqrt(9)))
+
+
+@pytest.fixture(scope="module")
+def petersen_mild_tilt():
+    """Petersen's young man, 10 min at +20 and at -20 deg; changes over the last 2 min against the 60 s before."""
+    out = {}
+    for tilt in (20.0, -20.0):
+        p = cohort_params(179.8, 71.3, age_years=24.6, sex="male")
+        p.tilt_start_deg, p.tilt_end_deg, p.tilt_onset_s, p.tilt_duration_s = 0.0, tilt, 120.0, 5.0
+        r = run_simulation(p, duration_s=721.0, dt=DT, output_every=10)
+        t = np.asarray(r["t"])
+        def d(k):
+            a = np.asarray(r[k])
+            return float(np.mean(a[(t >= 600.0) & (t < 720.0)]) - np.mean(a[(t >= 60.0) & (t < 120.0)]))
+        out[tilt] = {k: d(k) for k in ("cvp", "sv", "la_pressure", "hr", "map")}
+    return out
+
+
+@pytest.mark.xfail(strict=True, raises=AssertionError, reason=(
+    "KNOWN GAP, PROBLEM 1 (measured 2026-11-19, liver split + head-down column 0): mild tilt moves the model's CVP "
+    "2-5x man's and its stroke volume where man's does not move (+20: CVP -3.90 vs -1.7 +/- 0.70, SV -28.5 vs -2 +/- 6.8; "
+    "-20: CVP +6.09 vs +1.2 +/- 0.86, SV +6.7 vs -2 +/- 7.3). Head-down the chest takes ~2x Bivins' share and the legs give ~1.6x (validation log 2026-11-19); "
+    "head-up the cause is not located. The hepatic waterfall (Sand) was probed and does not move it. Band not widened."
+))
+def test_mild_tilt_moves_cvp_and_stroke_volume_as_in_man_petersen2014(petersen_mild_tilt):
+    """[PMID 24481962 — Petersen 2014] +/-20 deg for 10 min in young men: CVP changes by Petersen's mean within the SE
+    of the change, and stroke volume does not change beyond it."""
+    misses = []
+    for tilt, res in petersen_mild_tilt.items():
+        m, se = _PET_DCVP[tilt]
+        score("test_mild_tilt_moves_cvp_and_stroke_volume_as_in_man_petersen2014", f"dCVP {tilt:+.0f} deg", res["cvp"], m, se=se, n=12, kind="change", source="Petersen 2014 Table 1; SE of change (no-correlation upper bound)")
+        if abs(res["cvp"] - m) > se:
+            misses.append(f"{tilt:+.0f} deg: dCVP {res['cvp']:+.2f} vs {m:+.1f} +/- {se:.2f}")
+        m, se = _PET_DSV[tilt]
+        score("test_mild_tilt_moves_cvp_and_stroke_volume_as_in_man_petersen2014", f"dSV {tilt:+.0f} deg", res["sv"], m, se=se, n=12, kind="change", source="Petersen 2014 Table 1 (Modelflow)")
+        if abs(res["sv"] - m) > se:
+            misses.append(f"{tilt:+.0f} deg: dSV {res['sv']:+.1f} vs {m:+.0f} +/- {se:.1f}")
+    assert not misses, "mild tilt does not follow Petersen 2014: " + "; ".join(misses)
+
+
+@pytest.mark.xfail(strict=True, raises=AssertionError, reason=(
+    "KNOWN GAP, PROBLEM 1 (measured 2026-11-19): at 20 deg head-down the model's left-atrial (wedge) pressure rises +8.12 "
+    "(band +2.5 +/- 1.41) where van Lieshout's Swan-Ganz wedge rose +2.5 and his CVP did not change. ABSTRACT ONLY (cohort age not given; "
+    "Petersen's young man used). Band not widened."
+))
+def test_head_down_wedge_rise_as_in_man_van_lieshout2005(petersen_mild_tilt):
+    """[PMID 16146465 — van Lieshout 2005, abstract] 20 deg head-down: wedge +2.5 (SE of the change ~1.4)."""
+    d = petersen_mild_tilt[-20.0]["la_pressure"]
+    m, se = _VL_DWEDGE
+    score("test_head_down_wedge_rise_as_in_man_van_lieshout2005", "dWedge -20 deg", d, m, se=se, n=9, kind="change", source="van Lieshout 2005 abstract; SE of change (no-correlation upper bound)")
+    assert abs(d - m) <= se, f"20 deg head-down wedge rose {d:+.2f} vs van Lieshout {m:+.1f} +/- {se:.2f}"
+
+
+# ===========================================================================
+# 63. THE ABDOMEN RECEIVES BLOOD HEAD-DOWN — Bivins 1985 (the head-down column's pin, as a test)
+# ===========================================================================
+#
+# [PMID 4014811 — Bivins 1985; read in full, ledger] 10 healthy men, 24-38 y, Tc-99m RED CELLS, 15 deg Trendelenburg:
+# lower (trochanter to feet) -3.2 %, abdominal (trochanter to diaphragm) +1.7 %, upper +1.8 % of blood volume — at 5462 mL
+# -175 / +93 / +98 mL. Half of what the legs give goes to the abdomen. THE MATCHED QUANTITY: red cells do not see plasma
+# absorbed or filtered, so the model runs with `slow_fluid_exchange_enabled` False (venous creep stays, it holds red
+# cells too); its regions are Bivins' (abdomen = BODY_REGIONS abdomen + the three IVC segments; legs = trochanter down).
+# THIS IS THE PIN'S GUARD (Jesper, 2026-11-19: head-down column fraction 0, grade C): at the old 0.5 the abdomen LOSES
+# red cells (-8 mL) and this fails; at 0 it gains +85. Heijke 1991 (PMID 2014893, abstract: gastric pressure +0.75 mmHg in
+# steep Trendelenburg, nothing at moderate) points the same way. The SHARE (model ~30 % vs man 53 %) is not asserted:
+# Bivins publishes medians and ranges only, so no band for a ratio can be drawn.
+_BIVINS_ABDOMEN_ML = 93.0
+
+
+@pytest.fixture(scope="module")
+def bivins_head_down():
+    p = cohort_params(178.0, 75.0, age_years=31.0, sex="male")
+    p.slow_fluid_exchange_enabled = False
+    p.tilt_start_deg, p.tilt_end_deg, p.tilt_onset_s, p.tilt_duration_s = 0.0, -15.0, 120.0, 5.0
+    r = run_simulation(p, duration_s=721.0, dt=DT, output_every=10)
+    t = np.asarray(r["t"]); V = np.asarray(r["volumes"])
+    dv = V[(t >= 600.0) & (t < 720.0)].mean(axis=0) - V[(t >= 60.0) & (t < 120.0)].mean(axis=0)
+    from model.circulation import BODY_REGIONS
+    abdomen = sum(dv[IDX[n]] for n in BODY_REGIONS["abdomen"]) + sum(dv[IDX[n]] for n in ("ivc", "ivc_renal", "ivc_infrarenal"))
+    legs = sum(dv[IDX[n]] for n in ("lower_body_art", "thigh_vein", "calf_vein", "foot_vein"))
+    return {"abdomen": float(abdomen), "legs": float(legs), "liver": float(dv[IDX["liver"]])}
+
+
+def test_abdomen_receives_red_cells_head_down_bivins1985(bivins_head_down):
+    """[PMID 4014811 — Bivins 1985] 15 deg head-down, red-cell analogue: the legs give blood and the ABDOMEN RECEIVES part
+    of it (Bivins +93 mL). Direction asserted, magnitude scored. SABOTAGE: abdominal_column_fraction_head_down = 0.5 ->
+    the abdomen loses red cells and the first assertion fails (measured 2026-11-19: -8 mL)."""
+    b = bivins_head_down
+    score("test_abdomen_receives_red_cells_head_down_bivins1985", "abdominal red-cell gain -15 deg", b["abdomen"], _BIVINS_ABDOMEN_ML, kind="change", source="Bivins 1985 medians (range only, no SD)")
+    assert b["legs"] < 0.0, f"the legs did not give blood head-down ({b['legs']:+.0f} mL)"
+    assert b["abdomen"] > 0.0, (
+        f"the abdomen LOST red cells head-down ({b['abdomen']:+.0f} mL; Bivins +93): the head-down abdominal column is "
+        f"squeezing the abdominal veins — see the HEAD-DOWN note at SimParams.abdominal_column_fraction_head_down")
+
+
+# ===========================================================================
+# 64. THE LIVER AT REST — Kiszka-Kanowitz 2001 (volume, portal gradient), Lautt & Greenway 1976 (unstressed share)
+# ===========================================================================
+#
+# [PMID 11690706 — Kiszka-Kanowitz 2001] liver-region blood volume 618 +/- 163 mL in 6 healthy supine controls (1 SD band);
+# hepatic venous pressure gradient 3.1 +/- 1.1 mmHg in 11 non-cirrhotic control patients — the portal-to-hepatic-vein
+# gradient, which the model's portal side minus its liver must carry at rest. Neither was fitted: the volume is the
+# compartment's resting value and the gradient fell out of keeping the portal side at its old pressure (2026-11-18).
+# [PMID 961879 — Lautt & Greenway 1976, cat] blood volume 27 mL/100 g at zero hepatic venous pressure against ~46 at the
+# resting ~7 mmHg: about 0.59 of the liver's blood is UNSTRESSED. Grade D (cat ratio). Read through the patient-scaling
+# path (unstressed volume from build_patient_params, volume from a settled run), so a hand edit to the liver's V0, C0 or
+# convex_b, or to the scaling of convex_b, fails here. Band 0.5-0.7: Lautt's ratio +/- the spread his compliance curve
+# leaves across the 2.3-9.4 mmHg range he measured.
+
+
+@pytest.fixture(scope="module")
+def liver_at_rest():
+    comps, _ = build_patient_params(175.0, 75.0, hr_bpm=70.0)
+    p = SimParams()
+    r = run_simulation(p, duration_s=121.0, dt=DT, output_every=10)
+    t = np.asarray(r["t"]); V = np.asarray(r["volumes"])[(t >= 90.0) & (t < 120.0)].mean(axis=0)
+    from model.circulation import _odes, _ARREST_PHASE
+    P = np.zeros(len(V))
+    _odes(120.0, V.astype(float), p, None, _ARREST_PHASE, P)
+    return {"volume": float(V[IDX["liver"]]), "v0": comps[IDX["liver"]].unstressed_volume,
+            "gradient": float(P[IDX["splanchnic_vein"]] - P[IDX["liver"]])}
+
+
+def test_liver_volume_and_portal_gradient_kiszka_kanowitz2001(liver_at_rest):
+    """[PMID 11690706] Resting liver blood volume inside 618 +/- 163 mL; portal minus liver pressure inside 3.1 +/- 1.1."""
+    lv = liver_at_rest
+    score("test_liver_volume_and_portal_gradient_kiszka_kanowitz2001", "liver blood volume", lv["volume"], 618.0, sd=163.0, n=6, source="Kiszka-Kanowitz 2001 Table 3")
+    score("test_liver_volume_and_portal_gradient_kiszka_kanowitz2001", "portal - liver (HVPG)", lv["gradient"], 3.1, sd=1.1, n=11, source="Kiszka-Kanowitz 2001 Table 2, non-cirrhotic controls")
+    assert 618.0 - 163.0 <= lv["volume"] <= 618.0 + 163.0, f"liver blood volume {lv['volume']:.0f} mL outside 618 +/- 163"
+    assert 3.1 - 1.1 <= lv["gradient"] <= 3.1 + 1.1, f"portal - liver gradient {lv['gradient']:+.2f} outside 3.1 +/- 1.1 mmHg"
+
+
+def test_liver_holds_most_of_its_blood_unstressed_lautt1976(liver_at_rest):
+    """[PMID 961879 — Lautt & Greenway 1976] Unstressed share of the liver's resting blood ~0.59 (band 0.5-0.7)."""
+    share = liver_at_rest["v0"] / liver_at_rest["volume"]
+    assert 0.5 <= share <= 0.7, f"liver unstressed share {share:.2f} outside 0.5-0.7 (Lautt 0.59)"

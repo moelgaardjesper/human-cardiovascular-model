@@ -574,13 +574,18 @@ class SimParams:
         # (Cobb 2005, PMID 16140336; standing adds abdominal-wall tone, an upper bound for a passive tilt).
         # Tested, not fitted: Petersen 2014 (PMID 24481962) volume indifference point head-up 22 +/- 16 cm
         # below IC-4; the model with the column 20.8 (13.9 without).
-        # HEAD-DOWN 0.5 — GRADE D, PINNED on one point: Petersen's head-down volume indifference point 13 +/- 7
-        # (14.6 at 0.5; 0.7-0.9 give 6.9-8.6). Lower than head-up for an anatomical reason: head-down the
-        # contents press on a diaphragm the lungs let rise, head-up on the bony pelvis and pelvic floor.
-        # No intra-abdominal pressure in Trendelenburg has been read (WANTED).
+        # QUANTITY FLAG (Jesper, 2026-11-18): bladder pressure is a pressure INSIDE AN ORGAN read through its wall,
+        # not the pressure the abdominal veins feel; the bracket rests on that proxy (gastric reads ~0.4-0.5 of a
+        # known insufflation pressure, Drummond 1978). The tests do not rest on it.
+        # HEAD-DOWN 0 — GRADE C, re-pinned 2026-11-19 (Jesper: "Let's set to 0") on Bivins 1985 (PMID 4014811, red
+        # cells, 15 deg) on the MATCHED quantity (the model's red-cell analogue: creep on, fluid exchange off): the
+        # abdomen gains +85 mL at 0 (Bivins +93, 53 % of the legs' loss; 30 % in the model) and LOSES red cells at the
+        # old 0.5 (-8). Petersen's head-down volume indifference point (13 +/- 7) accepts every value (16.7 at 0) and
+        # cannot choose. It was 0.5 (grade D, pinned on Petersen alone, 2026-11-16, before the liver split). No
+        # intra-abdominal pressure in Trendelenburg has been read yet (WANTED, being sought).
         self.abdominal_column_enabled = True
         self.abdominal_column_fraction = 0.7
-        self.abdominal_column_fraction_head_down = 0.5
+        self.abdominal_column_fraction_head_down = 0.0
         # The abdominal vascular zone law at the IVC's exit through the diaphragm (Takata, Wise & Robotham
         # 1990, PMID 2076989, dogs): when the IVC's transmural pressure there falls below a closing
         # pressure the vein is a Starling resistor, and the right atrium no longer sets the flow. Grade D
