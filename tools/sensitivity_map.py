@@ -62,7 +62,7 @@ def measure(compartments=None):
     comp = p.compartments
     V = r["volumes"][2 * len(r["volumes"]) // 3:].mean(axis=0)
     P = np.array([_vascular_pressure(V[k], c.unstressed_volume, c.compliance,
-                                     getattr(c, "p_stiffen", None))
+                                     getattr(c, "p_stiffen", None), getattr(c, "convex_b", None))
                   for k, c in enumerate(comp)])
     pc = 0.0
     for art, ven, share in CAPILLARY_BEDS:

@@ -1,7 +1,7 @@
 """
 Vascular compartment definitions for the lumped-parameter cardiovascular model.
 
-Based on the 25-compartment structure extended from:
+Based on the 26-compartment structure extended from:
   Heldt T et al. (2002) J Appl Physiol 92:1239-1254
   PMC9363491 — cardiovascular model for orthostatic stress / spaceflight
 
@@ -63,6 +63,10 @@ class Compartment:
     #
     # None → falls back to `resistance`, which reproduces the old shared behaviour.
     drain_resistance: float | None = None
+    # CONVEX (stiffening-in-REVERSE) pressure-volume law, the liver's (Lautt & Greenway 1976, PMID 961879). When set, stressed
+    # volume Vs = C0*P + convex_b*P^2 for P > 0, so the CHORD compliance Vs/P = C0 + convex_b*P rises with pressure;
+    # dV/dP = C0 + 2*convex_b*P. mL/mmHg^2. None -> the linear (or p_stiffen) law. Below Vs = 0 the law is linear with C0.
+    convex_b: float | None = None
 
     def __post_init__(self):
         if self.init_volume is None:
@@ -73,6 +77,9 @@ class Compartment:
     def pressure(self, volume: float) -> float:
         """Transmural pressure from stressed volume (mmHg)."""
         vs = volume - self.unstressed_volume
+        if self.convex_b is not None and vs > 0.0:
+            c0, b = self.compliance, self.convex_b
+            return (-c0 + (c0 * c0 + 4.0 * b * vs) ** 0.5) / (2.0 * b)
         if self.p_stiffen is None or vs <= 0.0:
             return vs / self.compliance
         import numpy as _np
@@ -227,6 +234,7 @@ CAVOATRIAL_R = 0.04
 ARTERIOLAR_SEGMENTS = (
     "upper_body_vein", "renal_vein", "splanchnic_vein",
     "thigh_vein", "calf_vein", "foot_vein",
+    "liver",                           # the hepatic artery (the liver split, 2026-11-18)
 )
 
 
@@ -572,11 +580,15 @@ HIP_HEIGHT_M = -0.333
 # Like every height, these scale with the patient's stature (patient.py).
 L1_HEIGHT_M = -0.17
 ABDOMINAL_AORTA_HEIGHT_M = -0.18
+# THE LIVER (2026-11-18, the liver split): between the hepatic-vein junction at the diaphragm (ivc, -0.08) and
+# the portal confluence at mid-L1 (-0.17), where the organ's blood lies. GRADE D: the midpoint of two
+# anatomical landmarks, not a measured blood centroid.
+LIVER_HEIGHT_M = -0.12
 
 
 def default_compartments() -> list[Compartment]:
     """
-    Return the 25 baseline compartments in canonical index order.
+    Return the 26 baseline compartments in canonical index order.
 
     Parameters calibrated to reproduce resting haemodynamics:
       MAP ≈ 90 mmHg, CO ≈ 5 L/min, CVP ≈ 5 mmHg, HR = 70 bpm
@@ -630,8 +642,22 @@ def default_compartments() -> list[Compartment]:
         Compartment("renal_vein",          7.20, 4.50,   60, L1_HEIGHT_M,  138,
                     drain_resistance=0.200),                                # 7  P0≈8
         Compartment("splanchnic_art",      0.19, 0.10,   50, L1_HEIGHT_M,   65),  # 8  P0=83 (conduit; arteriole moved to splanchnic_vein)
-        Compartment("splanchnic_vein",    52.00, 3.60,  542, L1_HEIGHT_M, 1069,
-                    drain_resistance=0.140),  # 9  P0≈11 (dominant mobilizable reservoir)
+        # THE LIVER SPLIT (2026-11-18). splanchnic_vein is now the PORTAL side only: gut, spleen, pancreas and the
+        # portal vein. The liver (sinusoids + hepatic veins) is its own compartment, `liver`, in SERIES:
+        #   splanchnic_art -> splanchnic_vein (gut exchange) -> liver -> ivc, plus the hepatic artery
+        #   splanchnic_art -> liver directly.
+        # Stage 0 conserves the resting state: the portal side keeps its old pressure, the whole bed its old flow,
+        # volume and total compliance (52). Was C 52.00 / R 3.60 / V0 542 / init 1069 / drain 0.140.
+        #   gut exchange R 3.60 / 0.75 = 4.80: the gut carries 75 % of the old flow at the old pressure drop (the
+        #     hepatic artery takes 25 % of liver flow — grade D, textbook; a human source is WANTED).
+        #   portal drain 0.160: solved so the portal side holds its old resting pressure (10.07) with the liver's
+        #     outflow below — the fence is the Maas-fitted resistance to venous return (31faf62). It puts the
+        #     portal-to-hepatic-vein gradient at 3.08 mmHg against Kiszka-Kanowitz's HVPG 3.1 +/- 1.1 (PMID
+        #     11690706): a CHECK, not a fit.
+        #   C 12 (52 minus the liver's 40); V0 327 and init 448 from the resting volume left once the liver holds
+        #     Kiszka-Kanowitz's 618 mL. Grade E as before (the gut's compliance is unmeasured).
+        Compartment("splanchnic_vein",    12.00, 4.80,  327, L1_HEIGHT_M,  448,
+                    drain_resistance=0.160),  # 9  portal side (gut + spleen); P0≈10
         # LEG HEIGHTS FROM ANATOMY, 2026-10-05 (leg rebuild stage 3) — see the
         # LEG GEOMETRY note above default_compartments. Was -0.50 / -0.20 / -0.55
         # / -0.85, unsourced and compressed 1.4-2.6x against anatomy.
@@ -817,6 +843,24 @@ def default_compartments() -> list[Compartment]:
         # two fields cannot silently diverge.
         Compartment("ivc_renal",           3.60, 0.005,  36, L1_HEIGHT_M,   62, drain_resistance=0.005),  # 23
         Compartment("ivc_infrarenal",      6.00, 0.005,  60, -0.20,  104, drain_resistance=0.005),  # 24
+        # ---- THE LIVER — the liver split, 2026-11-18 (appended so no index moves) ----
+        # Sinusoids + hepatic veins. In series between the portal side and the supra-hepatic ivc.
+        # PRESSURE-VOLUME LAW: Lautt & Greenway 1976 (PMID 961879; cat, plethysmograph, hepatic nerves cut; ledger), grade D, used as
+        # RATIOS per 100 g of liver: blood volume 27 mL/100 g at hepatic venous pressure 0 (-> the UNSTRESSED volume),
+        # and a chord compliance rising 1.3 -> 3.4 mL/100 g/mmHg from 2.3 to 9.4 mmHg, i.e. chord = 0.620 + 0.296*P.
+        # LIVER MASS 1353 g is the one scaling number, SOLVED so the liver holds Kiszka-Kanowitz's 618 mL (PMID
+        # 11690706, 6 healthy supine controls) at its resting 6.97 mmHg; that it lands in the normal adult range (~1.2-
+        # 1.8 kg) is a check on the scaling, not a fit. Hence V0 365 (about 2/3 of the resting volume UNSTRESSED),
+        # C0 8.39 mL/mmHg, convex_b 4.00 mL/mmHg^2, slope at rest dV/dP ~64 mL/mmHg. Below zero distending pressure
+        # the law is linear with C0 (grade E: Lautt measured nothing there).
+        #   resistance 14.95 = the HEPATIC ARTERY (arteriolar, svr-scaled; in ARTERIOLAR_SEGMENTS): 25 % of total
+        #     liver flow at rest. GRADE D.
+        #   drain_resistance 0.02 = the hepatic OUTFLOW (hepatic veins -> IVC), ~0.5 mmHg at rest. GRADE D,
+        #     bracketed: Sand 2011 (PMID 22092208) HVP = CVP at baseline; Rossle 2016 (PMID 27212121, abstract,
+        #     cirrhosis) ~0.8 mmHg central hepatic vein -> IVC. Stage 1 replaces it with a waterfall law.
+        #   init 621 keeps the bed's old 1069 total.
+        Compartment("liver",               8.39, 14.95, 365, LIVER_HEIGHT_M, 621,
+                    drain_resistance=0.020, convex_b=4.00),  # 25
     ]
 
 

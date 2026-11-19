@@ -331,6 +331,7 @@ def scale_compartments(
         scaled.append(replace(
             c,
             compliance=c.compliance * bv_scale * age_c,
+            convex_b=(c.convex_b * bv_scale * age_c if c.convex_b is not None else None),
             unstressed_volume=c.unstressed_volume * bv_scale * sex_vol,
             init_volume=c.init_volume * bv_scale * sex_vol,
             height_m=c.height_m * height_scale,

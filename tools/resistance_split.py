@@ -82,6 +82,8 @@ def main():
     def pres(n):
         c = comps[IDX[n]]
         vs = Vmean[IDX[n]] - c.unstressed_volume
+        if getattr(c, "convex_b", None) is not None and vs > 0:
+            return (-c.compliance + np.sqrt(c.compliance ** 2 + 4.0 * c.convex_b * vs)) / (2.0 * c.convex_b)
         if c.p_stiffen is not None and vs > 0:
             return c.p_stiffen * (np.exp(vs / (c.compliance * c.p_stiffen)) - 1.0)
         return vs / c.compliance
@@ -89,7 +91,7 @@ def main():
     beds = (("upper body", "upper_body_art", "upper_body_vein", "svc"),
             # Each bed now drains into its OWN IVC segment (items 65/72, 2026-10-04).
             ("renal", "renal_art", "renal_vein", "ivc_renal"),
-            ("splanchnic", "splanchnic_art", "splanchnic_vein", "ivc"),
+            ("splanchnic", "splanchnic_art", "splanchnic_vein", "liver"),   # the portal side drains into the liver
             ("lower body", "lower_body_art", "thigh_vein", "ivc_infrarenal"))
     print(f"    {'bed':14s} {'P_art':>7} {'P_vein':>7} {'P_cav':>7} "
           f"{'arteriolar':>11} {'venous':>8} {'venous %':>9}")

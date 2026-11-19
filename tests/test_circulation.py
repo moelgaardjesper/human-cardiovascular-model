@@ -915,6 +915,13 @@ def test_hemorrhage_volume_conserved():
     assert abs(removed - 100.0) < 0.5, f"Expected ~100 mL removed, got {removed:.2f} mL"
 
 
+@pytest.mark.xfail(strict=True, reason=(
+    "KNOWN GAP 2026-11-18 (Jesper: yes) — THE REFLEX TACHYCARDIA OVER-COMPENSATES AT MILD HYPOVOLAEMIA. With the liver split "
+    "(Lautt liver) CO at 300 mL reads 6.118 -> 6.148: stroke volume falls -6.6 mL (base -7.6; Johnson 2014, 333 mL: -5) "
+    "while HR rises +5.9 bpm against Johnson's +1. The liver moves SV TOWARD man and unmasks the heart-rate arm's "
+    "over-response to mild unloading (man's HR is flat at LBNP -7/-15 — RESUME, reflex layer). Base held this test by "
+    "0.010 L/min only. Man's CO does fall at this dose, so the claim stands; it closes with the reflex layer."
+))
 def test_graded_hemorrhage_monotonic_lie2023(baseline_hem, hem_mild, hem_mod, hem_severe):
     """[12] Lie 2023 — CO falls approximately linearly with central
     hypovolemia severity; [13] Vettorello 2016 — HR rises with severity.
@@ -1730,7 +1737,8 @@ def test_pulse_pressure_amplification_mceniery2005(central_pressures):
 # this error was caught on 2026-09-13.
 # ===========================================================================
 
-def _venous_return_curve(bleed_ml=0.0, sympathetic_outflow_scale=1.0, baroreflex=True):
+def _venous_return_curve(bleed_ml=0.0, sympathetic_outflow_scale=1.0, baroreflex=True,
+                         tilt_deg=0.0, load_ml=0.0):
     """Fit CO against intraluminal RAP across four airway-pressure holds.
 
     Returns (slope in L/min/mmHg, Pmsf in mmHg).
@@ -1752,6 +1760,16 @@ def _venous_return_curve(bleed_ml=0.0, sympathetic_outflow_scale=1.0, baroreflex
             p.hemorrhage_rate_mlmin = bleed_ml / (20.0 / 60.0)
             p.hemorrhage_start_s = 10.0
             p.hemorrhage_duration_s = 20.0
+        if tilt_deg:
+            # Maas's hypovolaemia arm: head-up tilt, ramped in over 5 s at the
+            # same moment the bleed arm starts bleeding.
+            p.tilt_start_deg, p.tilt_end_deg = 0.0, tilt_deg
+            p.tilt_onset_s, p.tilt_duration_s = 10.0, 5.0
+        if load_ml:
+            # Maas's hypervolaemia arm: a volume load, given over the bleed arm's window.
+            p.fluid_bolus_ml = load_ml
+            p.fluid_bolus_start_s = 10.0
+            p.fluid_bolus_duration_s = 20.0
         r = run_simulation(p, duration_s=60.0)
         t = np.asarray(r["t"])
         tail = t >= t[-1] - 8.0
@@ -1765,10 +1783,22 @@ def _venous_return_curve(bleed_ml=0.0, sympathetic_outflow_scale=1.0, baroreflex
 # STRICT XFAIL 2026-11-06 — the closed-chest constraint adopted 2026-11-06 (step 3C, Xc 1.75, s 0.15; Jesper overrode the registered rule).
 # CLOSED 2026-11-06 by the closed-chest constraint adopted 2026-11-06 (step 3C) with init volumes re-derived: slope ratio back above 0.9 once the start volumes were re-derived.
 # CLOSED 2026-11-17 by putting leg blood flow on Dinenno 1999 (legs ~14 % of CO; validation log): XPASS on the full suite.
-def test_haemorrhage_shifts_venous_return_curve_without_rotating_it():
-    """[PMID: 19237896 — Maas 2009] A moderate haemorrhage must lower Pmsf and
-    leave the venous-return slope alone: resistance to venous return is a
-    property of the vessels, not of how full they are.
+def test_volume_state_shifts_venous_return_curve_without_rotating_it_maas2009():
+    """[PMID: 19237896 — Maas 2009] RE-SCOPED 2026-11-18 (Jesper) TO MAAS'S OWN PROTOCOL. Maas changed volume state
+    two ways — 30 deg HEAD-UP TILT (hypovolaemia) and +500 mL colloid (hypervolaemia) — and found the venous-return
+    slope not significantly changed (-0.465 -> -0.429 and -0.389; ratios 0.92 and 0.84; p 0.388 and 0.134, n 12) while
+    Pmsf moved (-4.2 / +10.3 mmHg). He never bled anyone. Until this date the test asserted 0.90-1.10 on a 500 mL BLEED,
+    a protocol and a band its source does not contain — a quantity mismatch, corrected the same way as the LBNP
+    re-scope (mismatch is not loosening).
+    BAND 0.75-1.25: what Maas could resolve. With a slope SD of 0.151 in 12 patients, a difference of about 2 SE
+    (~0.12 L/min/mmHg, ~25 % of -0.465) would have reached significance; ratios inside 0.75-1.25 are what "not
+    significantly changed" means in his data. Both of his mean ratios lie inside it.
+    THE RE-SCOPED TEST IS STRICTER WHERE IT MATTERS: on be3099b (before the liver split) the +500 mL arm gave a ratio
+    of 0.25 with an intercept of 81 mmHg — the curve broke under loading, which the bleed-only test never asked.
+    With the Lautt liver (2026-11-18): head-up 0.91, load 0.80; Pmsf -5.4 / +6.7.
+    Both arms also require Pmsf to move materially in Maas's direction, which proves the perturbation landed.
+
+    (History of the bleed form, kept below for the record.)
 
     Measured with a 500 mL bleed, which is a class I haemorrhage and sits in the
     range where a linear venous return curve applies.
@@ -1798,20 +1828,21 @@ def test_haemorrhage_shifts_venous_return_curve_without_rotating_it():
     on: the reflex acts during each hold (as 2026-10-10). Reflex off: with the AV-plane
     coupling, the bled heart at the 35 cmH2O hold falls to CO 1.6..."
     """
-    base_slope, base_pmsf = _venous_return_curve(0.0)
-    bled_slope, bled_pmsf = _venous_return_curve(500.0)
+    base_slope, base_pmsf = _venous_return_curve()
+    hut_slope, hut_pmsf = _venous_return_curve(tilt_deg=30.0)
+    load_slope, load_pmsf = _venous_return_curve(load_ml=500.0)
 
-    ratio = bled_slope / base_slope
-    assert 0.90 <= ratio <= 1.10, (
-        f"haemorrhage ROTATED the venous return curve: slope {base_slope:.4f} "
-        f"-> {bled_slope:.4f} (ratio {ratio:.3f}). Resistance to venous return "
-        f"must not change with blood volume (Maas 2009 found it "
-        f"volume-independent)"
+    for arm, slope in (("30 deg head-up", hut_slope), ("+500 mL load", load_slope)):
+        ratio = slope / base_slope
+        assert 0.75 <= ratio <= 1.25, (
+            f"{arm} ROTATED the venous return curve: slope {base_slope:.4f} -> {slope:.4f} (ratio {ratio:.3f}). "
+            f"Maas 2009 found it unchanged within what n 12 could resolve (his ratios 0.92 and 0.84)"
+        )
+    assert hut_pmsf < base_pmsf - 3.0, (
+        f"head-up tilt did not lower Pmsf materially: {base_pmsf:.2f} -> {hut_pmsf:.2f} mmHg (Maas -4.2)"
     )
-    assert bled_pmsf < base_pmsf - 3.0, (
-        f"haemorrhage did not lower Pmsf materially: {base_pmsf:.2f} -> "
-        f"{bled_pmsf:.2f} mmHg. Removing 500 mL must reduce stressed volume "
-        f"and therefore the zero-flow intercept"
+    assert load_pmsf > base_pmsf + 3.0, (
+        f"a 500 mL load did not raise Pmsf materially: {base_pmsf:.2f} -> {load_pmsf:.2f} mmHg (Maas +10.3)"
     )
 
 
@@ -2525,7 +2556,7 @@ def _pc_with_postcap(pc_factor):
     V = r["volumes"][len(r["volumes"]) // 2:].mean(axis=0)
     comp = p.compartments
     P = [_vascular_pressure(V[k], c.unstressed_volume, c.compliance,
-                            getattr(c, "p_stiffen", None))
+                            getattr(c, "p_stiffen", None), getattr(c, "convex_b", None))
          for k, c in enumerate(comp)]
     frac = capillary_pressure_fraction(pc_factor)
     return sum(share * (P[IDX[ven]] + frac * (P[IDX[art]] - P[IDX[ven]]))
@@ -2699,7 +2730,7 @@ def _pulmonary_state():
     V = r["volumes"][2 * len(r["volumes"]) // 3:].mean(axis=0)
     comp = p.compartments
     P = [_vascular_pressure(V[k], c.unstressed_volume, c.compliance,
-                            getattr(c, "p_stiffen", None))
+                            getattr(c, "p_stiffen", None), getattr(c, "convex_b", None))
          for k, c in enumerate(comp)]
     co = float(np.mean(r["co"][s]))
     return {
@@ -5134,41 +5165,18 @@ def test_central_hypovolaemia_flow_and_rate_response_pmid27702883(lbnp_young_hae
             f"dCO {dco:+.2f} L/min, dHR {dhr:+.1f} bpm (measured {_LBNP_DCO:+.2f}, {_LBNP_DHR:+.1f})")
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    "KNOWN GAP — THE MODEL LOWERS MEAN PRESSURE WHERE YOUNG PEOPLE RAISE IT. "
-    "Backlog item 62, and it is the only item on that list with THREE "
-    "independent out-of-sample cohorts behind it. "
-    "MEASURED 2026-09-25 after a 500 mL bleed in a 22-year-old: dMAP -4.28 (male) and -4.48 (female) against a measured +2.90.  "
-    "THE SAME DIRECTION FAILURE IN THREE COHORTS: comparison 001 "
-    "(PMID 38684421, 30->60 deg head-up) subjects +2.5 against the model -7.8; "
-    "this study (-30 mmHg LBNP) subjects +2.9 against the model -3.7 to -9.1; "
-    "and PMID 9404222 (60 deg tilt) subjects +5.6 young and +3.6 older against "
-    "the model -32. It was REGISTERED IN ADVANCE here — 'if the hypovolaemic "
-    "MAP fall is over-predicted, that is the first place to look' — and it "
-    "happened. "
-    "THE MECHANISM IS VISIBLE IN THE BASELINE. MAP_SETPOINT = 93.0 in "
-    "baroreflex.py is a constant and aging.py never touches it, so a "
-    "22-year-old model defends 93 mmHg while these subjects sit at 75.8. The "
-    "model is not merely mis-calibrated at rest — it is DEFENDING THE WRONG "
-    "NUMBER, which is exactly what makes a pressure start high and then fall "
-    "where a real young person's holds or rises. "
-    "A CONSTANT SITE OFFSET CANCELS IN A DIFFERENCE, which is why this test "
-    "asserts the CHANGE and not the level. Finger pressure against the model's "
-    "integrated central MAP is worth about +9 mmHg on the absolute and nothing "
-    "here. "
-    "STROKE VOLUME IS TIER A IN BOTH SEXES in the same run (see the guard "
-    "above), so this is the reflex operating point and not cardiac mechanics. "
-    "IT LANDS WITH BACKLOG ITEM 58, not before it. MAP_SETPOINT is half of the "
-    "reference operating point that item 50 found typed twice, and patient.py "
-    "imports it for svr_scale, so changing it moves every patient-scaled "
-    "result in the suite. "
-    "strict=True. Full record in docs/reference_values.md under PMID 27702883."
-))
+# CLOSED 2026-11-19 — XPASSED with the liver split (Jesper: "Yes to all"). The strict xfail's reason (dMAP -4.28 / -4.48, measured
+# 2026-09-25) had been STALE for weeks: on be3099b the model already sat at +0.42 (male) / -0.004 (female), held at xfail by 4 thousandths
+# of a mmHg; the Lautt liver adds +0.06 (+0.47 / +0.06). The direction is met by a hair and the size is ~0 against man's +2.90.
+# DUE FOR RE-SCOPE (Jesper 2026-11-19: no LBNP scaffolding, no circular comparisons): the source is LBNP, the model's LBNP is not man's
+# (tank sealed at the iliac crest), and the bleed below stands in for it through an exchange rate derived from the model's own
+# response. The claim moves to (a) Johnson 2014 real blood loss (MAP held at 333 / 667 mL, -2.2 at 1 L; ledger) and (b) the two TILT
+# cohorts (PMID 9404222, 38684421) for 'the young raise MAP'. Until then this guards the direction only.
 def test_mean_pressure_rises_under_central_hypovolaemia_pmid27702883(lbnp_young_haemorrhage):
     """[PMID 27702883] Young adults RAISE mean pressure under -30 mmHg LBNP.
 
-    Measured +2.90 mmHg. The model lowers it. Asserted as a change, so the
-    finger-versus-central convention cancels.
+    Measured +2.90 mmHg. The model gives ~0 (male +0.47, female +0.06 on 2026-11-19) — the direction only, by a
+    hair. Asserted as a change, so the finger-versus-central convention cancels.
     """
     for sex, (rest, bled) in lbnp_young_haemorrhage.items():
         dmap = bled["map"] - rest["map"]
@@ -5669,18 +5677,39 @@ def test_gravity_does_no_net_work_on_the_arrested_circulation():
     p.tilt_end_deg    = TILT
     p.tilt_onset_s    = 20.0
     p.tilt_duration_s = 5.0
+    # ARREST LENGTHENED 200 -> 400 s on 2026-11-18 (Jesper: yes). The drift check read 215-240 s, inside a slow
+    # equilibration (the thigh filling from the splanchnic side, tau ~60 s): base 0.41 / 0.08 / 0.02 mL per 20 s at
+    # 215 / 315 / 415 s, the Lautt liver 0.44 / 0.09 / 0.02. A decaying transient is not a circulation; the 0.5 mL
+    # threshold is unchanged and is now read after equilibrium, where a real gravity-driven flow would persist.
     p.arrest_start_s    = 40.0
-    p.arrest_duration_s = 200.0
-    r = run_simulation(p, duration_s=240.0, dt=DT)
+    p.arrest_duration_s = 400.0
+    r = run_simulation(p, duration_s=440.0, dt=DT)
 
     comp = p.compartments
     V = np.asarray(r["volumes"])
     t = np.asarray(r["t"])
 
+    # PRESSURES FROM THE ODE ITSELF (2026-11-19), not a restated law. The old helper recomputed P from volume alone,
+    # so it missed every term `_odes` adds on top — above all the ABDOMINAL COLUMN (on since 2026-11-17), which adds a
+    # depth-dependent cavity pressure to each abdominal compartment. Every abdominal pair checked here sat at L1, so the
+    # omission cancelled; the hepatic artery (splanchnic_art L1 -> liver -0.12) exposed it as a -1.93 mmHg "residual"
+    # with no volume moving. Reading `_odes`' own P is the code path (CLAUDE.md: assert through the code path).
+    from model.circulation import _odes, _ARREST_PHASE
+    _p_last, _flows = np.zeros(len(comp)), {}
+    _odes(float(t[-1]), np.asarray(V[-1], dtype=float), p, None, _ARREST_PHASE, _p_last, flow_out=_flows)
+    # NO FLOW THROUGH THE ARRESTED HEART (added 2026-11-19). A height term missing on ONE segment drives a STEADY loop
+    # through the stopped heart — valves and great vessels are nearly resistance-free, so almost the whole head falls
+    # across the faulty segment, every residual below stays tiny and no volume drifts. Verified by sabotage: deleting the
+    # hepatic artery's height term left both older checks green (residual -0.066, drift 0.02 mL) while aortic flow at
+    # arrest rose 0.0009 -> 0.156 mL/s. This is the assertion that sees it.
+    assert abs(_flows["aortic"]) < 0.02, (
+        f"{_flows['aortic']:.4f} mL/s still crosses the aortic valve with the heart stopped at {TILT:.0f} degrees: "
+        f"gravity is driving a steady circulation (a flow path missing its height term)"
+    )
+
     def P(name, row):
-        c = comp[IDX[name]]
-        return _vascular_pressure(row[IDX[name]], c.unstressed_volume,
-                                  c.compliance, c.p_stiffen)
+        assert row is V[-1] or np.array_equal(row, V[-1]), "P() reads the final arrested state only"
+        return float(_p_last[IDX[name]])
 
     def hdp(name):
         return hydrostatic_delta_mmhg(comp[IDX[name]].height_m, TILT,
@@ -5691,6 +5720,7 @@ def test_gravity_does_no_net_work_on_the_arrested_circulation():
     for up, down in (("upper_body_art",  "upper_body_vein"),
                      ("renal_art",       "renal_vein"),
                      ("splanchnic_art",  "splanchnic_vein"),
+                     ("splanchnic_art",  "liver"),        # the hepatic artery (liver split, 2026-11-18)
                      ("lower_body_art",  "thigh_vein"),
                      ("lower_body_art",  "calf_vein"),
                      ("lower_body_art",  "foot_vein")):
@@ -5704,7 +5734,7 @@ def test_gravity_does_no_net_work_on_the_arrested_circulation():
             f"heart stopped. All residuals: {'; '.join(residuals)}"
         )
 
-    late = V[t >= 215.0]
+    late = V[t >= 415.0]
     drift = float(np.abs(late[-1] - late[0]).max())
     assert drift < 0.5, (
         f"volumes still moving {drift:.3f} mL over the last 20 s of arrest at "
@@ -6090,10 +6120,13 @@ def test_the_reference_operating_point_is_stated_once_and_consistently():
     # mean - trough offset 1.540 mmHg. The deliberate gap is kept (1.27 -> 1.28).
     # 2026-10-11: re-measured by the same definition after the AV-plane coupling
     # and the sac went on (resting mean RA fell); gap kept at 1.28.
-    assert CVP_SETPOINT == 3.95 and CP_HR_REFERENCE_CVP_MMHG == 5.23, (
+    # 2026-11-17 (be3099b): the HR arm's reference re-measured to its fixed point, 5.23 -> 6.21, and CVP_SETPOINT moved
+    # with it, 3.95 -> 4.93; gap kept at 1.28. This assertion was not updated in that commit and failed on master
+    # until 2026-11-18.
+    assert CVP_SETPOINT == 4.93 and CP_HR_REFERENCE_CVP_MMHG == 6.21, (
         f"A FILLING-PRESSURE REFERENCE CHANGED: CVP_SETPOINT={CVP_SETPOINT} "
-        f"(was 3.95, uncited, used by the SVR arm), CP_HR_REFERENCE_CVP_MMHG="
-        f"{CP_HR_REFERENCE_CVP_MMHG} (was 5.23, the cardiopulmonary arm's reference, "
+        f"(was 4.93, uncited, used by the SVR arm), CP_HR_REFERENCE_CVP_MMHG="
+        f"{CP_HR_REFERENCE_CVP_MMHG} (was 6.21, the cardiopulmonary arm's reference, "
         f"chosen to sit at the model's own settled filling pressure). THEY ARE "
         f"DELIBERATELY DIFFERENT — read backlog item 39 before changing either, and "
         f"note that driving the HR arm from CVP_SETPOINT cost 6.0 bpm of spurious "
@@ -6268,7 +6301,10 @@ def test_venous_compliance_factor_is_live_and_correctly_signed():
         f"({base['cvp']:.2f} -> {soft['cvp']:.2f} mmHg). The factor is not reaching "
         f"the pressure calculation — see the dead venous_tone_factor in CLAUDE.md."
     )
-    assert soft["co"] < base["co"] - 0.10 and soft["map"] < base["map"] - 1.0, (
+    # CO STEPS ARE DIRECTION ONLY since 2026-11-18 (Jesper): this is a SIGN guard and the 0.10 L/min margin had no
+    # source. A dead factor still fails it — stiff and soft then equal base exactly. The Lautt liver holds ~2/3 of its
+    # blood unstressed, so a compliance change releases less (stiff dCO 0.111 -> 0.076).
+    assert soft["co"] < base["co"] and soft["map"] < base["map"] - 1.0, (
         f"raising venous compliance did not lower output ({base['co']:.2f} -> "
         f"{soft['co']:.2f} L/min) or pressure ({base['map']:.1f} -> {soft['map']:.1f})"
     )
@@ -6276,7 +6312,7 @@ def test_venous_compliance_factor_is_live_and_correctly_signed():
         f"lowering venous compliance did not raise filling pressure "
         f"({base['cvp']:.2f} -> {stiff['cvp']:.2f} mmHg). THE SIGN MAY BE INVERTED."
     )
-    assert stiff["co"] > base["co"] + 0.10, "stiffer veins did not raise cardiac output"
+    assert stiff["co"] > base["co"], "stiffer veins did not raise cardiac output"
     # Monotonic across the range, so the mechanism is not saturating or oscillating.
     mids = [_vc_run(v)["cvp"] for v in (0.85, 1.0, 1.16, 1.30)]
     assert mids == sorted(mids, reverse=True), (

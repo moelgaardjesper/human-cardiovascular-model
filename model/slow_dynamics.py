@@ -134,7 +134,7 @@ K_RELAX = RELAX_FRACTION / (1.0 - RELAX_FRACTION)   # multiplier on compliance
 # comparatively little viscoelastic creep relative to their (small) volume
 # changes, and the cardiac chambers are governed by time-varying elastance.
 STRESS_RELAX_COMPARTMENTS = (
-    "upper_body_vein", "svc", "renal_vein", "splanchnic_vein",
+    "upper_body_vein", "svc", "renal_vein", "splanchnic_vein", "liver",
     "thigh_vein", "calf_vein", "foot_vein", "ivc",
     "ivc_renal", "ivc_infrarenal",     # the IVC split, items 65 and 72
 )
@@ -303,6 +303,10 @@ CAPILLARY_BEDS = (
     ("upper_body_art",  "upper_body_vein",  0.16),
     ("renal_art",       "renal_vein",       0.15),
     ("splanchnic_art",  "splanchnic_vein",  0.35),
+    # The liver split (2026-11-18): the liver is an exchange bed (hepatic artery -> sinusoids) but its filtration
+    # is DEFERRED, stated, not forgotten: the splanchnic share stays on the gut pair as before. Hepatic sinusoids
+    # filter heavily into lymph and the peritoneum (Lautt & Greenway 1976); a share needs its own source. Grade E.
+    ("splanchnic_art",  "liver",            0.0),
     ("lower_body_art",  "thigh_vein",       0.34 * 0.621),
     ("lower_body_art",  "calf_vein",        0.34 * 0.289),
     ("lower_body_art",  "foot_vein",        0.34 * 0.090),
@@ -700,7 +704,13 @@ def _update_stress_relaxation(state: SlowState, dt_slow: float,
             k, tau = K_RELAX_LEG, TAU_STRESS_RELAX_LEG
         else:
             k, tau = K_RELAX, TAU_STRESS_RELAX
-        target = k * c.compliance * (P[idx] - state.p_ref[idx])
+        # The volume the wall stored over the distension. For a linear (or p_stiffen) law that is C x dP, as before;
+        # for the CONVEX liver (Compartment.convex_b) it is the chord (C0 + b (P + P_ref)) x dP — reading C0 alone
+        # would give the liver ~1/8 of its real creep (fixed 2026-11-18, the liver split).
+        c_eff = c.compliance
+        if getattr(c, "convex_b", None) is not None and P[idx] > 0.0 and state.p_ref[idx] > 0.0:
+            c_eff = c.compliance + c.convex_b * (P[idx] + state.p_ref[idx])
+        target = k * c_eff * (P[idx] - state.p_ref[idx])
         state.v0_relax_ml[idx] += (target - state.v0_relax_ml[idx]) * dt_slow / tau
 
 

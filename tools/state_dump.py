@@ -98,7 +98,7 @@ def settle(tilt=0.0, duration=60.0, slow=False, ventilation="none"):
     V = r["volumes"][2 * len(r["volumes"]) // 3:].mean(axis=0)
     comp = p.compartments
     P = np.array([_vascular_pressure(V[k], c.unstressed_volume, c.compliance,
-                                     getattr(c, "p_stiffen", None))
+                                     getattr(c, "p_stiffen", None), getattr(c, "convex_b", None))
                   for k, c in enumerate(comp)])
     scalars = {k: float(np.mean(r[k][keep]))
                for k in ("map", "co", "cvp", "sv", "hr")}
@@ -141,7 +141,7 @@ def main():
             # limb veins carry p_stiffen and a linear implied-P0 understates them
             # by ~40%, which produced false flags on the first run of this tool.
             p0 = _vascular_pressure(c.init_volume, c.unstressed_volume,
-                                    c.compliance, getattr(c, "p_stiffen", None))
+                                    c.compliance, getattr(c, "p_stiffen", None), getattr(c, "convex_b", None))
             implied = f"{p0:8.1f}"
             # Ratio, not difference: an order-of-magnitude error is the target.
             if p0 > 1.0:

@@ -66,7 +66,7 @@ from .slow_dynamics import (init_slow_state, update_slow_state,
 # current stressed volume; this avoids creating an artificial localised
 # pressure sink at any single site.
 VENOUS_RESERVOIR = (
-    "upper_body_vein", "svc", "renal_vein", "splanchnic_vein",
+    "upper_body_vein", "svc", "renal_vein", "splanchnic_vein", "liver",
     "thigh_vein", "calf_vein", "foot_vein", "ivc",
     "ivc_renal", "ivc_infrarenal",     # the IVC split, items 65 and 72
 )
@@ -91,7 +91,7 @@ BODY_REGIONS = {
         "pulmonary_vein", "left_atrium", "left_ventricle", "coronary",
     ),
     "abdomen": (
-        "abdominal_aorta", "renal_art", "renal_vein", "splanchnic_art", "splanchnic_vein",
+        "abdominal_aorta", "renal_art", "renal_vein", "splanchnic_art", "splanchnic_vein", "liver",
     ),
     "legs": (
         "lower_body_art", "thigh_vein", "calf_vein", "foot_vein", "ivc",
@@ -125,7 +125,10 @@ def region_volumes(V: np.ndarray) -> dict[str, float]:
 # conduits, renal, and muscle/limb veins contribute little actively mobilizable
 # volume. With physiological venous compliance (compartments.py) the recruited
 # slug lands in a ~1.6 L stressed pool, so a ±15 % tone change moves CO ~±13 %.
-MOBILIZABLE_VENOUS_RESERVOIR = ("splanchnic_vein", "upper_body_vein")
+# The liver joined with the liver split (2026-11-18) so the pressor and reflex arms act on the same blood as
+# before. Bell 1991 says this is WRONG in the end — alpha1 POOLS blood in the liver (outflow resistance) while
+# it empties the spleen and gut — and it moves deliberately in stage 3, not here.
+MOBILIZABLE_VENOUS_RESERVOIR = ("splanchnic_vein", "liver", "upper_body_vein")
 _VENOUS_TONE_IDX = frozenset(IDX[name] for name in MOBILIZABLE_VENOUS_RESERVOIR)
 
 # Which drainage paths `venous_resistance_factor` acts on — backlog item 70.
@@ -273,7 +276,7 @@ _NO_ORIFICE = {v: None for v in _ORIFICE_K}
 # upper_body_* and svc are above the diaphragm.
 ABDOMINAL_COMPARTMENTS = (
     "abdominal_aorta", "renal_art", "renal_vein",
-    "splanchnic_art", "splanchnic_vein", "ivc",
+    "splanchnic_art", "splanchnic_vein", "liver", "ivc",
     # All three IVC segments are infra-diaphragmatic and intra-abdominal, from the
     # iliac confluence to the diaphragm. Membership is anatomy, not a knob.
     "ivc_renal", "ivc_infrarenal",
@@ -866,8 +869,12 @@ def _smooth_edges(x: np.ndarray, win: int) -> np.ndarray:
 
 
 def _vascular_pressure(vol: float, v0: float, compliance: float,
-                       p_stiffen: float | None = None) -> float:
+                       p_stiffen: float | None = None,
+                       convex_b: float | None = None) -> float:
     vs = vol - v0
+    if convex_b is not None and vs > 0.0:
+        # Convex law (the liver; see Compartment.convex_b): Vs = C0*P + b*P^2.
+        return (-compliance + np.sqrt(compliance * compliance + 4.0 * convex_b * vs)) / (2.0 * convex_b)
     if p_stiffen is None or vs <= 0.0:
         return vs / compliance
     # Collapsible-vein tube law: stiffens above p_stiffen (see Compartment).
@@ -1129,7 +1136,10 @@ def _odes(t: float, V: np.ndarray, params: SimParams, baro: BaroreflexController
         # dynamics are disabled.
         if slow is not None:
             v0 += slow.v0_relax_ml[idx]
-        P[idx] = _vascular_pressure(V[idx], v0, compliance, c.p_stiffen)
+        _cb = c.convex_b
+        if _cb is not None and in_venous_tone_set:
+            _cb *= vc          # the compliance factor scales the whole law
+        P[idx] = _vascular_pressure(V[idx], v0, compliance, c.p_stiffen, _cb)
 
     # Cardiac chambers (time-varying elastance)
     _x_spt = av_ref.get("spt_x", 0.0) if av_ref is not None else 0.0
@@ -1391,7 +1401,11 @@ def _odes(t: float, V: np.ndarray, params: SimParams, baro: BaroreflexController
     # 1.41 mmHg at -15 deg and broke head-down tilt. With the IVC split, each joins
     # at its own level and the term is correct.
     Q_renal_ivc   = (P[i["renal_vein"]]      - P[i["ivc_renal"]] + hdp("renal_vein")      - hdp("ivc_renal")) / R_drain("renal_vein")
-    Q_splanch_ivc = (P[i["splanchnic_vein"]] - P[i["ivc"]]       + hdp("splanchnic_vein") - hdp("ivc"))       / R_drain("splanchnic_vein")
+    # THE LIVER SPLIT (2026-11-18): the portal side drains into the liver, the liver into the supra-hepatic ivc,
+    # and the hepatic artery feeds the liver directly. Each flow carries its height term (liver -0.12, L1 -0.17).
+    Q_portal_liver = (P[i["splanchnic_vein"]] - P[i["liver"]] + hdp("splanchnic_vein") - hdp("liver")) / R_drain("splanchnic_vein")
+    Q_hepatic_art  = (P[i["splanchnic_art"]]  - P[i["liver"]] + hdp("splanchnic_art")  - hdp("liver")) / R("liver", True)
+    Q_liver_ivc    = (P[i["liver"]]           - P[i["ivc"]]   + hdp("liver")           - hdp("ivc"))   / R_drain("liver")
 
     # Right heart inflows — one-way valves prevent retrograde venous flow.
     # Without the max(0,...) guard, positive ITP (mechanical PPV) can raise
@@ -1462,15 +1476,16 @@ def _odes(t: float, V: np.ndarray, params: SimParams, baro: BaroreflexController
     dV[i["abdominal_aorta"]] = Q_ao_abd - Q_abd_renal - Q_abd_splanch - Q_abd_lb
     dV[i["renal_art"]]       = Q_abd_renal - Q_renal_vein
     dV[i["renal_vein"]]      = Q_renal_vein - Q_renal_ivc
-    dV[i["splanchnic_art"]]  = Q_abd_splanch - Q_splanch_vein
-    dV[i["splanchnic_vein"]] = Q_splanch_vein - Q_splanch_ivc
+    dV[i["splanchnic_art"]]  = Q_abd_splanch - Q_splanch_vein - Q_hepatic_art
+    dV[i["splanchnic_vein"]] = Q_splanch_vein - Q_portal_liver
+    dV[i["liver"]]           = Q_portal_liver + Q_hepatic_art - Q_liver_ivc
     dV[i["lower_body_art"]]  = Q_abd_lb - Q_lb_art_thigh - Q_lb_art_calf - Q_lb_art_foot
     dV[i["thigh_vein"]]      = Q_lb_art_thigh + Q_calf_thigh - Q_thigh_ivc
     dV[i["calf_vein"]]       = Q_lb_art_calf  + Q_foot_calf  - Q_calf_thigh
     dV[i["foot_vein"]]       = Q_lb_art_foot                 - Q_foot_calf
     dV[i["ivc_infrarenal"]]  = Q_thigh_ivc - Q_infra_renalseg
     dV[i["ivc_renal"]]       = Q_infra_renalseg + Q_renal_ivc - Q_renalseg_supra
-    dV[i["ivc"]]             = Q_renalseg_supra + Q_splanch_ivc - Q_ivc_ra
+    dV[i["ivc"]]             = Q_renalseg_supra + Q_liver_ivc - Q_ivc_ra
     dV[i["right_atrium"]]    = Q_svc_ra + Q_ivc_ra + Q_cor_ra - Q_tricuspid
     dV[i["right_ventricle"]] = Q_tricuspid - Q_pulmonic
     dV[i["pulmonary_art"]]   = Q_pulmonic - Q_pa_cap

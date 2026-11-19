@@ -52,6 +52,8 @@ def _volume_at(c, p):
     tube law (the inverse of _vascular_pressure)."""
     if p <= 0.0:
         return c.unstressed_volume + p * c.compliance
+    if getattr(c, "convex_b", None) is not None:      # the liver (Lautt), Vs = C0 P + b P^2
+        return c.unstressed_volume + c.compliance * p + c.convex_b * p * p
     if c.p_stiffen is None:
         return c.unstressed_volume + p * c.compliance
     return c.unstressed_volume + c.compliance * c.p_stiffen * np.log(
@@ -60,6 +62,8 @@ def _volume_at(c, p):
 
 def _dvdp_at(c, p):
     """Local compliance dV/dP at pressure `p`."""
+    if getattr(c, "convex_b", None) is not None and p > 0.0:
+        return c.compliance + 2.0 * c.convex_b * p
     if c.p_stiffen is None or p <= 0.0:
         return c.compliance
     return c.compliance / (1.0 + p / c.p_stiffen)
