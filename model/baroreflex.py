@@ -260,7 +260,24 @@ HR_REFLEX_SCALE_MMHG = 35.0   # gain at the setpoint = 30/35 = 0.857 bpm/mmHg
 #
 # The arm is BIDIRECTIONAL. Rising filling pressure slows the heart, which is
 # what Herrera 2017 measured for a 500 mL crystalloid bolus: HR 87 -> 83.
-CP_HR_GAIN_BPM_PER_MMHG = 3.8    # at the reference filling pressure
+CP_HR_GAIN_BPM_PER_MMHG = 2.5    # bpm per mmHg BEYOND the threshold below (was 3.8 from zero, an LBNP fit)
+
+# THE ARM HAS A THRESHOLD — 2026-11-21, A LABELLED SURROGATE (GRADE C AS A LAW). Jesper: "adopt it as a surrogate".
+# The 3.8 above was fitted on LBNP (0 to -80), which this model cannot reproduce (its chamber excludes the pelvis), and it
+# made the heart race from the first mmHg of CVP fall. Measured WITHOUT LBNP, man's heart rate barely moves for the first
+# ~2-3 mmHg: Johnson 2014 real blood loss (PMID 24876357) dCVP -2.3 / -3.7 / -4.7 with dHR +1 / +4 / +8; Petersen 2014
+# 20 deg tilt dCVP -1.7 with dHR ~0; Kostas 2014 (PMID 24754202) 20 deg dHR +0.2. PIN: man's own pairs minus what the
+# model's arterial arm already supplies -> threshold 2.3 mmHg, then 2.5 bpm/mmHg (two numbers, four points, two labs).
+# WHY IT IS A SURROGATE: the two regimes are TWO RECEPTORS in man, not one receptor with a threshold. Low-pressure
+# unloading raises sympathetic VASCULAR tone with heart rate unchanged; heart rate rises when the ARTERIAL baroreceptors
+# unload through falling PULSE PRESSURE (Zoller 1972, PMID 5080421, states it plainly; Johnson 1974, PMID 4826928: HR
+# tracks aortic PP, r -0.86 to -0.93; Victor 1987, Fu 2009 — LBNP, used for direction only). This model's arterial arm
+# reads MAP only, so the CVP arm carries both regimes. It is right at mild stress and too weak at large stress (Johnson
+# 1 L, the 45 deg sympatholysis guard: strict xfails). The structural fix — CP arm to vascular tone, HR from a pulsatile
+# arterial input — waits until the model's pulse pressure falls like man's (it tracks SV one-for-one; man's falls ~0.6x;
+# validation log 2026-11-21). RE-CHECK THIS PIN when the body's CVP delivery is fixed (problem 1): the arterial share it
+# subtracts depends on the body.
+CP_HR_THRESHOLD_MMHG    = 2.3
 CP_HR_RESERVE_BPM       = 40.0   # saturating reserve each way
 
 # THE ARM IS NOT BIDIRECTIONAL — 2026-10-06. The 3.8 bpm/mmHg above was measured
@@ -615,6 +632,8 @@ class BaroreflexController:
         self._symp_fast_map = (1-self._a_fast)*self._symp_fast_map + self._a_fast*err_map
         self._symp_hr_map   = (1-self._a_symp_hr)*self._symp_hr_map + self._a_symp_hr*err_map
         err_cvp_cp          = avg_cvp - self.cp_hr_ref_cvp
+        if err_cvp_cp < 0.0:            # the first CP_HR_THRESHOLD_MMHG of a fall is ignored
+            err_cvp_cp = min(0.0, err_cvp_cp + CP_HR_THRESHOLD_MMHG)
         self._symp_hr_cvp   = (1-self._a_symp_hr)*self._symp_hr_cvp + self._a_symp_hr*err_cvp_cp
         self._symp_slow_map = (1-self._a_slow)*self._symp_slow_map + self._a_slow*err_map
         self._symp_fast_cvp = (1-self._a_fast)*self._symp_fast_cvp + self._a_fast*err_cvp
