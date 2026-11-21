@@ -507,6 +507,10 @@ class SimParams:
         self.hold_duration_s     = 0.0      # s
         self.hold_mode           = 'inspiratory'   # 'inspiratory' | 'expiratory'
         self.hold_pressure_cmh2o = None     # plateau; None -> pip_cmh2o
+        # SEVERAL holds in one run — Maas 2009 (PMID 19237896) held four plateaus of 12 s, one minute apart, in the same
+        # patient. A tuple of (start_s, duration_s, plateau_cmh2o); when set it overrides the single hold above (mode
+        # from hold_mode). Empty -> the single-hold fields apply, so every existing run is unchanged (2026-11-20).
+        self.hold_schedule = ()
 
         # ---- Circulatory arrest (Schipke 2003's fibrillation sequences) -----
         # Stops cardiac ejection so arterial and venous pressures converge
@@ -873,6 +877,16 @@ def _smooth_edges(x: np.ndarray, win: int) -> np.ndarray:
     return num / den
 
 
+def _active_hold(params, t: float):
+    """(start, duration, mode, plateau) of the hold in force at t — from `hold_schedule` if set, else the single hold."""
+    for start, dur, plateau in params.hold_schedule:
+        if start <= t < start + dur:
+            return start, dur, params.hold_mode, plateau
+    if params.hold_schedule:
+        return None, 0.0, params.hold_mode, None
+    return params.hold_start_s, params.hold_duration_s, params.hold_mode, params.hold_pressure_cmh2o
+
+
 def _vascular_pressure(vol: float, v0: float, compliance: float,
                        p_stiffen: float | None = None,
                        convex_b: float | None = None) -> float:
@@ -1210,8 +1224,7 @@ def _odes(t: float, V: np.ndarray, params: SimParams, baro: BaroreflexController
         intrathoracic_pressure(
             t, params.ventilation_mode, params.resp_rate_bpm,
             params.peep_cmh2o, params.pip_cmh2o, params.ie_ratio,
-            params.hold_start_s, params.hold_duration_s,
-            params.hold_mode, params.hold_pressure_cmh2o,
+            *_active_hold(params, t),
         )
         if params.ventilation_mode != 'none' else 0.0
     )
@@ -2104,8 +2117,7 @@ def run_simulation(
         _itp_resp_now = (
             intrathoracic_pressure(t, params.ventilation_mode, params.resp_rate_bpm,
                                    params.peep_cmh2o, params.pip_cmh2o, params.ie_ratio,
-                                   params.hold_start_s, params.hold_duration_s,
-                                   params.hold_mode, params.hold_pressure_cmh2o)
+                                   *_active_hold(params, t))
             if params.ventilation_mode != 'none' else 0.0
         )
 

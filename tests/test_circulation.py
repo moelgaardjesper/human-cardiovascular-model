@@ -1783,6 +1783,45 @@ def _venous_return_curve(bleed_ml=0.0, sympathetic_outflow_scale=1.0, baroreflex
 # STRICT XFAIL 2026-11-06 — the closed-chest constraint adopted 2026-11-06 (step 3C, Xc 1.75, s 0.15; Jesper overrode the registered rule).
 # CLOSED 2026-11-06 by the closed-chest constraint adopted 2026-11-06 (step 3C) with init volumes re-derived: slope ratio back above 0.9 once the start volumes were re-derived.
 # CLOSED 2026-11-17 by putting leg blood flow on Dinenno 1999 (legs ~14 % of CO; validation log): XPASS on the full suite.
+def _maas_hold_curve(tilt_deg=0.0, load_ml=0.0):
+    """Maas 2009's own protocol (2026-11-20): ventilated at PEEP 5, FOUR 12-s inspiratory holds at 5 / 15 / 25 / 35 cmH2O one
+    minute apart in the same run, each read over seconds 9-12 (before the reflex acts, as SimParams.hold_start_s notes). CO
+    against intraluminal RA pressure; returns (slope L/min/mmHg, zero-flow intercept mmHg). The volume state is set first:
+    head-up tilt from 60 s, or a load given 60-360 s; holds from 600 s. Replaces, for this test only, the 60-s SUSTAINED
+    plateaus of _venous_return_curve, which let a compliant pulmonary bed re-equilibrate and the reflex act (Jesper's
+    hypothesis, confirmed: the CV3 load ratio read 0.52 sustained, 0.84 with true holds — Maas's own 0.84)."""
+    p = SimParams()
+    p.ventilation_mode = 'mechanical'
+    p.peep_cmh2o = 5.0
+    if tilt_deg:
+        p.tilt_start_deg, p.tilt_end_deg, p.tilt_onset_s, p.tilt_duration_s = 0.0, tilt_deg, 60.0, 5.0
+    if load_ml:
+        p.fluid_bolus_ml, p.fluid_bolus_start_s, p.fluid_bolus_duration_s = load_ml, 60.0, 300.0
+        # MAAS GAVE COLLOID (500 mL; "can expand plasma volume by more than 500 mL") and the model's bolus is crystalloid,
+        # which filters out over the minutes before the holds. The model has no colloid, so the load arm runs without
+        # transcapillary exchange: over ~10 min a colloid stays in the vessels. Stated approximation (2026-11-20).
+        p.slow_fluid_exchange_enabled = False
+    starts = (600.0, 660.0, 720.0, 780.0)
+    p.hold_schedule = tuple((t0, 12.0, pl) for t0, pl in zip(starts, (5.0, 15.0, 25.0, 35.0)))
+    r = run_simulation(p, duration_s=starts[-1] + 13.0, dt=DT, output_every=5)
+    t = np.asarray(r["t"])
+    ra, co = [], []
+    for t0 in starts:
+        m = (t >= t0 + 9.0) & (t < t0 + 12.0)
+        ra.append(float(np.mean(np.asarray(r["ra_intraluminal"])[m])))
+        co.append(float(np.mean(np.asarray(r["co"])[m])))
+    slope, intercept = np.polyfit(np.array(ra), np.array(co), 1)
+    return float(slope), float(-intercept / slope)
+
+
+@pytest.mark.xfail(strict=True, raises=AssertionError, reason=(
+    "KNOWN GAP 2026-11-20 (Jesper: option A) — WITH MAAS'S OWN PROTOCOL (true 12-s holds) 30 DEG HEAD-UP ROTATES THE CURVE: slope "
+    "-0.489 -> -0.334, ratio 0.68 against 0.75-1.25 (Maas 0.92). The head-up defect of problem 1 (the heart receives too little "
+    "volume at mild-moderate head-up; Petersen and van Lieshout strict xfails), seen by a third test. The 60-s sustained "
+    "plateaus used until this date measured the reflex, not the vessels (SimParams.hold_start_s note) and hid it. Resting slope "
+    "-0.489 is ON Maas (-0.465 +/- 0.151). CV3 (pulmonary capillaries + veins x 3, parked) passes this arm but rotates on the "
+    "colloid load (0.62). Band not widened."
+))
 def test_volume_state_shifts_venous_return_curve_without_rotating_it_maas2009():
     """[PMID: 19237896 — Maas 2009] RE-SCOPED 2026-11-18 (Jesper) TO MAAS'S OWN PROTOCOL. Maas changed volume state
     two ways — 30 deg HEAD-UP TILT (hypovolaemia) and +500 mL colloid (hypervolaemia) — and found the venous-return
@@ -1797,6 +1836,9 @@ def test_volume_state_shifts_venous_return_curve_without_rotating_it_maas2009():
     of 0.25 with an intercept of 81 mmHg — the curve broke under loading, which the bleed-only test never asked.
     With the Lautt liver (2026-11-18): head-up 0.91, load 0.80; Pmsf -5.4 / +6.7.
     Both arms also require Pmsf to move materially in Maas's direction, which proves the perturbation landed.
+    PROTOCOL CORRECTED 2026-11-20 (Jesper: "maybe ... inspiratory holds is set wrong, and that is why this exact test
+    fails?"): true 12-s holds one minute apart (_maas_hold_curve), as Maas did, instead of 60-s sustained plateaus. With
+    them the committed model's resting slope reads -0.478 (Maas -0.465 +/- 0.151) where the sustained form read -0.35.
 
     (History of the bleed form, kept below for the record.)
 
@@ -1828,9 +1870,10 @@ def test_volume_state_shifts_venous_return_curve_without_rotating_it_maas2009():
     on: the reflex acts during each hold (as 2026-10-10). Reflex off: with the AV-plane
     coupling, the bled heart at the 35 cmH2O hold falls to CO 1.6..."
     """
-    base_slope, base_pmsf = _venous_return_curve()
-    hut_slope, hut_pmsf = _venous_return_curve(tilt_deg=30.0)
-    load_slope, load_pmsf = _venous_return_curve(load_ml=500.0)
+    base_slope, base_pmsf = _maas_hold_curve()
+    hut_slope, hut_pmsf = _maas_hold_curve(tilt_deg=30.0)
+    load_slope, load_pmsf = _maas_hold_curve(load_ml=500.0)
+    score("test_volume_state_shifts_venous_return_curve_without_rotating_it_maas2009", "VR slope at rest", base_slope, -0.465, sd=0.151, n=12, source="Maas 2009 Table 2, inspiratory holds")
 
     for arm, slope in (("30 deg head-up", hut_slope), ("+500 mL load", load_slope)):
         ratio = slope / base_slope
