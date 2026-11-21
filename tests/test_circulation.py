@@ -8696,3 +8696,153 @@ def test_liver_holds_most_of_its_blood_unstressed_lautt1976(liver_at_rest):
     """[PMID 961879 — Lautt & Greenway 1976] Unstressed share of the liver's resting blood ~0.59 (band 0.5-0.7)."""
     share = liver_at_rest["v0"] / liver_at_rest["volume"]
     assert 0.5 <= share <= 0.7, f"liver unstressed share {share:.2f} outside 0.5-0.7 (Lautt 0.59)"
+
+
+# ===========================================================================
+# 65. THE PULMONARY BED — Giuntini 1966 (dextran) vs Hirakawa 1995 (leg raise): conflict 9
+# ===========================================================================
+#
+# ONE QUANTITY for both: whole-bed compliance dPBV / dwedge, PBV = pulmonary artery + capillaries + veins, wedge = la_pressure.
+# [PMID 5926445 — Giuntini 1966] 8 healthy young men, 1000-1500 mL 6 % dextran over ~21 min: per subject from Table III,
+# dPBV / dMPWP = 18.3, 18.1, 3.0, 8.0, 15.4, 9.6, 4.3, 12.6 mL/mmHg (mean 11.2). Band: his subjects' range (grade C, n 8).
+# [PMID 7713833 — Hirakawa 1995, method 2] PBV by 99mTc red cells, its rise counted over the chest on passive elevation of both
+# legs for 3 min: C_vasc = dPBV / dPCW = 27.7 +/- 9.6 in NYHA class I (n 17, mostly ischaemic heart disease; 27.4 in a
+# previous series of the same lab). Band: mean +/- 1 SD. Cohort not given in the paper: assumed man 165 cm / 60 kg, 55 y.
+# The two VOLUME methods disagree ~3x and the model's bed is linear, so no one bed passes both (2026-11-21: committed
+# 12.8 / 11.6, the tripled bed "CV3" 26.2 / 22.8). A bed that stiffens with distension cannot reconcile them (at most
+# ~1.3-1.4x for any C ~ 1/P law); the candidate reasons are autonomic state (Giuntini's atropine raised his values ~5x),
+# the dPBV method and the cohort. Whichever bed the model carries, the other test is a strict xfail naming conflict 9.
+
+_PULMONARY_BED = ("pulmonary_art", "pulmonary_cap", "pulmonary_vein")
+
+
+def _pulmonary_window(r, a, b):
+    t = np.asarray(r["t"]); m = (t >= a) & (t < b)
+    V = np.asarray(r["volumes"])[m].mean(axis=0)
+    return float(sum(V[IDX[n]] for n in _PULMONARY_BED)), float(np.asarray(r["la_pressure"])[m].mean())
+
+
+@pytest.fixture(scope="module")
+def giuntini_dextran():
+    p = cohort_params(175.0, 68.0, age_years=31.0, sex="male")
+    p.slow_fluid_exchange_enabled = False            # dextran stays in the vessels
+    T0, DUR = 300.0, 21 * 60.0
+    p.fluid_bolus_ml, p.fluid_bolus_start_s, p.fluid_bolus_duration_s = 1000.0, T0, DUR
+    r = run_simulation(p, duration_s=T0 + DUR + 360.0, dt=DT)
+    (v0, w0), (v1, w1) = _pulmonary_window(r, T0 - 60, T0), _pulmonary_window(r, T0 + DUR + 240, T0 + DUR + 360)
+    return (v1 - v0) / (w1 - w0)
+
+
+@pytest.fixture(scope="module")
+def hirakawa_leg_raise():
+    p = cohort_params(165.0, 60.0, age_years=55.0, sex="male")
+    p.hip_flexion_start_deg, p.hip_flexion_end_deg = 0.0, 30.0
+    p.tilt_onset_s, p.tilt_duration_s = 240.0, 5.0
+    r = run_simulation(p, duration_s=425.0, dt=DT)
+    (v0, w0), (v1, w1) = _pulmonary_window(r, 180.0, 240.0), _pulmonary_window(r, 365.0, 425.0)
+    return (v1 - v0) / (w1 - w0)
+
+
+def test_pulmonary_bed_on_a_colloid_load_giuntini1966(giuntini_dextran):
+    """[PMID 5926445] dPBV / dwedge after 1 L dextran inside Giuntini's subjects (3.0-18.3 mL/mmHg)."""
+    c = giuntini_dextran
+    score("test_pulmonary_bed_on_a_colloid_load_giuntini1966", "dPBV/dwedge, dextran", c, 11.2, sd=5.8, n=8, source="Giuntini 1966 Table III")
+    assert 3.0 <= c <= 18.3, f"pulmonary bed {c:.1f} mL/mmHg on a 1 L colloid load, outside Giuntini's 3.0-18.3"
+
+
+@pytest.mark.xfail(strict=True, raises=AssertionError, reason=(
+    "KNOWN GAP 2026-11-21 (conflict 9) — the committed pulmonary bed sits on Giuntini's healthy dextran load (12.8) and "
+    "therefore under Hirakawa's leg raise (11.6 vs 27.7 +/- 9.6). The model's bed is linear and cannot separate the two "
+    "protocols; man separates them ~3x. Candidate reasons: autonomic state, dPBV method, cohort (not perturbation size)."))
+def test_pulmonary_bed_on_a_leg_raise_hirakawa1995(hirakawa_leg_raise):
+    """[PMID 7713833] dPBV / dwedge on passive leg elevation inside Hirakawa's NYHA I mean +/- SD (18.1-37.3 mL/mmHg)."""
+    c = hirakawa_leg_raise
+    score("test_pulmonary_bed_on_a_leg_raise_hirakawa1995", "dPBV/dwedge, leg raise", c, 27.7, sd=9.6, n=17, source="Hirakawa 1995 Table 2, NYHA I")
+    assert 18.1 <= c <= 37.3, f"pulmonary bed {c:.1f} mL/mmHg on a leg raise, outside Hirakawa's 27.7 +/- 9.6"
+
+
+
+# ===========================================================================
+# 66. MILD HEAD-UP TILT, A SECOND LAB — Kostas 2014 (10 / 20 deg, 21 subjects)
+# ===========================================================================
+#
+# [PMID 24754202 — Kostas 2014] 21 healthy adults (men and women, ~22-38 y), HUT 0 / 10 / 20 / 80 deg in random order, 10-15 min
+# per level, echo SV: HR 67.5 / 65.5 / 67.7 / 84.0; SV 92.0 / 89.3 / 85.1 / 63.8 mL (mean, SEM ~1-2). At 20 deg: dHR +0.2,
+# dSV -6.9. With Petersen 2014 (section 62, unclothed, dHR ~0, dSV -2) "the heart rate does not rise at 20 deg" has two
+# independent routes. Kostas's subjects wore Alter-G compression shorts during tilt too (less leg pooling), so the bands are
+# direction-level: dHR <= +5 bpm, dSV within 0 to -15 mL. Measured 2026-11-21: model +13.4 bpm / -24.7 mL — problem 1
+# (the legs pool ~275 mL, half of it in the thigh and foot on the calf's borrowed law, and the cardiopulmonary HR arm
+# amplifies the fall in CVP). Not modelled: the shorts.
+
+
+@pytest.fixture(scope="module")
+def kostas_20():
+    p = cohort_params(175.0, 72.0, age_years=30.0, sex="male")
+    p.tilt_start_deg, p.tilt_end_deg, p.tilt_onset_s, p.tilt_duration_s = 0.0, 20.0, 300.0, 10.0
+    r = run_simulation(p, duration_s=1200.0, dt=DT)
+    t = np.asarray(r["t"])
+    def d(k):
+        x = np.asarray(r[k])
+        return float(x[(t >= 1020.0) & (t < 1200.0)].mean() - x[(t >= 240.0) & (t < 300.0)].mean())
+    return {"hr": d("hr"), "sv": d("sv")}
+
+
+@pytest.mark.xfail(strict=True, raises=AssertionError, reason=(
+    "KNOWN GAP 2026-11-21 (problem 1) — at 20 deg head-up the model's heart rate rises +13.4 bpm against Kostas's +0.2 and "
+    "Petersen's ~0: the legs pool too much (thigh and foot on the calf's borrowed law) and the cardiopulmonary HR arm "
+    "amplifies the CVP fall."))
+def test_heart_rate_does_not_rise_at_20_deg_head_up_kostas2014(kostas_20):
+    """[PMID 24754202] dHR at 20 deg HUT <= +5 bpm (Kostas +0.2)."""
+    score("test_heart_rate_does_not_rise_at_20_deg_head_up_kostas2014", "dHR, 20 deg HUT", kostas_20["hr"], 0.2, sd=7.0, n=21, source="Kostas 2014 Fig 1")
+    assert kostas_20["hr"] <= 5.0, f"HR rose {kostas_20['hr']:+.1f} bpm at 20 deg; Kostas +0.2, Petersen ~0"
+
+
+@pytest.mark.xfail(strict=True, raises=AssertionError, reason=(
+    "KNOWN GAP 2026-11-21 (problem 1) — stroke volume falls -24.7 mL at 20 deg against Kostas's -6.9 (Petersen -2); "
+    "same cause as the heart-rate test above."))
+def test_stroke_volume_falls_little_at_20_deg_head_up_kostas2014(kostas_20):
+    """[PMID 24754202] dSV at 20 deg HUT within 0 to -15 mL (Kostas -6.9)."""
+    score("test_stroke_volume_falls_little_at_20_deg_head_up_kostas2014", "dSV, 20 deg HUT", kostas_20["sv"], -6.9, sd=9.0, n=21, source="Kostas 2014 Fig 4")
+    assert -15.0 <= kostas_20["sv"] <= 0.0, f"SV changed {kostas_20['sv']:+.1f} mL at 20 deg; Kostas -6.9"
+
+# ===========================================================================
+# 67. THE CALF ON ELEVATION — Warren 1992 (strain gauge, 45 deg)
+# ===========================================================================
+#
+# [PMID 1416704 — Warren 1992] 7 healthy men 20-35 y, supine, one leg raised 45 deg: calf segment volume 99.4 / 99.1 / 98.6 /
+# 98.0 / 97.6 % of original at 1-5 min; < 30 % of the 6-min change in the first minute (Fig 2: 26 / 40 / 58 / 88 / 99 %).
+# The model's calf_vein holds blood only, so its fraction LOST is compared: Warren's -2.4 % of segment volume over the calf's
+# blood content, ~6 mL/100 mL horizontal (Vissing 1988, PMID 3402187 — ABSTRACT; provisional until read) -> ~40 % lost.
+# Band 25-55 %: the spread of that ratio (Warren's reproducibility 7.3 % of the change, Vissing's 6.0 +/- 1.6 mL/100 mL).
+# The model raises both legs by hip flexion and has no femoral-triangle kinking (Warren's 90 deg arm is excluded for that).
+# Measured 2026-11-21: model -35.9 % at 1 min, -40.7 % at 5 — the END POINT sits on man; the SPEED does not (88 % of its
+# change in the first minute). The speed is a time constant, not a compliance; strain gauges also see tissue fluid.
+
+
+@pytest.fixture(scope="module")
+def warren_calf():
+    p = cohort_params(178.0, 75.0, age_years=27.0, sex="male")
+    p.hip_flexion_start_deg, p.hip_flexion_end_deg = 0.0, 45.0
+    p.tilt_onset_s, p.tilt_duration_s = 240.0, 3.0
+    r = run_simulation(p, duration_s=600.0, dt=DT)
+    t = np.asarray(r["t"]); V = np.asarray(r["volumes"])[:, IDX["calf_vein"]]
+    base = float(V[(t >= 200.0) & (t < 240.0)].mean())
+    lost = [float((base - V[(t >= 230.0 + 60 * m) & (t < 240.0 + 60 * m)].mean()) / base) for m in range(1, 7)]
+    return lost
+
+
+def test_calf_loses_man_s_share_of_its_blood_on_elevation_warren1992(warren_calf):
+    """[PMID 1416704] Calf blood lost after 5 min at 45 deg inside 25-55 % (man ~40 %)."""
+    lost5 = warren_calf[4]
+    score("test_calf_loses_man_s_share_of_its_blood_on_elevation_warren1992", "calf blood lost, 5 min", 100 * lost5, 40.0, sd=7.5, n=7, source="Warren 1992 Fig 1 / Vissing 1988")
+    assert 0.25 <= lost5 <= 0.55, f"calf lost {100 * lost5:.1f} % of its blood at 45 deg; man ~40 % (25-55)"
+
+
+@pytest.mark.xfail(strict=True, raises=AssertionError, reason=(
+    "KNOWN GAP 2026-11-21 — the calf empties too fast on elevation: 88 % of its 6-min change in the first minute against "
+    "Warren's < 30 %. A time constant (outflow resistance, slow creep, or the tissue fluid a strain gauge also sees), not "
+    "the compliance — the end point matches."))
+def test_calf_empties_over_minutes_on_elevation_warren1992(warren_calf):
+    """[PMID 1416704] Less than half of the 6-min calf change happens in the first minute (Warren: 26 %)."""
+    share1 = warren_calf[0] / warren_calf[5]
+    assert share1 < 0.5, f"{100 * share1:.0f} % of the calf's 6-min emptying in the first minute; Warren 26 %"
