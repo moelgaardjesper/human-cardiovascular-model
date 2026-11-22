@@ -4600,20 +4600,10 @@ def test_cardiopulmonary_hr_arm_is_live_and_signed():
         )
 
 
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason=(
-    "DUE FOR RE-SCOPE (LBNP, Jesper 2026-11-19) — the +15-32 bpm band for a 6.7 mmHg fall at held MAP is an LBNP magnitude "
-    "(Hoff LBNP -80; Vettorello). With the threshold surrogate the arm gives +10.7. In man that tachycardia also carries the "
-    "arterial pulse-pressure unloading this isolated-arm stimulus excludes."))
-def test_cardiopulmonary_hr_arm_size_matches_lbnp():
-    """[29] The isolated arm's size for a 6.7 mmHg CVP fall at held MAP: 15-32 bpm (LBNP-based)."""
-    from model.baroreflex import BaroreflexController, MAP_SETPOINT, CP_HR_REFERENCE_CVP_MMHG as REF
-    b = BaroreflexController(dt=0.01, history_len=200, cp_hr_enabled=True)
-    b._map_buf.extend([MAP_SETPOINT] * b._map_buf.maxlen)
-    b._cvp_buf.extend([REF - 6.7] * b._cvp_buf.maxlen)
-    for _ in range(30_000):
-        b.update(MAP_SETPOINT, 40.0, REF - 6.7)
-    lo = float(b.hr_delta)
-    assert 15.0 < lo < 32.0, f"filling-pressure fall of 6.7 mmHg gave {lo:+.1f} bpm; LBNP data +25.3 / +38"
+# RETIRED 2026-11-22 (re-scope off LBNP, Jesper): test_cardiopulmonary_hr_arm_size_matches_lbnp asserted the isolated arm's
+# size, +15-32 bpm for a 6.7 mmHg fall at held MAP — an LBNP magnitude (Hoff LBNP -80; Vettorello). The size now stands on
+# real blood loss and tilt: test_heart_rate_rises_in_johnson2014_blood_loss (strict xfail at 1 L) and the Kostas / Petersen
+# 20 deg tests; the arm's liveness and sign stay guarded in test_cardiopulmonary_hr_arm_is_live_and_signed.
 
 
 def test_hypovolaemic_tachycardia_matches_lbnp():
@@ -4868,8 +4858,8 @@ def _white1997_tilt(age_years, sex, height_cm, weight_kg):
         a = np.asarray(r[key])
         return float(np.mean(a[(t >= t0) & (t < t1)]))
 
-    sup = {k: w(k, 90.0, 120.0) for k in ("hr", "brachial_sbp", "brachial_dbp")}
-    til = {k: w(k, 400.0, 430.0) for k in ("hr", "brachial_sbp", "brachial_dbp")}
+    sup = {k: w(k, 90.0, 120.0) for k in ("hr", "brachial_sbp", "brachial_dbp", "brachial_p")}
+    til = {k: w(k, 400.0, 430.0) for k in ("hr", "brachial_sbp", "brachial_dbp", "brachial_p")}
     for d in (sup, til):
         d["map"] = (d["brachial_sbp"] + 2.0 * d["brachial_dbp"]) / 3.0
         d["pp"]  = d["brachial_sbp"] - d["brachial_dbp"]
@@ -4945,6 +4935,24 @@ def test_orthostatic_vasoconstriction_is_blunted_with_age_white1997(white1997_ar
         f"(young {ddbp[25.0]:+.2f}, older {ddbp[68.0]:+.2f}) is outside one SD "
         f"of the measured {measured_diff:+.1f} +/- {sd_diff:.1f} mmHg"
     )
+
+
+
+# THE YOUNG RAISE MEAN PRESSURE ON TILT — re-scoped OFF LBNP 2026-11-22 (Jesper: "go ahead"). The claim was asserted on PMID
+# 27702883 (LBNP -30, through a bleed equivalence derived from the model's own response — circular). It now stands on TILT:
+# White 1997 (PMID 9404222, arm cuff, 60 deg, n 16 young) MAP +5.6; PMID 38684421 (young, 30 -> 60 deg) +2.5 — ledger
+# summary table. Direction only (two cohorts, cuff). Read as the MEAN of the model's cuff-MAP proxy (`brachial_p`, the
+# brachiocephalic lump — a mean-pressure proxy; its SBP / DBP are damped and are NOT a cuff's).
+@pytest.mark.xfail(strict=True, raises=AssertionError, reason=(
+    "KNOWN GAP 2026-11-22 — THE 60 DEG COLLAPSE. Young man at 60 deg for 5 min: central MAP 96.6 -> 72.0 (-24.6), SV 96 -> 28.5, "
+    "CO 6.37 -> 2.67, HR +27; the cuff-MAP proxy reads -37.8 (its tilt correction exaggerates the fall — a separate finding). Man "
+    "RAISES MAP (+5.6 White; +2.5 PMID 38684421). The same body defect as problem 1, pushed further."))
+def test_young_raise_mean_pressure_on_60_deg_tilt_white1997(white1997_arms):
+    """[PMID 9404222, 38684421] Young adults' mean arterial pressure RISES at 60 deg head-up tilt (+5.6, +2.5 mmHg)."""
+    d = [white1997_arms[(25.0, s)][1]["brachial_p"] - white1997_arms[(25.0, s)][0]["brachial_p"] for s in ("male", "female")]
+    dmap = float(np.mean(d))
+    score("test_young_raise_mean_pressure_on_60_deg_tilt_white1997", "dMAP young, 60 deg", dmap, 5.6, kind="change", source="White 1997 (cuff); PMID 38684421 +2.5")
+    assert dmap > 0.0, f"young mean pressure changed {dmap:+.2f} mmHg at 60 deg; White +5.6, PMID 38684421 +2.5"
 
 
 @pytest.mark.xfail(strict=True, reason=(
@@ -5214,22 +5222,10 @@ def test_central_hypovolaemia_flow_and_rate_response_pmid27702883(lbnp_young_hae
 # (tank sealed at the iliac crest), and the bleed below stands in for it through an exchange rate derived from the model's own
 # response. The claim moves to (a) Johnson 2014 real blood loss (MAP held at 333 / 667 mL, -2.2 at 1 L; ledger) and (b) the two TILT
 # cohorts (PMID 9404222, 38684421) for 'the young raise MAP'. Until then this guards the direction only.
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason=(
-    "DUE FOR RE-SCOPE (LBNP, Jesper 2026-11-19) — held by a hair before; with the HR threshold the male MAP reads -1.05 "
-    "against +2.90. The claim moves to Johnson 2014 real blood loss and the tilt cohorts (comment above)."
-))
-def test_mean_pressure_rises_under_central_hypovolaemia_pmid27702883(lbnp_young_haemorrhage):
-    """[PMID 27702883] Young adults RAISE mean pressure under -30 mmHg LBNP.
-
-    Measured +2.90 mmHg. The model gives ~0 (male +0.47, female +0.06 on 2026-11-19) — the direction only, by a
-    hair. Asserted as a change, so the finger-versus-central convention cancels.
-    """
-    for sex, (rest, bled) in lbnp_young_haemorrhage.items():
-        dmap = bled["map"] - rest["map"]
-        assert dmap > 0, (
-            f"{sex} mean pressure FELL {dmap:+.2f} mmHg under central "
-            f"hypovolaemia; the subjects' ROSE {_LBNP_DMAP:+.2f}"
-        )
+# RETIRED 2026-11-22 (re-scope off LBNP, Jesper): test_mean_pressure_rises_under_central_hypovolaemia_pmid27702883 asserted
+# MAP > 0 under LBNP -30 through a 500 mL bleed equivalence derived from the model's own response (circular). The claim now
+# stands on test_map_is_held_in_johnson2014_blood_loss (real blood loss) and test_young_raise_mean_pressure_on_60_deg_tilt_
+# white1997 (tilt). The same fixture's flow-and-rate test (direction) is kept.
 
 
 # --- PMID 31705432 ----------------------------------------------------------
@@ -8084,29 +8080,40 @@ _JOHNSON_DHR = (1.0, 4.0, 8.0)
 _JOHNSON_DHR_SE = tuple(float(np.hypot(3.4, s)) for s in (3.0, 2.8, 3.5))
 
 
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason=(
-    "KNOWN GAP 2026-11-21 — the cardiopulmonary HR threshold (surrogate) makes the heart rate right at mild stress but too "
-    "low at 1 L: +2.7 bpm against +8 +/- 4.9. Man's large-stress tachycardia follows arterial PULSE PRESSURE, which the "
-    "model's MAP-only arterial arm lacks; and its CVP falls only -3.4 at 1 L against -4.7. MAP still held at every stage."
-))
-def test_map_is_held_and_heart_rate_rises_in_johnson2014_blood_loss(johnson_bleed):
-    """[PMID 24876357 — Johnson 2014] Real blood loss in awake supine men (333 / 667 / 1000 mL): MAP is
-    defended (changes inside Johnson's band at each stage, and lower at 1 L than at rest) and heart rate rises
-    modestly. This is the sourced, non-LBNP statement of 'mean pressure under hypovolaemia' — LBNP lowers MAP
-    ~7x more per mmHg of CVP than blood loss does in the same men (Johnson Table 1), so it cannot stand in."""
-    _, _, _, dmap, dhr = johnson_bleed
+def test_map_is_held_in_johnson2014_blood_loss(johnson_bleed):
+    """[PMID 24876357 — Johnson 2014] Real blood loss in awake supine men (333 / 667 / 1000 mL): MAP is defended
+    (changes inside Johnson's band at each stage, and lower at 1 L than at rest). This is the sourced, non-LBNP statement
+    of 'mean pressure under hypovolaemia' — LBNP lowers MAP ~7x more per mmHg of CVP than blood loss does in the same men
+    (Johnson Table 1), so it cannot stand in. Split from the heart-rate half 2026-11-22 (re-scope off LBNP): the MAP half
+    had been hidden behind the heart-rate strict xfail."""
+    _, _, _, dmap, _ = johnson_bleed
     misses = []
     for k in range(3):
         ml = 333 * (k + 1)
-        score("test_map_is_held_and_heart_rate_rises_in_johnson2014_blood_loss", f"dMAP {ml} mL", dmap[k], _JOHNSON_DMAP[k], se=_JOHNSON_DMAP_SE[k], n=8, kind="change", source="Johnson 2014 Table 3; SE of change (no-correlation upper bound)")
-        score("test_map_is_held_and_heart_rate_rises_in_johnson2014_blood_loss", f"dHR {ml} mL", dhr[k], _JOHNSON_DHR[k], se=_JOHNSON_DHR_SE[k], n=8, kind="change", source="Johnson 2014 Table 3; SE of change (no-correlation upper bound)")
+        score("test_map_is_held_in_johnson2014_blood_loss", f"dMAP {ml} mL", dmap[k], _JOHNSON_DMAP[k], se=_JOHNSON_DMAP_SE[k], n=8, kind="change", source="Johnson 2014 Table 3; SE of change (no-correlation upper bound)")
         if abs(dmap[k] - _JOHNSON_DMAP[k]) > _JOHNSON_DMAP_SE[k]:
             misses.append(f"{ml} mL: dMAP {dmap[k]:+.2f} vs {_JOHNSON_DMAP[k]:+.1f} +/- {_JOHNSON_DMAP_SE[k]:.1f}")
+    assert dmap[2] < 0.0, f"MAP did not fall at 1000 mL ({dmap[2]:+.2f}); Johnson's stage 3 sits below baseline"
+    assert not misses, "MAP does not follow Johnson 2014 blood loss: " + "; ".join(misses)
+
+
+@pytest.mark.xfail(strict=True, raises=AssertionError, reason=(
+    "KNOWN GAP 2026-11-21 — the cardiopulmonary HR threshold (surrogate) makes the heart rate right at mild stress but too "
+    "low at 1 L: +2.7 bpm against +8 +/- 4.9. Man's large-stress tachycardia follows arterial PULSE PRESSURE, which the "
+    "model's MAP-only arterial arm lacks; and its CVP falls only -3.4 at 1 L against -4.7."
+))
+def test_heart_rate_rises_in_johnson2014_blood_loss(johnson_bleed):
+    """[PMID 24876357 — Johnson 2014] Heart rate rises modestly at every stage of real blood loss, inside Johnson's band
+    (+1 / +4 / +8 bpm at 333 / 667 / 1000 mL)."""
+    _, _, _, _, dhr = johnson_bleed
+    misses = []
+    for k in range(3):
+        ml = 333 * (k + 1)
+        score("test_heart_rate_rises_in_johnson2014_blood_loss", f"dHR {ml} mL", dhr[k], _JOHNSON_DHR[k], se=_JOHNSON_DHR_SE[k], n=8, kind="change", source="Johnson 2014 Table 3; SE of change (no-correlation upper bound)")
         if abs(dhr[k] - _JOHNSON_DHR[k]) > _JOHNSON_DHR_SE[k]:
             misses.append(f"{ml} mL: dHR {dhr[k]:+.1f} vs {_JOHNSON_DHR[k]:+.0f} +/- {_JOHNSON_DHR_SE[k]:.1f}")
-    assert dmap[2] < 0.0, f"MAP did not fall at 1000 mL ({dmap[2]:+.2f}); Johnson's stage 3 sits below baseline"
     assert all(h > 0.0 for h in dhr), f"heart rate did not rise at every stage: {[round(h, 1) for h in dhr]}"
-    assert not misses, "MAP / HR do not follow Johnson 2014 blood loss: " + "; ".join(misses)
+    assert not misses, "heart rate does not follow Johnson 2014 blood loss: " + "; ".join(misses)
 
 
 # ===========================================================================
@@ -8863,3 +8870,23 @@ def test_calf_empties_over_minutes_on_elevation_warren1992(warren_calf):
     """[PMID 1416704] Less than half of the 6-min calf change happens in the first minute (Warren: 26 %)."""
     share1 = warren_calf[0] / warren_calf[5]
     assert share1 < 0.5, f"{100 * share1:.0f} % of the calf's 6-min emptying in the first minute; Warren 26 %"
+
+
+# ===========================================================================
+# 68. PATIENT CALIBRATION — a measured CVP of 0 is a measurement (Codex audit, 2026-11-21)
+# ===========================================================================
+#
+# patient.py computed the measured SVR from `cvp_mmhg or 5.0`, so a clinician's CVP of exactly 0 mmHg — common after blood loss or
+# diuresis, and the tilt studies' upright value — was silently replaced by 5. The calibration must be continuous through 0: CVP 0
+# and CVP 0.01 must give the same arteriolar resistances to rounding, and both must differ from CVP 5.
+
+
+def test_measured_cvp_of_zero_is_used_not_replaced():
+    """A CVP of 0 mmHg enters the SVR calibration as 0, not as the default 5."""
+    from model.compartments import ARTERIOLAR_SEGMENTS
+    def arteriolar_r(cvp):
+        comps, _ = build_patient_params(175.0, 75.0, map_mmhg=90.0, cvp_mmhg=cvp)
+        return sum(c.resistance for c in comps if c.name in ARTERIOLAR_SEGMENTS)
+    r0, r001, r5 = arteriolar_r(0.0), arteriolar_r(0.01), arteriolar_r(5.0)
+    assert abs(r0 - r001) < 1e-3 * r001, f"CVP 0 gives {r0:.4f}, CVP 0.01 gives {r001:.4f}: the zero was not used"
+    assert abs(r0 - r5) > 1e-3 * r5, f"CVP 0 and CVP 5 give the same resistances ({r0:.4f}): the zero is replaced by the default"

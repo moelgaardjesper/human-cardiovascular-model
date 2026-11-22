@@ -406,7 +406,8 @@ def scale_compartments(
         # NOT FIXED HERE. A site correction would move every patient-scaled result
         # in the suite and belongs with items 50 and 58, which already carry the
         # reference operating point as a strict xfail. Backlog item 77 holds it.
-        svr_measured = _svr(map_mmhg, cvp_mmhg or 5.0, co_est)
+        # `is None`, not `or`: a measured CVP of 0 mmHg is a measurement (2026-11-22; it was silently replaced by 5).
+        svr_measured = _svr(map_mmhg, 5.0 if cvp_mmhg is None else cvp_mmhg, co_est)
         # Imported, not re-typed — see the REFERENCE_* note in baroreflex.py.
         # These were two independent copies of one operating point until
         # 2026-09-15 (backlog item 50).
