@@ -8890,3 +8890,61 @@ def test_measured_cvp_of_zero_is_used_not_replaced():
     r0, r001, r5 = arteriolar_r(0.0), arteriolar_r(0.01), arteriolar_r(5.0)
     assert abs(r0 - r001) < 1e-3 * r001, f"CVP 0 gives {r0:.4f}, CVP 0.01 gives {r001:.4f}: the zero was not used"
     assert abs(r0 - r5) > 1e-3 * r5, f"CVP 0 and CVP 5 give the same resistances ({r0:.4f}): the zero is replaced by the default"
+
+
+# ===========================================================================
+# 69. THE HEART'S VOLUME ON HEAD-UP TILT — Negishi 2017 (3D echo, 13 healthy astronauts, 0 / 22 / 41 / 80 deg)
+# ===========================================================================
+#
+# [Negishi 2017, J Am Soc Echocardiogr 30:1180 — ledger] 13 healthy crew (69 % M), 49 y, 174 / 72; progressive 0 -> 22 -> 41 -> 80 deg,
+# echo 2-11 min into each angle; invasive pilot data (Levine lab): filling pressures settle in 30-60 s. LV EDV by 3D echo 96 / 91 / 88
+# / 83 mL: -5.2 % at 22 deg, -13.5 % at 80. Compared in PER CENT because the model's chambers sit on CMR (Luu) and 3D echo under-reads
+# absolute volume. Band +/- 7 % of baseline: the paper's 3D EDV test-retest variability (6.8 mL of 96). Cohort: 49 y, man 178 / 78
+# and woman 166 / 60, weighted 0.69 / 0.31. The 22 deg step is Negishi's own (the first step from supine); the 80 deg arm here starts
+# from supine (his reached 80 via 22 and 41 over ~20 min) — a protocol difference, stated. Read min 2-9 after reaching the angle.
+# Measured 2026-11-24 (validation log): dLVEDV -12 % at 22 deg (2.3x man, at the band's edge), -65 % at 80 deg (5x man) — the heart's
+# loss GROWS with the gravitational load while man's stays small: problem 1 and the 60 deg collapse are one defect.
+
+_NEGISHI_MEN = 0.69
+
+
+def _negishi_lvedv_pct(angle):
+    from scipy.signal import find_peaks
+    pct = {}
+    for sex, h, w in (("male", 178.0, 78.0), ("female", 166.0, 60.0)):
+        p = cohort_params(h, w, age_years=49.0, sex=sex)
+        p.tilt_start_deg, p.tilt_end_deg, p.tilt_onset_s, p.tilt_duration_s = 0.0, angle, 300.0, 10.0
+        r = run_simulation(p, duration_s=850.0, dt=DT, output_every=5)
+        t = np.asarray(r["t"]); v = np.asarray(r["volumes"])[:, IDX["left_ventricle"]]
+        def edv(a, b):
+            m = (t >= a) & (t < b); x = v[m]; pk, _ = find_peaks(x, distance=70)
+            return float(np.mean(x[pk]))
+        pct[sex] = 100.0 * (edv(430.0, 850.0) / edv(240.0, 300.0) - 1.0)
+    return _NEGISHI_MEN * pct["male"] + (1.0 - _NEGISHI_MEN) * pct["female"]
+
+
+@pytest.fixture(scope="module")
+def negishi_22():
+    return _negishi_lvedv_pct(22.0)
+
+
+@pytest.fixture(scope="module")
+def negishi_80():
+    return _negishi_lvedv_pct(80.0)
+
+
+def test_heart_loses_little_volume_at_22_deg_negishi2017(negishi_22):
+    """[Negishi 2017] LV end-diastolic volume at 22 deg head-up changes by man's -5.2 % +/- 7 % (3D echo test-retest)."""
+    score("test_heart_loses_little_volume_at_22_deg_negishi2017", "dLVEDV % at 22 deg", negishi_22, -5.2, sd=7.0, n=13, kind="change", source="Negishi 2017 Table 1 (3D)")
+    assert -12.2 <= negishi_22 <= 1.8, f"LV EDV changed {negishi_22:+.1f} % at 22 deg; Negishi -5.2 % (band -12.2..+1.8)"
+
+
+@pytest.mark.xfail(strict=True, raises=AssertionError, reason=(
+    "KNOWN GAP 2026-11-24 — THE HEART EMPTIES UNDER A LARGE GRAVITATIONAL LOAD: LV EDV -65 % at 80 deg against Negishi's -13.5 % "
+    "(3D echo). Heart rate is on man at every angle (+16 vs +14), so the defect is filling, not reflex; it grows with the load "
+    "(2.3x man at 22 deg, ~5x at 80) — problem 1 and the 60 deg collapse are one defect. Lever map 2026-11-24: only the legs separate "
+    "gravity from a bleed; the missing physiology limits dependent pooling (validation log)."))
+def test_heart_keeps_most_of_its_volume_at_80_deg_negishi2017(negishi_80):
+    """[Negishi 2017] LV end-diastolic volume at 80 deg head-up changes by man's -13.5 % +/- 7 %."""
+    score("test_heart_keeps_most_of_its_volume_at_80_deg_negishi2017", "dLVEDV % at 80 deg", negishi_80, -13.5, sd=7.0, n=13, kind="change", source="Negishi 2017 Table 1 (3D)")
+    assert -20.5 <= negishi_80 <= -6.5, f"LV EDV changed {negishi_80:+.1f} % at 80 deg; Negishi -13.5 % (band -20.5..-6.5)"
