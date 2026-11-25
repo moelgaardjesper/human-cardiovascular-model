@@ -64,6 +64,9 @@ PANEL = [
     ("test_calf_loses_man_s_share_of_its_blood_on_elevation_warren1992",),
     # the heart's volume under gravity — added 2026-11-24 (Negishi 2017; the defect behind problem 1 and the 60 deg collapse)
     ("test_heart_loses_little_volume_at_22_deg_negishi2017", "test_heart_keeps_most_of_its_volume_at_80_deg_negishi2017"),
+    # 2026-11-24 (later): Negishi 41 deg added and made the PRIMARY score with 22 deg (Jesper: mild-to-moderate tilt first;
+    # 80 deg is confounded by the model's MAP collapse and stays as a check). New comparison round.
+    ("test_heart_keeps_its_volume_at_41_deg_negishi2017",),
 ]
 PANEL_TESTS = [t for g in PANEL for t in g]
 

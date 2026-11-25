@@ -223,6 +223,17 @@ _VASCULAR_IDX = tuple(idx for name, idx in IDX.items() if name not in _CARDIAC_C
 # unchanged transmission fraction. Note it inflated STROKE-VOLUME variation, not
 # the pressure-to-volume ratio: PPV tracks the model's own `sv` 1:1 both before
 # and after (1.02 and 0.98). See docs/validation_log.md, "PPV diagnosed".
+# VENOARTERIOLAR REFLEX of the leg segments — ADOPTED 2026-11-25 (validation log "VARIANT V" 11-24 and "VARIANTS T, L, T+L"
+# full-suite entry). A local axon / myogenic reflex: venous distension in a dependent limb constricts that limb's arterioles.
+# Law: inflow resistance x [1 + clip((P_seg - 25) / 20, 0, 1)] on each of thigh, calf and foot, from its OWN venous pressure —
+# x1 below 25 mmHg, x2 (flow -50 %) at >= 45. Sources (abstracts): Skagen & Bonde-Petersen 1982 (PMID 7136743) leg lowered ->
+# subcutaneous flow -51 %, 45 deg head-up -50 %, -45 % after proximal block (local); Kastrup 1987 (PMID 2443959) ~40 mmHg
+# venous rise -> -47 %; Okazaki 2005 (PMID 16002554) ~45 % of non-baroreflex calf vasoconstriction is VAR; Gabrielsen & Norsk
+# 2007 (PMID 17585042) -37 %. Threshold ~25 mmHg distension (ledger). GRADE D: skin / subcutaneous magnitudes applied to whole
+# segments — an UPPER bound for muscle. Inert on a bleed by construction (leg pressures fall).
+VENOARTERIOLAR_THRESHOLD_MMHG = 25.0
+VENOARTERIOLAR_SPAN_MMHG = 20.0
+
 THORACIC_COMPARTMENTS = (
     "aorta", "brachiocephalic", "svc", "coronary",
     "right_atrium", "right_ventricle",
@@ -433,6 +444,9 @@ class SimParams:
         # Cardiopulmonary (filling-pressure) arm of the heart-rate reflex.
         # Its own switch so it can be validated alone and in combination.
         self.cardiopulmonary_hr_enabled = True
+        # Venoarteriolar reflex of the leg segments (adopted 2026-11-25; law and sources at VENOARTERIOLAR_* below).
+        # Its own switch so it can be validated alone and in combination.
+        self.venoarteriolar_enabled = True
 
         # DEMAND PACING, beats/min, or None for no pacemaker. A LOWER RATE LIMIT:
         # the heart beats at max(native rate, paced rate), which is how AAI and
@@ -1387,9 +1401,17 @@ def _odes(t: float, V: np.ndarray, params: SimParams, baro: BaroreflexController
     # (see the leg-vein block in compartments.py), so the patient SVR calibration
     # and the PAD factor can reach them. Drug-scaled like every other arteriolar
     # segment.
-    Q_lb_art_thigh = (P[i["lower_body_art"]] - P[i["thigh_vein"]] + hdp("lower_body_art") - hdp("thigh_vein")) / R("thigh_vein", True)
-    Q_lb_art_calf  = (P[i["lower_body_art"]] - P[i["calf_vein"]]  + hdp("lower_body_art") - hdp("calf_vein"))  / R("calf_vein", True)
-    Q_lb_art_foot  = (P[i["lower_body_art"]] - P[i["foot_vein"]]  + hdp("lower_body_art") - hdp("foot_vein"))  / R("foot_vein", True)
+    # Venoarteriolar reflex: each leg segment's inflow resistance rises with its OWN venous distension (see
+    # VENOARTERIOLAR_THRESHOLD_MMHG). Acts on inflow only, so under tilt it works mainly through capillary pressure.
+    if params.venoarteriolar_enabled:
+        def _var(seg):
+            return 1.0 + min(1.0, max(0.0, (P[i[seg]] - VENOARTERIOLAR_THRESHOLD_MMHG) / VENOARTERIOLAR_SPAN_MMHG))
+    else:
+        def _var(seg):
+            return 1.0
+    Q_lb_art_thigh = (P[i["lower_body_art"]] - P[i["thigh_vein"]] + hdp("lower_body_art") - hdp("thigh_vein")) / (R("thigh_vein", True) * _var("thigh_vein"))
+    Q_lb_art_calf  = (P[i["lower_body_art"]] - P[i["calf_vein"]]  + hdp("lower_body_art") - hdp("calf_vein"))  / (R("calf_vein", True) * _var("calf_vein"))
+    Q_lb_art_foot  = (P[i["lower_body_art"]] - P[i["foot_vein"]]  + hdp("lower_body_art") - hdp("foot_vein"))  / (R("foot_vein", True) * _var("foot_vein"))
 
     # Muscle pump: rhythmic calf compression drives venous return.
     # sin²(2πft) profile: always ≥ 0 (no suction phase), smooth, periodic.

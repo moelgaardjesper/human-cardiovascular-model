@@ -708,7 +708,7 @@ def default_compartments() -> list[Compartment]:
         # TISSUE: Winter 2009 Table 4.1 segment masses (both legs, 75 kg, density
         # 1.06): thigh 15.0 kg = 142 dL, shank 6.97 kg = 66 dL, foot 2.18 kg = 21 dL.
         # Lawler 1998 (PMID 9760343) DXA leg muscle 17.5-25 kg in men brackets it.
-        # => C0 = 0.111 x dL: thigh 15.7, calf 7.30, foot 2.28 mL/mmHg; p_stiffen 28.
+        # => C0 = 0.111 x dL: thigh 15.7, calf 7.30, foot 2.28 mL/mmHg; p_stiffen 28. (Thigh and foot x 0.625 since 2026-11-25, below.)
         # LEG FLOW ON DINENNO 1999 (2026-11-17; validation log). The leg arteriolar + exchange resistances were the
         # Heldt-era 2.80 split 30/40/30 and sent ~24 % of CO to the legs; Dinenno 1999 (PMID 10402446, femoral Doppler,
         # supine young men) measured ~0.69 L/min for both legs, ~14 % of CO. All three x 2.2 (PIN, grade A for the quantity)
@@ -722,7 +722,16 @@ def default_compartments() -> list[Compartment]:
         # its old init_volume at its old settled pressure (21.5 / 23.0 / 23.9):
         # V0 = V_rest - C0·k·ln(1 + P_rest/k) -> 170 / 465 / 259 mL.
         # Old values for the record: thigh 3.20/381/12, calf 4.80/508/28, foot 4.00/254/8.
-        Compartment("thigh_vein",         15.71, 19.873, 170, -0.52,  359, p_stiffen=28.0,
+        # THIGH + FOOT x 0.625 — ADOPTED 2026-11-25 (variant T; validation log "VARIANTS T, L, T+L" and its full-suite entry).
+        # The calf's per-dL law, borrowed for the thigh and foot on 2026-10-08 to take up man's LBNP pooling (whose chamber
+        # seals at the iliac crest: pelvis inside, and this model has no pelvic lump), made the thigh rise +80 % of its own
+        # blood on standing against Baccelli 1995 (PMID 7472592, red cells, n 14) +50 +/- 13 %. C0 x 0.625 = Baccelli's ratio
+        # of increments; checked: +50.5 %. The CALF is unchanged — Vissing 1988 (PMID 3402187) and Louisy 1997 (PMID 9059901)
+        # put its distensibility on man. Bivins 1985 (head-down, whole lower region) would want ~0.3: the routes disagree
+        # ~2x, the direct thigh measurement is kept. GRADE C (thigh), GRADE E (foot: no human value, follows the thigh).
+        # V0 re-derived so each segment keeps its resting volume at its resting pressure (thigh 16.1, foot 17.7 mmHg):
+        # V0 = V0_old + (C_old - C_new) k ln(1 + P_rest / k). Was thigh 15.71 / 170, foot 2.28 / 259.
+        Compartment("thigh_vein",          9.819, 19.873, 244.93, -0.52,  359, p_stiffen=28.0,
                     drain_resistance=0.600),  # 11
         # CALF p_stiffen 11 -> 28 ON 2026-10-04, leg rebuild stage 2. GRADE A for
         # the quantity: Halliwill, Minson & Joyner 1999 (PMID 10517791) measured
@@ -740,7 +749,7 @@ def default_compartments() -> list[Compartment]:
         # mostly from splanchnic_vein (1064 -> 1047), total blood volume unchanged.
         Compartment("calf_vein",           7.30, 15.290, 465, -0.95,  557, p_stiffen=28.0,
                     drain_resistance=0.100),  # 12
-        Compartment("foot_vein",           2.28, 20.379, 259, -1.23,  289, p_stiffen=28.0,
+        Compartment("foot_vein",           1.425, 20.379, 270.73, -1.23,  289, p_stiffen=28.0,   # x 0.625, see thigh_vein
                     drain_resistance=0.140),  # 13
         # ---- The IVC, now THREE segments — backlog items 65 and 72 (2026-10-04) ----
         # `ivc` below is the SUPRA-HEPATIC segment only. The other two are appended

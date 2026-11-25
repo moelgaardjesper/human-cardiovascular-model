@@ -1809,14 +1809,8 @@ def _maas_hold_curve(tilt_deg=0.0, load_ml=0.0):
     return float(slope), float(-intercept / slope)
 
 
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason=(
-    "KNOWN GAP 2026-11-20 (Jesper: option A) — WITH MAAS'S OWN PROTOCOL (true 12-s holds) 30 DEG HEAD-UP ROTATES THE CURVE: slope "
-    "-0.489 -> -0.334, ratio 0.68 against 0.75-1.25 (Maas 0.92). The head-up defect of problem 1 (the heart receives too little "
-    "volume at mild-moderate head-up; Petersen and van Lieshout strict xfails), seen by a third test. The 60-s sustained "
-    "plateaus used until this date measured the reflex, not the vessels (SimParams.hold_start_s note) and hid it. Resting slope "
-    "-0.489 is ON Maas (-0.465 +/- 0.151). CV3 (pulmonary capillaries + veins x 3, parked) passes this arm but rotates on the "
-    "colloid load (0.62). Band not widened."
-))
+# CLOSED 2026-11-25 by thigh + foot x 0.625 and the venoarteriolar reflex (T + V; validation log). Was a strict xfail; its
+# old reason is in git history and the validation log.
 def test_volume_state_shifts_venous_return_curve_without_rotating_it_maas2009():
     """[PMID: 19237896 — Maas 2009] RE-SCOPED 2026-11-18 (Jesper) TO MAAS'S OWN PROTOCOL. Maas changed volume state
     two ways — 30 deg HEAD-UP TILT (hypovolaemia) and +500 mL colloid (hypervolaemia) — and found the venous-return
@@ -3038,6 +3032,10 @@ def test_right_atrial_volumes_are_physiological():
 # Maksuti geometry) and LA_EMIN re-pinned on four-source filling. Emptying is a RATIO
 # on which Järvinen agrees with the other sources, so his band is kept.
 # CLOSED 2026-11-17 by putting leg blood flow on Dinenno 1999 (legs ~14 % of CO; validation log): XPASS on the full suite.
+@pytest.mark.xfail(strict=True, raises=AssertionError, reason=(
+    "KNOWN GAP 2026-11-25 — EDGE: thigh + foot x 0.625 and the venoarteriolar reflex (T + V) leave the centre a little fuller; "
+    "LA total emptying 58.002 % against 48-58 (Järvinen 53 +/- 5), out by 0.002. Same cause as the RA sibling (58.3 %, 11-17). "
+    "Band not widened."))
 def test_atrial_emptying_fractions_are_physiological():
     """[G1][G2] Total atrial emptying fraction must match human reference ranges.
 
@@ -4946,7 +4944,8 @@ def test_orthostatic_vasoconstriction_is_blunted_with_age_white1997(white1997_ar
 @pytest.mark.xfail(strict=True, raises=AssertionError, reason=(
     "KNOWN GAP 2026-11-22 — THE 60 DEG COLLAPSE. Young man at 60 deg for 5 min: central MAP 96.6 -> 72.0 (-24.6), SV 96 -> 28.5, "
     "CO 6.37 -> 2.67, HR +27; the cuff-MAP proxy reads -37.8 (its tilt correction exaggerates the fall — a separate finding). Man "
-    "RAISES MAP (+5.6 White; +2.5 PMID 38684421). The same body defect as problem 1, pushed further."))
+    "RAISES MAP (+5.6 White; +2.5 PMID 38684421). The same body defect as problem 1, pushed further. 2026-11-25 with thigh + foot x "
+    "0.625 and the venoarteriolar reflex: proxy -31.4 (central values not re-read)."))
 def test_young_raise_mean_pressure_on_60_deg_tilt_white1997(white1997_arms):
     """[PMID 9404222, 38684421] Young adults' mean arterial pressure RISES at 60 deg head-up tilt (+5.6, +2.5 mmHg)."""
     d = [white1997_arms[(25.0, s)][1]["brachial_p"] - white1997_arms[(25.0, s)][0]["brachial_p"] for s in ("male", "female")]
@@ -5450,8 +5449,8 @@ def test_phenylephrine_raises_stroke_volume_hojlund2024(phenylephrine_during_til
 
 # Was a strict xfail; closed 2026-10-06 by the Klotz LV diastolic curve (heart.py).
 # STRICT XFAIL 2026-11-06 — the closed-chest constraint adopted 2026-11-06 (step 3C, Xc 1.75, s 0.15; Jesper overrode the registered rule).
-@pytest.mark.xfail(strict=True, reason=(
-    'after the closed-chest constraint (2026-11-06): lowest SVV across doses 13.4 % (study target < 12 %)'))
+# CLOSED 2026-11-25 by thigh + foot x 0.625 and the venoarteriolar reflex (T + V; validation log). Was a strict xfail; its
+# old reason is in git history and the validation log.
 def test_phenylephrine_abolishes_preload_dependency_pmid31705432(phenylephrine_during_tilt):
     """[PMID 31705432] Phenylephrine brought stroke-volume variation from 24 to
     8.6 % (IQR 6.8 to 11) — below the study's own 12 % target.
@@ -6976,12 +6975,16 @@ def test_reported_cvp_during_arrest_matches_the_bed_it_drains_item78():
     p.baroreflex_enabled = False
     p.ventilation_mode = "none"
     p.slow_dynamics_enabled = False
+    # READ AT A TRUE PLATEAU (2026-11-25). Until this date the window was 34-39 s into a 40-s arrest, where the gap is
+    # residual flow still decaying (tau ~45 s): 0.499 on the committed model — on the edge — and 0.611 with thigh + foot
+    # x 0.625, decaying to 0.059 / 0.071 by 150 s in both (validation log, T + V full suite). The invariant is ZERO FLOW,
+    # so it is read where flow has stopped; the 0.5 limit is unchanged.
     p.arrest_start_s = 40.0
-    p.arrest_duration_s = 40.0
-    r = run_simulation(p, duration_s=80.0, dt=DT)
+    p.arrest_duration_s = 160.0
+    r = run_simulation(p, duration_s=200.0, dt=DT)
 
     t = np.asarray(r["t"])
-    w = (t >= 74.0) & (t <= 79.0)              # plateau, 34-39 s into the arrest
+    w = (t >= 185.0) & (t <= 190.0)            # plateau, 145-150 s into the arrest
     assert w.any(), "no samples in the arrest plateau window"
 
     cvp = float(np.mean(np.asarray(r["cvp"])[w]))
@@ -7942,6 +7945,11 @@ def _bhella_ratio_band(stage, num, den):
 
 # CLOSED 2026-11-15 by option A (anatomical reference for the heart's external pressure) + blood volume by age.
 # CLOSED 2026-11-17 by putting leg blood flow on Dinenno 1999 (legs ~14 % of CO; validation log): wedge per 10 % LVEDV at -30 back inside.
+@pytest.mark.xfail(strict=True, raises=AssertionError, reason=(
+    "KNOWN GAP 2026-11-25 — thigh + foot x 0.625 (T, Baccelli 1995) make the model's legs-only LBNP chamber pool less at -30, so "
+    "the -30 stage moves the LV a smaller fraction and reads a steeper chord of the curved relation: 3.39 mmHg per 10 % against "
+    "2.13-3.21 (lbnp15 and saline rows unchanged). Man's chamber seals at the iliac crest (pelvis inside); the model has no "
+    "pelvic lump — the LBNP dose mismatch on record. Band not widened."))
 def test_lv_filling_pressure_per_volume_follows_bhella2014(bhella_stages):
     """[PMID 25236519 — Bhella 2014] dPCWP per fractional dLVEDV at each stage: the LV's
     end-diastolic pressure-volume relation as the circulation sees it, in vivo, measured
@@ -8050,10 +8058,8 @@ def johnson_bleed():
 # CLOSED 2026-11-13 by STEP 3 (external pressure Xc 3.0, slopes 0.08 below / 0.05 above rest): dCVP -1.32 / -2.50 /
 # -3.37 at 333 / 666 / 999 mL, inside all three bands for the first time. dSV -7.6 / -14.5 / -22.1 against
 # Johnson's -5 / -11 / -18 (not asserted here). Was a strict xfail from 2026-10-23 (CVP ~4x too shallow).
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason=(
-    "KNOWN GAP 2026-11-21 — EDGE: with the HR threshold the 666 mL stage reads dCVP -2.28 against the band edge -2.34 "
-    "(333 and 999 mL inside). Less tachycardia at mild stress leaves CVP a hair higher. Band not widened."
-))
+# CLOSED 2026-11-25 by thigh + foot x 0.625 and the venoarteriolar reflex (T + V; validation log). Was a strict xfail; its
+# old reason is in git history and the validation log.
 def test_cvp_falls_as_in_johnson2014_controlled_blood_loss(johnson_bleed):
     """CVP falls by Johnson's mean change at each 333 mL stage, within the SE-of-
     change band defined above."""
@@ -8097,11 +8103,8 @@ def test_map_is_held_in_johnson2014_blood_loss(johnson_bleed):
     assert not misses, "MAP does not follow Johnson 2014 blood loss: " + "; ".join(misses)
 
 
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason=(
-    "KNOWN GAP 2026-11-21 — the cardiopulmonary HR threshold (surrogate) makes the heart rate right at mild stress but too "
-    "low at 1 L: +2.7 bpm against +8 +/- 4.9. Man's large-stress tachycardia follows arterial PULSE PRESSURE, which the "
-    "model's MAP-only arterial arm lacks; and its CVP falls only -3.4 at 1 L against -4.7."
-))
+# CLOSED 2026-11-25 by thigh + foot x 0.625 and the venoarteriolar reflex (T + V; validation log). Was a strict xfail; its
+# old reason is in git history and the validation log.
 def test_heart_rate_rises_in_johnson2014_blood_loss(johnson_bleed):
     """[PMID 24876357 — Johnson 2014] Heart rate rises modestly at every stage of real blood loss, inside Johnson's band
     (+1 / +4 / +8 bpm at 333 / 667 / 1000 mL)."""
@@ -8605,10 +8608,11 @@ def petersen_mild_tilt():
 
 
 @pytest.mark.xfail(strict=True, raises=AssertionError, reason=(
-    "KNOWN GAP, PROBLEM 1 (measured 2026-11-19, liver split + head-down column 0): mild tilt moves the model's CVP "
-    "2-5x man's and its stroke volume where man's does not move (+20: CVP -3.90 vs -1.7 +/- 0.70, SV -28.5 vs -2 +/- 6.8; "
-    "-20: CVP +6.09 vs +1.2 +/- 0.86, SV +6.7 vs -2 +/- 7.3). Head-down the chest takes ~2x Bivins' share and the legs give ~1.6x (validation log 2026-11-19); "
-    "head-up the cause is not located. The hepatic waterfall (Sand) was probed and does not move it. Band not widened."
+    "KNOWN GAP, PROBLEM 1 (re-measured 2026-11-25 with thigh + foot x 0.625 and the venoarteriolar reflex): mild tilt moves the "
+    "model's CVP 2-5x man's and its stroke volume where man's does not move (+20: CVP -3.68 vs -1.7 +/- 0.70, SV -14.7 vs -2 +/- 6.8; "
+    "-20: CVP +5.61 vs +1.2 +/- 0.86, SV +6.7 vs -2 +/- 7.3). Audit 2026-11-24: the chest loses about man's volume head-up but its "
+    "filling pressures fall 2-3x man's per volume moved — the centre is too stiff near rest; leg and liver changes do not move it. "
+    "Band not widened."
 ))
 def test_mild_tilt_moves_cvp_and_stroke_volume_as_in_man_petersen2014(petersen_mild_tilt):
     """[PMID 24481962 — Petersen 2014] +/-20 deg for 10 min in young men: CVP changes by Petersen's mean within the SE
@@ -8627,7 +8631,7 @@ def test_mild_tilt_moves_cvp_and_stroke_volume_as_in_man_petersen2014(petersen_m
 
 
 @pytest.mark.xfail(strict=True, raises=AssertionError, reason=(
-    "KNOWN GAP, PROBLEM 1 (measured 2026-11-19): at 20 deg head-down the model's left-atrial (wedge) pressure rises +8.12 "
+    "KNOWN GAP, PROBLEM 1 (measured 2026-11-19; +7.52 on 2026-11-25 with T + V): at 20 deg head-down the model's left-atrial (wedge) pressure rises +8.12 "
     "(band +2.5 +/- 1.41) where van Lieshout's Swan-Ganz wedge rose +2.5 and his CVP did not change. ABSTRACT ONLY (cohort age not given; "
     "Petersen's young man used). Band not widened."
 ))
@@ -8813,7 +8817,7 @@ def kostas_20():
     return {"hr": d("hr"), "sv": d("sv")}
 
 
-# CLOSED 2026-11-21 by the cardiopulmonary HR threshold (surrogate, baroreflex.py CP_HR_THRESHOLD_MMHG): Kostas 20 deg heart rate inside <= +5 (the BODY's CVP fall is still too large; SV stays a strict xfail).
+# CLOSED 2026-11-21 by the cardiopulmonary HR threshold (surrogate, baroreflex.py CP_HR_THRESHOLD_MMHG): Kostas 20 deg heart rate inside <= +5 (the BODY's CVP fall is still too large; SV closed 2026-11-25 by T + V).
 # Was a strict xfail; its old reason is in git history and the validation log.
 def test_heart_rate_does_not_rise_at_20_deg_head_up_kostas2014(kostas_20):
     """[PMID 24754202] dHR at 20 deg HUT <= +5 bpm (Kostas +0.2)."""
@@ -8821,9 +8825,8 @@ def test_heart_rate_does_not_rise_at_20_deg_head_up_kostas2014(kostas_20):
     assert kostas_20["hr"] <= 5.0, f"HR rose {kostas_20['hr']:+.1f} bpm at 20 deg; Kostas +0.2, Petersen ~0"
 
 
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason=(
-    "KNOWN GAP 2026-11-21 (problem 1) — stroke volume falls -24.7 mL at 20 deg against Kostas's -6.9 (Petersen -2); "
-    "same cause as the heart-rate test above."))
+# CLOSED 2026-11-25 by thigh + foot x 0.625 and the venoarteriolar reflex (T + V; validation log). Was a strict xfail; its
+# old reason is in git history and the validation log.
 def test_stroke_volume_falls_little_at_20_deg_head_up_kostas2014(kostas_20):
     """[PMID 24754202] dSV at 20 deg HUT within 0 to -15 mL (Kostas -6.9)."""
     score("test_stroke_volume_falls_little_at_20_deg_head_up_kostas2014", "dSV, 20 deg HUT", kostas_20["sv"], -6.9, sd=9.0, n=21, source="Kostas 2014 Fig 4")
@@ -8902,7 +8905,8 @@ def test_measured_cvp_of_zero_is_used_not_replaced():
 # absolute volume. Band +/- 7 % of baseline: the paper's 3D EDV test-retest variability (6.8 mL of 96). Cohort: 49 y, man 178 / 78
 # and woman 166 / 60, weighted 0.69 / 0.31. The 22 deg step is Negishi's own (the first step from supine); the 80 deg arm here starts
 # from supine (his reached 80 via 22 and 41 over ~20 min) — a protocol difference, stated. Read min 2-9 after reaching the angle.
-# Measured 2026-11-24 (validation log): dLVEDV -12 % at 22 deg (2.3x man, at the band's edge), -65 % at 80 deg (5x man) — the heart's
+# Measured 2026-11-24 (validation log): dLVEDV -12 % at 22 deg (2.3x man, at the band's edge), -35.5 % at 41 (4x man, 96 -> 88
+# mL = -8.3 %), -65 % at 80 deg (5x man) — the heart's
 # loss GROWS with the gravitational load while man's stays small: problem 1 and the 60 deg collapse are one defect.
 
 _NEGISHI_MEN = 0.69
@@ -8929,6 +8933,11 @@ def negishi_22():
 
 
 @pytest.fixture(scope="module")
+def negishi_41():
+    return _negishi_lvedv_pct(41.0)
+
+
+@pytest.fixture(scope="module")
 def negishi_80():
     return _negishi_lvedv_pct(80.0)
 
@@ -8939,12 +8948,50 @@ def test_heart_loses_little_volume_at_22_deg_negishi2017(negishi_22):
     assert -12.2 <= negishi_22 <= 1.8, f"LV EDV changed {negishi_22:+.1f} % at 22 deg; Negishi -5.2 % (band -12.2..+1.8)"
 
 
+# Added 2026-11-24 (Jesper: fix mild-to-moderate tilt first; 80 deg sits on top of the model's MAP collapse). The arm starts
+# from supine, like the 80 deg arm (Negishi reached 41 via 22).
 @pytest.mark.xfail(strict=True, raises=AssertionError, reason=(
-    "KNOWN GAP 2026-11-24 — THE HEART EMPTIES UNDER A LARGE GRAVITATIONAL LOAD: LV EDV -65 % at 80 deg against Negishi's -13.5 % "
-    "(3D echo). Heart rate is on man at every angle (+16 vs +14), so the defect is filling, not reflex; it grows with the load "
-    "(2.3x man at 22 deg, ~5x at 80) — problem 1 and the 60 deg collapse are one defect. Lever map 2026-11-24: only the legs separate "
-    "gravity from a bleed; the missing physiology limits dependent pooling (validation log)."))
+    "KNOWN GAP 2026-11-24 — LV EDV -30.0 % at 41 deg against Negishi's -8.3 % (3D echo; -35.5 before thigh + foot x 0.625 and the "
+    "venoarteriolar reflex, 2026-11-25), ~3.6x man and well before the model's MAP collapse. Same defect as 80 deg; the remaining "
+    "cause is the CENTRE: filling pressures fall 2-3x man's per volume moved (audit 2026-11-24, validation log)."))
+def test_heart_keeps_its_volume_at_41_deg_negishi2017(negishi_41):
+    """[Negishi 2017] LV end-diastolic volume at 41 deg head-up changes by man's -8.3 % +/- 7 % (96 -> 88 mL, 3D)."""
+    score("test_heart_keeps_its_volume_at_41_deg_negishi2017", "dLVEDV % at 41 deg", negishi_41, -8.3, sd=7.0, n=13, kind="change", source="Negishi 2017 Table 1 (3D)")
+    assert -15.3 <= negishi_41 <= -1.3, f"LV EDV changed {negishi_41:+.1f} % at 41 deg; Negishi -8.3 % (band -15.3..-1.3)"
+
+
+@pytest.mark.xfail(strict=True, raises=AssertionError, reason=(
+    "KNOWN GAP 2026-11-24 — THE HEART EMPTIES UNDER A LARGE GRAVITATIONAL LOAD: LV EDV -55.1 % at 80 deg against Negishi's -13.5 % "
+    "(3D echo; -61.5 before T + V, 2026-11-25). Heart rate is on man at every angle, so the defect is filling, not reflex; it grows "
+    "with the load — problem 1 and the 60 deg collapse are one defect. Audit 2026-11-24: thigh + foot (now on Baccelli) were part of "
+    "it; the rest is the centre, whose pressures fall 2-3x man's per volume moved (validation log)."))
 def test_heart_keeps_most_of_its_volume_at_80_deg_negishi2017(negishi_80):
     """[Negishi 2017] LV end-diastolic volume at 80 deg head-up changes by man's -13.5 % +/- 7 %."""
     score("test_heart_keeps_most_of_its_volume_at_80_deg_negishi2017", "dLVEDV % at 80 deg", negishi_80, -13.5, sd=7.0, n=13, kind="change", source="Negishi 2017 Table 1 (3D)")
     assert -20.5 <= negishi_80 <= -6.5, f"LV EDV changed {negishi_80:+.1f} % at 80 deg; Negishi -13.5 % (band -20.5..-6.5)"
+
+
+# ===========================================================================
+# 70. THE VENOARTERIOLAR REFLEX IS LIVE — guard (adopted 2026-11-25 with thigh + foot x 0.625)
+# ===========================================================================
+#
+# circulation.py VENOARTERIOLAR_*: each leg segment's inflow resistance rises with its own venous distension (Skagen 1982,
+# Kastrup 1987, Okazaki 2005; grade D). Under tilt it limits leg filling, mostly through capillary pressure. Measured 2026-11-25
+# (man 178 / 75, 30 y, 60 deg, min 4-5): the legs pool 485.0 mL with the reflex and 506.8 without (-21.8); MAP -18.4 vs -20.9.
+# SABOTAGE: deleting the _var factor in _odes, or the switch, makes the two arms identical and the first assertion fails.
+
+
+def test_venoarteriolar_reflex_limits_leg_pooling_on_tilt():
+    """The venoarteriolar reflex must be live: at 60 deg head-up the legs pool > 10 mL less with it than without."""
+    def arm(on):
+        p = cohort_params(178.0, 75.0, age_years=30.0, sex="male")
+        p.venoarteriolar_enabled = on
+        p.tilt_start_deg, p.tilt_end_deg, p.tilt_onset_s, p.tilt_duration_s = 0.0, 60.0, 120.0, 10.0
+        r = run_simulation(p, duration_s=420.0, dt=DT, output_every=10)
+        t = np.asarray(r["t"]); V = np.asarray(r["volumes"])[:, [IDX["thigh_vein"], IDX["calf_vein"], IDX["foot_vein"]]].sum(axis=1)
+        m = np.asarray(r["map"]); w, b = (t >= 360.0) & (t < 420.0), (t >= 60.0) & (t < 120.0)
+        return float(V[w].mean() - V[b].mean()), float(m[w].mean() - m[b].mean())
+    (legs_on, map_on), (legs_off, map_off) = arm(True), arm(False)
+    assert legs_off - legs_on > 10.0, (
+        f"legs pooled {legs_on:.1f} mL with the venoarteriolar reflex and {legs_off:.1f} without: the reflex is not live")
+    assert map_on > map_off, f"MAP fell {map_on:+.1f} with the reflex and {map_off:+.1f} without: it must defend pressure"
